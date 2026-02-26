@@ -2,6 +2,12 @@ import { Pinecone } from "@pinecone-database/pinecone";
 import { embedMany } from "ai";
 import { extractText } from "../../utils/textParser";
 import { splitPages, type TextChunk } from "../../utils/textSplitter";
+import {
+  createJob,
+  updateJob,
+  generateJobId,
+  type JobState,
+} from "../../utils/jobStore";
 
 const EMBED_BATCH_SIZE = 100;
 const MAX_PARALLEL_BATCHES = 3;
@@ -15,13 +21,9 @@ const PINECONE_BATCH_SIZE = 100;
  *   - bookName: string  — human-readable book title
  *   - resume?: boolean  — if true, skip already-vectorized chunks (default: false)
  *
- * Pipeline:
- *   1. Fetch the file from Vercel Blob
- *   2. Extract text page-by-page (PDF, EPUB, TXT)
- *   3. Split text into chunks with page numbers
- *   4. (Resume) Check which chunks already exist in Pinecone
- *   5. Generate embeddings in parallel batches via AI SDK
- *   6. Upsert vectors into Pinecone
+ * Returns 202 Accepted immediately with a jobId.
+ * The actual processing runs in the background via event.waitUntil().
+ * Poll GET /api/books/jobs/:id for progress.
  */
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
@@ -43,95 +45,179 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // --- 1. Fetch file from Blob ---
-  const filename = blobUrl.split("/").pop() || "unknown.txt";
-  const response = await fetch(blobUrl);
-  if (!response.ok) {
-    throw createError({
-      statusCode: 502,
-      statusMessage: `Failed to download file from Blob: ${response.statusText}`,
-    });
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  // Create job and start background processing
+  const jobId = generateJobId();
+  createJob(jobId, bookName);
 
-  // --- 2. Extract text (page-by-page) ---
-  const pages = await extractText(buffer, filename);
-  if (!pages.length) {
-    throw createError({
-      statusCode: 422,
-      statusMessage: "No text could be extracted from the file.",
-    });
-  }
+  const backgroundWork = processBook({
+    jobId,
+    blobUrl,
+    bookName,
+    resume: !!resume,
+    pineconeApiKey: config.pineconeApiKey,
+    pineconeIndex: config.pineconeIndex,
+  });
 
-  // --- 3. Chunk text (preserving page numbers) ---
-  let chunks = splitPages(pages);
-  const bookSlug = slugify(bookName);
-
-  // --- 4. Resume: filter out already-processed chunks ---
-  const pc = new Pinecone({ apiKey: config.pineconeApiKey });
-  const index = pc.index(config.pineconeIndex);
-
-  let skippedCount = 0;
-  if (resume) {
-    const existingIds = await getExistingChunkIds(index, bookSlug, chunks);
-    const before = chunks.length;
-    chunks = chunks.filter(
-      (c) => !existingIds.has(`${bookSlug}-chunk-${c.chunkIndex}`),
-    );
-    skippedCount = before - chunks.length;
+  // Use waitUntil if available (Vercel/Nitro), otherwise fire-and-forget
+  if (typeof event.waitUntil === "function") {
+    event.waitUntil(backgroundWork);
+  } else {
+    // Local dev: fire-and-forget (catch errors to avoid unhandled rejections)
+    backgroundWork.catch(() => {});
   }
 
-  if (chunks.length === 0) {
-    return {
-      status: "success",
-      message: `Book "${bookName}" is already fully vectorized.`,
-      stats: { totalChunks: 0, skipped: skippedCount, newVectors: 0 },
-    };
-  }
-
-  // --- 5. Generate embeddings in parallel ---
-  const allEmbeddings = await generateEmbeddingsParallel(chunks);
-
-  // --- 6. Upsert into Pinecone ---
-  const vectors = chunks.map((chunk: TextChunk, i: number) => ({
-    id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
-    values: allEmbeddings[i]!,
-    metadata: {
-      bookName,
-      blobUrl,
-      chunkIndex: chunk.chunkIndex,
-      pageNumber: chunk.pageNumber,
-      text: chunk.text.slice(0, 1000),
-    },
-  }));
-
-  for (let i = 0; i < vectors.length; i += PINECONE_BATCH_SIZE) {
-    const batch = vectors.slice(i, i + PINECONE_BATCH_SIZE);
-    await index.upsert({ records: batch });
-  }
-
+  // Return 202 immediately
+  setResponseStatus(event, 202);
   return {
-    status: "success",
-    message: `Book "${bookName}" vectorized successfully.`,
-    stats: {
-      totalPages: pages.length,
-      totalChunks: chunks.length + skippedCount,
-      skipped: skippedCount,
-      newVectors: vectors.length,
-    },
+    status: "accepted",
+    jobId,
+    message: `Vectorization job started for "${bookName}".`,
+    statusUrl: `/api/books/jobs/${jobId}`,
   };
 });
 
+// ---- Background processing pipeline ----
+
+interface ProcessBookParams {
+  jobId: string;
+  blobUrl: string;
+  bookName: string;
+  resume: boolean;
+  pineconeApiKey: string;
+  pineconeIndex: string;
+}
+
+async function processBook(params: ProcessBookParams): Promise<void> {
+  const { jobId, blobUrl, bookName, resume, pineconeApiKey, pineconeIndex } =
+    params;
+
+  try {
+    updateJob(jobId, { status: "processing" });
+
+    // --- 1. Fetch file from Blob ---
+    const filename = blobUrl.split("/").pop() || "unknown.txt";
+    const response = await fetch(blobUrl);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to download file from Blob: ${response.statusText}`,
+      );
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // --- 2. Extract text page-by-page ---
+    const pages = await extractText(buffer, filename);
+    if (!pages.length) {
+      throw new Error("No text could be extracted from the file.");
+    }
+
+    const bookSlug = slugify(bookName);
+    const pc = new Pinecone({ apiKey: pineconeApiKey });
+    const index = pc.index(pineconeIndex);
+
+    // Pre-calculate total chunks for progress reporting
+    const allChunks = splitPages(pages);
+    const totalChunks = allChunks.length;
+
+    updateJob(jobId, {
+      progress: {
+        currentPage: 0,
+        totalPages: pages.length,
+        chunksProcessed: 0,
+        totalChunks,
+      },
+    });
+
+    // --- 3. Get existing IDs for resume ---
+    let existingIds = new Set<string>();
+    if (resume) {
+      existingIds = await getExistingChunkIds(index, bookSlug, allChunks);
+    }
+
+    // --- 4. Stream: process page-by-page ---
+    let chunksProcessed = 0;
+    let skipped = 0;
+    let newVectors = 0;
+    let globalChunkOffset = 0;
+
+    for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
+      const page = pages[pageIdx]!;
+
+      // Chunk this single page
+      const pageChunks = splitPages([page]).map((c) => ({
+        ...c,
+        chunkIndex: globalChunkOffset + c.chunkIndex,
+      }));
+      globalChunkOffset += pageChunks.length;
+
+      // Filter out already-processed chunks (resume mode)
+      const newChunks = pageChunks.filter(
+        (c) => !existingIds.has(`${bookSlug}-chunk-${c.chunkIndex}`),
+      );
+      skipped += pageChunks.length - newChunks.length;
+
+      if (newChunks.length > 0) {
+        // Generate embeddings for this page's chunks (parallel batches)
+        const embeddings = await generateEmbeddingsParallel(newChunks);
+
+        // Build vectors with metadata
+        const vectors = newChunks.map((chunk, i) => ({
+          id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
+          values: embeddings[i]!,
+          metadata: {
+            bookName,
+            blobUrl,
+            chunkIndex: chunk.chunkIndex,
+            pageNumber: chunk.pageNumber,
+            text: chunk.text.slice(0, 1000),
+          },
+        }));
+
+        // Upsert this page's vectors
+        for (let i = 0; i < vectors.length; i += PINECONE_BATCH_SIZE) {
+          const batch = vectors.slice(i, i + PINECONE_BATCH_SIZE);
+          await index.upsert({ records: batch });
+        }
+
+        newVectors += vectors.length;
+      }
+
+      chunksProcessed += pageChunks.length;
+
+      // Update progress after each page
+      updateJob(jobId, {
+        progress: {
+          currentPage: pageIdx + 1,
+          totalPages: pages.length,
+          chunksProcessed,
+          totalChunks,
+        },
+      });
+    }
+
+    // --- 5. Mark complete ---
+    updateJob(jobId, {
+      status: "completed",
+      result: {
+        totalPages: pages.length,
+        totalChunks,
+        skipped,
+        newVectors,
+      },
+    });
+  } catch (error: any) {
+    updateJob(jobId, {
+      status: "failed",
+      error: error.message || "Unknown error",
+    });
+  }
+}
+
 // ---- Helper functions ----
 
-/**
- * Generate embeddings for chunks using parallel batches (up to MAX_PARALLEL_BATCHES).
- */
 async function generateEmbeddingsParallel(
   chunks: TextChunk[],
 ): Promise<number[][]> {
-  // Split into batches of EMBED_BATCH_SIZE
   const batches: TextChunk[][] = [];
   for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
     batches.push(chunks.slice(i, i + EMBED_BATCH_SIZE));
@@ -139,7 +225,6 @@ async function generateEmbeddingsParallel(
 
   const allEmbeddings: number[][] = [];
 
-  // Process MAX_PARALLEL_BATCHES at a time
   for (let i = 0; i < batches.length; i += MAX_PARALLEL_BATCHES) {
     const parallelBatches = batches.slice(i, i + MAX_PARALLEL_BATCHES);
 
@@ -163,9 +248,6 @@ async function generateEmbeddingsParallel(
   return allEmbeddings;
 }
 
-/**
- * Query Pinecone for already-existing chunk IDs for this book.
- */
 async function getExistingChunkIds(
   index: ReturnType<Pinecone["index"]>,
   bookSlug: string,
@@ -175,7 +257,6 @@ async function getExistingChunkIds(
 
   const existing = new Set<string>();
 
-  // Fetch in batches of 1000 (Pinecone limit)
   for (let i = 0; i < candidateIds.length; i += 1000) {
     const batch = candidateIds.slice(i, i + 1000);
     try {

@@ -6,8 +6,8 @@ import type { PageText } from "../../utils/textParser";
 /**
  * GET /api/tests/vectorize-pipeline
  *
- * Integration test: verifies the full vectorization pipeline
- * including page-aware chunking, parallel embedding, Pinecone upsert,
+ * Integration test: verifies the full vectorization pipeline v3
+ * including page-aware chunking, embedding, Pinecone upsert with pageNumber,
  * resume mechanism, and cleanup.
  */
 export default defineEventHandler(async () => {
@@ -56,10 +56,9 @@ export default defineEventHandler(async () => {
     };
   }
 
-  // --- Test 2: Parallel embedding generation ---
+  // --- Test 2: Embedding generation ---
   let embeddings: number[][] = [];
   try {
-    // Simulate parallel by using a single embedMany (small data set)
     const result = await embedMany({
       model: "openai/text-embedding-3-large",
       values: chunks.map((c) => c.text),
@@ -91,8 +90,8 @@ export default defineEventHandler(async () => {
     };
   }
 
-  // --- Test 3: Pinecone upsert with pageNumber metadata ---
-  const bookSlug = "test-pipeline-v2";
+  // --- Test 3: Pinecone upsert with pageNumber ---
+  const bookSlug = "test-pipeline-v3";
   try {
     const pc = new Pinecone({ apiKey: config.pineconeApiKey });
     const index = pc.index(config.pineconeIndex);
@@ -101,7 +100,7 @@ export default defineEventHandler(async () => {
       id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
       values: embeddings[i]!,
       metadata: {
-        bookName: "__test_v2__",
+        bookName: "__test_v3__",
         chunkIndex: chunk.chunkIndex,
         pageNumber: chunk.pageNumber,
         text: chunk.text.slice(0, 200),
@@ -109,11 +108,9 @@ export default defineEventHandler(async () => {
     }));
 
     await index.namespace("test").upsert({ records: vectors });
-
-    // Small delay for consistency
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Verify upserted vectors have pageNumber via fetch
+    // Verify pageNumber in metadata
     const fetchResult = await index
       .namespace("test")
       .fetch({ ids: [vectors[0]!.id] });
@@ -127,7 +124,7 @@ export default defineEventHandler(async () => {
       detail: `pageNumber=${fetchedRecord?.metadata?.pageNumber}, vectorCount=${vectors.length}`,
     });
 
-    // --- Test 4: Resume mechanism — fetch existing IDs ---
+    // --- Test 4: Resume mechanism ---
     const existingIds = new Set<string>();
     const fetched = await index
       .namespace("test")

@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { normalizePageText } from "./textNormalizer";
 
 /**
  * A piece of text with its source page/chapter number.
@@ -45,10 +46,9 @@ function extractTextFromTxt(buffer: Buffer): PageText[] {
 }
 
 /**
- * PDF: page-by-page extraction using pdfjs-dist.
+ * PDF: page-by-page extraction using pdfjs-dist + line normalization.
  */
 async function extractTextFromPdf(buffer: Buffer): Promise<PageText[]> {
-  // pdfjs-dist ESM import
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
   const uint8Array = new Uint8Array(buffer);
@@ -59,13 +59,15 @@ async function extractTextFromPdf(buffer: Buffer): Promise<PageText[]> {
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
-    const text = content.items
+    const rawText = content.items
       .filter((item: any) => "str" in item)
       .map((item: any) => item.str)
       .join(" ");
 
-    if (text.trim()) {
-      pages.push({ pageNumber: i, text: text.trim() });
+    if (rawText.trim()) {
+      // Normalize: merge broken lines from PDF layout
+      const normalized = normalizePageText(rawText.trim());
+      pages.push({ pageNumber: i, text: normalized });
     }
   }
 
@@ -73,11 +75,9 @@ async function extractTextFromPdf(buffer: Buffer): Promise<PageText[]> {
 }
 
 /**
- * EPUB: chapter-by-chapter extraction using epub2.
- * Each chapter maps to a logical "page" number.
+ * EPUB: chapter-by-chapter extraction using epub2 + html-to-text.
  */
 async function extractTextFromEpub(buffer: Buffer): Promise<PageText[]> {
-  // epub2 requires a file path, so write buffer to a temp file
   const tmpDir = os.tmpdir();
   const tmpFile = path.join(tmpDir, `epub-${Date.now()}.epub`);
 
@@ -85,6 +85,8 @@ async function extractTextFromEpub(buffer: Buffer): Promise<PageText[]> {
     fs.writeFileSync(tmpFile, buffer);
 
     const { EPub } = await import("epub2");
+    const { convert } = await import("html-to-text");
+
     const epub = await EPub.createAsync(tmpFile);
 
     const pages: PageText[] = [];
@@ -94,41 +96,28 @@ async function extractTextFromEpub(buffer: Buffer): Promise<PageText[]> {
       const chapter = flow[i]!;
       try {
         const html = await epub.getChapterAsync(chapter.id);
-        // Strip HTML tags to get plain text
-        const text = stripHtml(html);
+        // Use html-to-text for clean conversion
+        const text = convert(html, {
+          wordwrap: false,
+          selectors: [
+            { selector: "img", format: "skip" },
+            { selector: "a", options: { ignoreHref: true } },
+          ],
+        });
         if (text.trim()) {
           pages.push({ pageNumber: i + 1, text: text.trim() });
         }
       } catch {
-        // Skip chapters that can't be read (e.g. images-only)
+        // Skip chapters that can't be read
       }
     }
 
     return pages;
   } finally {
-    // Cleanup temp file
     try {
       fs.unlinkSync(tmpFile);
     } catch {
       // Ignore cleanup errors
     }
   }
-}
-
-/**
- * Strip HTML tags and decode common HTML entities.
- */
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }
