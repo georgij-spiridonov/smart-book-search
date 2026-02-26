@@ -3,6 +3,11 @@ import { embedMany } from "ai";
 import { extractText } from "../../utils/textParser";
 import { splitPages, type TextChunk } from "../../utils/textSplitter";
 import {
+  getFileHash,
+  isFileVectorized,
+  markFileAsVectorized,
+} from "../../utils/hashStore";
+import {
   createJob,
   updateJob,
   generateJobId,
@@ -105,6 +110,22 @@ async function processBook(params: ProcessBookParams): Promise<void> {
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // --- 1.5 Hash check ---
+    // If exact file payload is already vectorized, skip processing to prevent abuse.
+    const fileHash = getFileHash(buffer);
+    if (!resume && isFileVectorized(fileHash)) {
+      updateJob(jobId, {
+        status: "completed",
+        result: {
+          totalPages: 0,
+          totalChunks: 0,
+          skipped: 0,
+          newVectors: 0,
+        },
+      });
+      return;
+    }
+
     // --- 2. Extract text page-by-page ---
     const pages = await extractText(buffer, filename);
     if (!pages.length) {
@@ -196,6 +217,8 @@ async function processBook(params: ProcessBookParams): Promise<void> {
     }
 
     // --- 5. Mark complete ---
+    markFileAsVectorized(fileHash);
+
     updateJob(jobId, {
       status: "completed",
       result: {

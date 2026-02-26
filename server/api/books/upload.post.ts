@@ -1,5 +1,10 @@
 import { put } from "@vercel/blob";
 import { validateFileType } from "../../utils/fileValidator";
+import {
+  getFileHash,
+  getExistingBlobUrl,
+  markFileAsUploaded,
+} from "../../utils/hashStore";
 
 /**
  * POST /api/books/upload
@@ -46,11 +51,30 @@ export default defineEventHandler(async (event) => {
       });
     }
 
+    // Check if the exact same file was already uploaded to save Blob usage
+    const hash = getFileHash(fileField.data);
+    const existingUrl = getExistingBlobUrl(hash);
+    if (existingUrl) {
+      return {
+        status: "success",
+        message: `File "${fileField.filename}" was already uploaded previously.`,
+        blob: {
+          url: existingUrl,
+          pathname: existingUrl.split("/").pop() || fileField.filename,
+          contentType: fileField.type || "application/octet-stream",
+          size: fileField.data.length,
+        },
+      };
+    }
+
     // Upload to Vercel Blob under the "books/" folder
     const blob = await put(`books/${fileField.filename}`, fileField.data, {
       access: "public",
       token: config.blobToken,
     });
+
+    // Save hash for future duplicate upload prevention
+    markFileAsUploaded(hash, blob.url);
 
     return {
       status: "success",
