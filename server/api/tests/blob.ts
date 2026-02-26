@@ -12,8 +12,6 @@ export default defineEventHandler(async (event) => {
     return {
       status: "success",
       message: "Vercel Blob storage is accessible!",
-      blobCount: response.blobs.length,
-      blobs: response.blobs.slice(0, 5), // Return first 5 for verification
     };
   } catch (error: any) {
     return {

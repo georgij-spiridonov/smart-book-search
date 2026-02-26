@@ -10,5 +10,9 @@ export default defineNuxtConfig({
   modules: ["@nuxt/eslint"],
   runtimeConfig: {
     blobToken: process.env.BOOKS_BLOB_READ_WRITE_TOKEN,
+    aiGatewayApiKey: process.env.AI_GATEWAY_API_KEY,
+    pineconeApiKey: process.env.PINECONE_API_KEY,
+    pineconeIndex: process.env.PINECONE_INDEX,
+    pineconeHost: process.env.PINECONE_HOST,
   },
 });
