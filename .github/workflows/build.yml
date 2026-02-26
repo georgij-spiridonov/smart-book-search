@@ -1,0 +1,38 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Загружаем исходный код из репозитория
+      - uses: actions/checkout@v4
+
+      # Устанавливаем Node.js для работы скриптов
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: "npm"
+
+      # Устанавливаем зависимости проекта (используем ci для чистого билда)
+      - name: Install dependencies
+        run: npm ci
+
+      # Проверяем код на соответствие правилам линтинга (ESLint)
+      - name: Lint
+        run: npm run lint
+
+      # Проверяем типизацию (Nuxt Typecheck) для предотвращения ошибок Runtime
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Выполняем тестовую сборку, чтобы убедиться, что проект «соберется» на хостинге
+      - name: Build
+        run: npm run build
