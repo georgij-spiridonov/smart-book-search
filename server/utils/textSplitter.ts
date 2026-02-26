@@ -1,14 +1,43 @@
+import type { PageText } from "./textParser";
+
 export interface TextChunk {
   text: string;
   chunkIndex: number;
+  pageNumber: number;
 }
 
 const DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""];
 
 /**
- * Recursively split text using a hierarchy of separators,
- * producing chunks of approximately `chunkSize` characters
- * with `chunkOverlap` characters of overlap between consecutive chunks.
+ * Split an array of pages into smaller, overlapping chunks,
+ * preserving the source page number in each chunk.
+ */
+export function splitPages(
+  pages: PageText[],
+  options?: {
+    chunkSize?: number;
+    chunkOverlap?: number;
+  },
+): TextChunk[] {
+  const allChunks: TextChunk[] = [];
+  let globalIndex = 0;
+
+  for (const page of pages) {
+    const rawChunks = splitText(page.text, options);
+    for (const chunk of rawChunks) {
+      allChunks.push({
+        text: chunk.text,
+        chunkIndex: globalIndex++,
+        pageNumber: page.pageNumber,
+      });
+    }
+  }
+
+  return allChunks;
+}
+
+/**
+ * Split a single text string into chunks (used internally and by tests).
  */
 export function splitText(
   text: string,
@@ -16,13 +45,11 @@ export function splitText(
     chunkSize?: number;
     chunkOverlap?: number;
   },
-): TextChunk[] {
+): Omit<TextChunk, "pageNumber">[] {
   const chunkSize = options?.chunkSize ?? 800;
   const chunkOverlap = options?.chunkOverlap ?? 200;
 
   const rawChunks = recursiveSplit(text, DEFAULT_SEPARATORS, chunkSize);
-
-  // Merge small chunks and apply overlap
   const merged = mergeWithOverlap(rawChunks, chunkSize, chunkOverlap);
 
   return merged
@@ -44,7 +71,6 @@ function recursiveSplit(
   const remainingSeparators = separators.slice(1);
 
   if (!separator) {
-    // Last resort: split by character count
     const chunks: string[] = [];
     for (let i = 0; i < text.length; i += chunkSize) {
       chunks.push(text.slice(i, i + chunkSize));
@@ -65,7 +91,6 @@ function recursiveSplit(
       if (current) {
         results.push(current);
       }
-      // If the part itself is larger than chunkSize, recursively split it
       if (part.length > chunkSize && remainingSeparators.length > 0) {
         results.push(...recursiveSplit(part, remainingSeparators, chunkSize));
         current = "";
@@ -98,12 +123,10 @@ function mergeWithOverlap(
     if (i === 0) {
       result.push(current);
     } else {
-      // Prepend overlap from the end of the previous chunk
       const prevChunk = chunks[i - 1]!;
       const overlapText = prevChunk.slice(-chunkOverlap);
       const merged = overlapText + current;
 
-      // If merged is too large, just use the chunk as is
       if (merged.length > chunkSize * 1.5) {
         result.push(current);
       } else {

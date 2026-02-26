@@ -1,10 +1,11 @@
 import { put } from "@vercel/blob";
+import { validateFileType } from "../../utils/fileValidator";
 
 /**
  * POST /api/books/upload
  *
  * Accepts a multipart/form-data request with a file field named "file".
- * Uploads the file to Vercel Blob and returns the blob URL + metadata.
+ * Validates file type via magic bytes, uploads to Vercel Blob.
  */
 export default defineEventHandler(async (event) => {
   try {
@@ -27,12 +28,21 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const allowedExtensions = ["pdf", "txt"];
+    const allowedExtensions = ["pdf", "txt", "epub"];
     const ext = fileField.filename.split(".").pop()?.toLowerCase();
     if (!ext || !allowedExtensions.includes(ext)) {
       throw createError({
         statusCode: 400,
         statusMessage: `Unsupported file type: .${ext}. Allowed: ${allowedExtensions.join(", ")}`,
+      });
+    }
+
+    // Validate actual file content via magic bytes
+    const validation = validateFileType(fileField.data, ext);
+    if (!validation.valid) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: validation.message,
       });
     }
 
@@ -53,7 +63,7 @@ export default defineEventHandler(async (event) => {
       },
     };
   } catch (error: any) {
-    if (error.statusCode) throw error; // re-throw createError
+    if (error.statusCode) throw error;
     throw createError({
       statusCode: 500,
       statusMessage: "Upload failed",

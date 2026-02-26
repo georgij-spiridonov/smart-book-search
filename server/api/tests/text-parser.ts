@@ -1,42 +1,46 @@
 import { extractText } from "../../utils/textParser";
+import type { PageText } from "../../utils/textParser";
 
 /**
  * GET /api/tests/text-parser
  *
- * Unit test: verifies that the text parser can extract text
- * from TXT buffers and handles unsupported formats correctly.
- *
- * Note: PDF parsing is tested with a minimal synthetic buffer,
- * but a real PDF test requires an actual PDF file.
+ * Unit tests for the text parser (PageText[] return type).
  */
 export default defineEventHandler(async () => {
   const results: { name: string; passed: boolean; detail: string }[] = [];
 
-  // Test 1: TXT extraction
+  // Test 1: TXT extraction returns PageText[]
   try {
     const content = "Hello, World! This is a test book content.";
     const buffer = Buffer.from(content, "utf-8");
-    const text = await extractText(buffer, "test.txt");
-    const passed = text === content;
+    const pages: PageText[] = await extractText(buffer, "test.txt");
+    const passed =
+      pages.length === 1 &&
+      pages[0]!.pageNumber === 1 &&
+      pages[0]!.text === content;
     results.push({
-      name: "TXT extraction",
+      name: "TXT extraction → PageText[]",
       passed,
-      detail: `extracted: "${text.slice(0, 50)}"`,
+      detail: `pages: ${pages.length}, pageNum: ${pages[0]?.pageNumber}, text: "${pages[0]?.text.slice(0, 40)}"`,
     });
   } catch (e: any) {
-    results.push({ name: "TXT extraction", passed: false, detail: e.message });
+    results.push({
+      name: "TXT extraction → PageText[]",
+      passed: false,
+      detail: e.message,
+    });
   }
 
   // Test 2: TXT with unicode
   try {
     const content = "Привет мир! 你好世界! مرحبا بالعالم";
     const buffer = Buffer.from(content, "utf-8");
-    const text = await extractText(buffer, "unicode-book.txt");
-    const passed = text === content;
+    const pages = await extractText(buffer, "unicode-book.txt");
+    const passed = pages.length === 1 && pages[0]!.text === content;
     results.push({
       name: "TXT with unicode",
       passed,
-      detail: `extracted: "${text.slice(0, 50)}"`,
+      detail: `pages: ${pages.length}, text: "${pages[0]?.text.slice(0, 40)}"`,
     });
   } catch (e: any) {
     results.push({
@@ -64,18 +68,21 @@ export default defineEventHandler(async () => {
     });
   }
 
-  // Test 4: Empty TXT
+  // Test 4: Empty TXT returns empty array
   try {
     const buffer = Buffer.from("", "utf-8");
-    const text = await extractText(buffer, "empty.txt");
-    const passed = text === "";
+    const pages = await extractText(buffer, "empty.txt");
     results.push({
-      name: "Empty TXT file",
-      passed,
-      detail: `length: ${text.length}`,
+      name: "Empty TXT → empty array",
+      passed: pages.length === 0,
+      detail: `pages: ${pages.length}`,
     });
   } catch (e: any) {
-    results.push({ name: "Empty TXT file", passed: false, detail: e.message });
+    results.push({
+      name: "Empty TXT → empty array",
+      passed: false,
+      detail: e.message,
+    });
   }
 
   const allPassed = results.every((r) => r.passed);

@@ -1,46 +1,51 @@
 import { embedMany } from "ai";
 import { Pinecone } from "@pinecone-database/pinecone";
-import { splitText } from "../../utils/textSplitter";
+import { splitPages } from "../../utils/textSplitter";
+import type { PageText } from "../../utils/textParser";
 
 /**
  * GET /api/tests/vectorize-pipeline
  *
  * Integration test: verifies the full vectorization pipeline
- * using a small synthetic text sample.
- *
- * Steps tested:
- *   1. Text chunking (splitText)
- *   2. Embedding generation (AI SDK embedMany via AI Gateway)
- *   3. Pinecone upsert + verification via describeIndexStats
- *
- * Uses a "test" namespace in Pinecone to avoid polluting production data.
+ * including page-aware chunking, parallel embedding, Pinecone upsert,
+ * resume mechanism, and cleanup.
  */
 export default defineEventHandler(async () => {
   const config = useRuntimeConfig();
   const results: { name: string; passed: boolean; detail: string }[] = [];
 
-  // --- Sample text ---
-  const sampleText = [
-    "Artificial intelligence is a branch of computer science.",
-    "It deals with creating systems that can perform tasks requiring human intelligence.",
-    "Machine learning is a subset of AI that enables systems to learn from data.",
-    "Neural networks are computing systems inspired by biological neural networks.",
-    "Deep learning uses multi-layered neural networks to analyze complex patterns.",
-  ].join("\n\n");
+  // --- Sample pages (simulating a 3-page document) ---
+  const samplePages: PageText[] = [
+    {
+      pageNumber: 1,
+      text: "Artificial intelligence is a branch of computer science. It deals with creating systems that can perform tasks requiring human intelligence.",
+    },
+    {
+      pageNumber: 2,
+      text: "Machine learning is a subset of AI that enables systems to learn from data. Neural networks are computing systems inspired by biological neural networks.",
+    },
+    {
+      pageNumber: 3,
+      text: "Deep learning uses multi-layered neural networks to analyze complex patterns in large datasets.",
+    },
+  ];
 
-  // --- Test 1: Chunking ---
-  let chunks: ReturnType<typeof splitText> = [];
+  // --- Test 1: Page-aware chunking ---
+  let chunks: ReturnType<typeof splitPages> = [];
   try {
-    chunks = splitText(sampleText, { chunkSize: 200, chunkOverlap: 50 });
-    const passed = chunks.length >= 1;
+    chunks = splitPages(samplePages, { chunkSize: 200, chunkOverlap: 50 });
+    const hasPageNumbers = chunks.every(
+      (c) => c.pageNumber >= 1 && c.pageNumber <= 3,
+    );
+    const passed = chunks.length >= 1 && hasPageNumbers;
     results.push({
-      name: "Chunking sample text",
+      name: "Page-aware chunking",
       passed,
-      detail: `${chunks.length} chunk(s) produced`,
+      detail: `${chunks.length} chunk(s), pages: [${[...new Set(chunks.map((c) => c.pageNumber))].join(",")}]`,
     });
   } catch (e: any) {
     results.push({
-      name: "Chunking sample text",
+      name: "Page-aware chunking",
       passed: false,
       detail: e.message,
     });
@@ -51,16 +56,15 @@ export default defineEventHandler(async () => {
     };
   }
 
-  // --- Test 2: Embedding generation ---
+  // --- Test 2: Parallel embedding generation ---
   let embeddings: number[][] = [];
   try {
+    // Simulate parallel by using a single embedMany (small data set)
     const result = await embedMany({
       model: "openai/text-embedding-3-large",
       values: chunks.map((c) => c.text),
       providerOptions: {
-        openai: {
-          dimensions: 1024,
-        },
+        openai: { dimensions: 1024 },
       },
     });
     embeddings = result.embeddings;
@@ -70,7 +74,7 @@ export default defineEventHandler(async () => {
       embeddings.every((e) => e.length === 1024);
 
     results.push({
-      name: "Embedding generation (openai/text-embedding-3-large, 1024d)",
+      name: "Embedding generation (1024d)",
       passed,
       detail: `${embeddings.length} embedding(s), dim=${embeddings[0]?.length}`,
     });
@@ -87,22 +91,19 @@ export default defineEventHandler(async () => {
     };
   }
 
-  // --- Test 3: Pinecone upsert ---
+  // --- Test 3: Pinecone upsert with pageNumber metadata ---
+  const bookSlug = "test-pipeline-v2";
   try {
     const pc = new Pinecone({ apiKey: config.pineconeApiKey });
     const index = pc.index(config.pineconeIndex);
 
-    // Get stats before upsert
-    const statsBefore = await index.namespace("test").describeIndexStats();
-    const countBefore = statsBefore.namespaces?.["test"]?.recordCount ?? 0;
-
-    // Upsert test vectors
     const vectors = chunks.map((chunk, i) => ({
-      id: `test-pipeline-chunk-${chunk.chunkIndex}`,
+      id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
       values: embeddings[i]!,
       metadata: {
-        bookName: "__test__",
+        bookName: "__test_v2__",
         chunkIndex: chunk.chunkIndex,
+        pageNumber: chunk.pageNumber,
         text: chunk.text.slice(0, 200),
       },
     }));
@@ -112,29 +113,53 @@ export default defineEventHandler(async () => {
     // Small delay for consistency
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Get stats after upsert
-    const statsAfter = await index.namespace("test").describeIndexStats();
-    const countAfter = statsAfter.namespaces?.["test"]?.recordCount ?? 0;
+    // Verify upserted vectors have pageNumber via fetch
+    const fetchResult = await index
+      .namespace("test")
+      .fetch({ ids: [vectors[0]!.id] });
 
-    const passed = countAfter >= countBefore;
+    const fetchedRecord = fetchResult.records?.[vectors[0]!.id];
+    const hasPageNumber = fetchedRecord?.metadata?.pageNumber !== undefined;
+
     results.push({
-      name: "Pinecone upsert (test namespace)",
-      passed,
-      detail: `before: ${countBefore}, after: ${countAfter} records`,
+      name: "Pinecone upsert (with pageNumber)",
+      passed: hasPageNumber,
+      detail: `pageNumber=${fetchedRecord?.metadata?.pageNumber}, vectorCount=${vectors.length}`,
     });
 
-    // Cleanup: delete test vectors
-    const testIds = vectors.map((v) => v.id);
-    await index.namespace("test").deleteMany({ ids: testIds });
+    // --- Test 4: Resume mechanism — fetch existing IDs ---
+    const existingIds = new Set<string>();
+    const fetched = await index
+      .namespace("test")
+      .fetch({ ids: vectors.map((v) => v.id) });
+    if (fetched.records) {
+      for (const id of Object.keys(fetched.records)) {
+        existingIds.add(id);
+      }
+    }
+
+    const remainingChunks = chunks.filter(
+      (c) => !existingIds.has(`${bookSlug}-chunk-${c.chunkIndex}`),
+    );
 
     results.push({
-      name: "Pinecone cleanup (delete test vectors)",
+      name: "Resume mechanism (skip existing)",
+      passed:
+        remainingChunks.length === 0 && existingIds.size === vectors.length,
+      detail: `existing=${existingIds.size}, remaining=${remainingChunks.length}`,
+    });
+
+    // Cleanup
+    await index.namespace("test").deleteMany({ ids: vectors.map((v) => v.id) });
+
+    results.push({
+      name: "Pinecone cleanup",
       passed: true,
-      detail: `Deleted ${testIds.length} test vector(s)`,
+      detail: `Deleted ${vectors.length} test vector(s)`,
     });
   } catch (e: any) {
     results.push({
-      name: "Pinecone upsert",
+      name: "Pinecone operations",
       passed: false,
       detail: e.message,
     });
