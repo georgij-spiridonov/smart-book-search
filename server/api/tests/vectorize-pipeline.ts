@@ -43,11 +43,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `${chunks.length} chunk(s), pages: [${[...new Set(chunks.map((c) => c.pageNumber))].join(",")}]`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Page-aware chunking",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
     return {
       status: "failure",
@@ -77,11 +77,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `${embeddings.length} embedding(s), dim=${embeddings[0]?.length}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Embedding generation",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
     return {
       status: "failure",
@@ -154,11 +154,11 @@ export default defineEventHandler(async () => {
       passed: true,
       detail: `Deleted ${vectors.length} test vector(s)`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Pinecone operations",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 

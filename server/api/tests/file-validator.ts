@@ -17,11 +17,11 @@ export default defineEventHandler(async () => {
       passed: result.valid && result.detectedType === "pdf",
       detail: `valid=${result.valid}, detected=${result.detectedType}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Valid PDF header",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -34,11 +34,11 @@ export default defineEventHandler(async () => {
       passed: !result.valid && result.detectedType === "pdf",
       detail: `valid=${result.valid}, msg=${result.message}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "PDF content with .txt extension",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -54,11 +54,11 @@ export default defineEventHandler(async () => {
       passed: result.valid && result.detectedType === "txt",
       detail: `valid=${result.valid}, detected=${result.detectedType}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Valid TXT (ASCII)",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -71,11 +71,11 @@ export default defineEventHandler(async () => {
       passed: result.valid && result.detectedType === "txt",
       detail: `valid=${result.valid}, detected=${result.detectedType}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Valid TXT (UTF-8 unicode)",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -91,11 +91,11 @@ export default defineEventHandler(async () => {
       passed: !result.valid,
       detail: `valid=${result.valid}, detected=${result.detectedType}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "ZIP without EPUB mimetype",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -110,11 +110,11 @@ export default defineEventHandler(async () => {
       passed: detected === "unknown",
       detail: `detected=${detected}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Binary garbage → unknown",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -127,11 +127,11 @@ export default defineEventHandler(async () => {
       passed: detected === "unknown",
       detail: `detected=${detected}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Empty buffer → unknown",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 

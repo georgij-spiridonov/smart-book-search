@@ -1,11 +1,11 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (_event) => {
   try {
     const { list } = await import("@vercel/blob");
 
     const config = useRuntimeConfig();
 
     // Attempt to list blobs to verify the token works
-    const response = await list({
+    const _response = await list({
       token: config.blobToken,
     });
 
@@ -13,11 +13,11 @@ export default defineEventHandler(async (event) => {
       status: "success",
       message: "Vercel Blob storage is accessible!",
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       status: "error",
       message: "Failed to access Vercel Blob storage",
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 });

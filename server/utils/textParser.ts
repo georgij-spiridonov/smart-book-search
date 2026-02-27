@@ -60,8 +60,8 @@ async function extractTextFromPdf(buffer: Buffer): Promise<PageText[]> {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
     const rawText = content.items
-      .filter((item: any) => "str" in item)
-      .map((item: any) => item.str)
+      .filter((item: Record<string, unknown>) => "str" in item)
+      .map((item: Record<string, unknown>) => item.str as string)
       .join(" ");
 
     if (rawText.trim()) {

@@ -23,11 +23,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `pages: ${pages.length}, pageNum: ${pages[0]?.pageNumber}, text: "${pages[0]?.text.slice(0, 40)}"`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "TXT extraction → PageText[]",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -42,11 +42,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `pages: ${pages.length}, text: "${pages[0]?.text.slice(0, 40)}"`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "TXT with unicode",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -59,12 +59,13 @@ export default defineEventHandler(async () => {
       passed: false,
       detail: "Expected an error but none was thrown",
     });
-  } catch (e: any) {
-    const passed = e.message.includes("Unsupported file format");
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const passed = msg.includes("Unsupported file format");
     results.push({
       name: "Unsupported format throws",
       passed,
-      detail: `error: "${e.message}"`,
+      detail: `error: "${msg}"`,
     });
   }
 
@@ -77,11 +78,11 @@ export default defineEventHandler(async () => {
       passed: pages.length === 0,
       detail: `pages: ${pages.length}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Empty TXT → empty array",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 

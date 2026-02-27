@@ -1,6 +1,6 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (_event) => {
   try {
     const config = useRuntimeConfig();
 
@@ -22,17 +22,17 @@ export default defineEventHandler(async (event) => {
     const index = pc.index(indexName);
 
     // Attempt to get stats to verify the connection and index existence
-    const stats = await index.describeIndexStats();
+    const _stats = await index.describeIndexStats();
 
     return {
       status: "success",
       message: "Pinecone Database is accessible!",
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       status: "error",
       message: "Failed to access Pinecone Database",
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 });

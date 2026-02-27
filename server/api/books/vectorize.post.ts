@@ -7,12 +7,7 @@ import {
   isFileVectorized,
   markFileAsVectorized,
 } from "../../utils/hashStore";
-import {
-  createJob,
-  updateJob,
-  generateJobId,
-  type JobState,
-} from "../../utils/jobStore";
+import { createJob, updateJob, generateJobId } from "../../utils/jobStore";
 
 const EMBED_BATCH_SIZE = 100;
 const MAX_PARALLEL_BATCHES = 3;
@@ -228,10 +223,10 @@ async function processBook(params: ProcessBookParams): Promise<void> {
         newVectors,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     updateJob(jobId, {
       status: "failed",
-      error: error.message || "Unknown error",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }

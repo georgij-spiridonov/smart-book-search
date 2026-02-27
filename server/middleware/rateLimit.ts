@@ -64,12 +64,21 @@ export default defineEventHandler(async (event) => {
         },
       });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Re-throw 429 errors
-    if (error.statusCode === 429) throw error;
+    if (
+      error &&
+      typeof error === "object" &&
+      "statusCode" in error &&
+      (error as { statusCode: number }).statusCode === 429
+    )
+      throw error;
 
     // If Redis is unreachable, fail open (allow the request through)
     // Log the error but don't block the user
-    console.warn("[rate-limit] Redis error, failing open:", error.message);
+    console.warn(
+      "[rate-limit] Redis error, failing open:",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 });

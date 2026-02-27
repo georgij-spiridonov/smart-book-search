@@ -19,11 +19,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `chunks: ${chunks.length}, text: "${chunks[0]?.text.slice(0, 50)}"`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Short text → single chunk",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -37,11 +37,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `chunks: ${chunks.length}, avgLen: ${Math.round(paragraph.length / chunks.length)}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Long text → multiple chunks",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -58,11 +58,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `maxChunkLen: ${maxLen}, limit: ${500 * 1.5}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Chunk size within bounds",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -77,11 +77,11 @@ export default defineEventHandler(async () => {
       passed: isSequential,
       detail: `indices: [${indices.slice(0, 5).join(", ")}...]`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Sequential chunkIndex",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -93,11 +93,11 @@ export default defineEventHandler(async () => {
       passed: chunks.length === 0,
       detail: `chunks: ${chunks.length}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Empty text → no chunks",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 

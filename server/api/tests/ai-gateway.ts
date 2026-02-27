@@ -1,4 +1,4 @@
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (_event) => {
   try {
     const config = useRuntimeConfig();
 
@@ -6,17 +6,15 @@ export default defineEventHandler(async (event) => {
       throw new Error("Missing AI Gateway configuration (AI_GATEWAY_API_KEY).");
     }
 
-    // Since AI Gateway usually wraps another provider and requires an endpoint URL to test effectively,
-    // we simply verify that the key is successfully loaded from the environment.
     return {
       status: "success",
       message: "Vercel AI Gateway key is loaded and accessible!",
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       status: "error",
       message: "Failed to verify AI Gateway configuration",
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 });

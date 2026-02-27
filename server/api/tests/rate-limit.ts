@@ -15,11 +15,11 @@ export default defineEventHandler(async () => {
       message: "Upstash Redis is accessible!",
       ping: pong,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       status: "error",
       message: "Failed to connect to Upstash Redis",
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 });

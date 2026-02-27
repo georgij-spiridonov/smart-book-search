@@ -86,12 +86,13 @@ export default defineEventHandler(async (event) => {
         size: fileField.data.length,
       },
     };
-  } catch (error: any) {
-    if (error.statusCode) throw error;
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "statusCode" in error)
+      throw error;
     throw createError({
       statusCode: 500,
       statusMessage: "Upload failed",
-      data: { error: error.message },
+      data: { error: error instanceof Error ? error.message : String(error) },
     });
   }
 });

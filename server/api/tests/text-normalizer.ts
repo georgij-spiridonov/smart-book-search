@@ -19,11 +19,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `output: "${output.slice(0, 60)}"`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Merge broken lines",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -40,11 +40,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `output: "${output.slice(0, 60)}"`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Preserve paragraph breaks",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -59,11 +59,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `output: "${output.slice(0, 60)}"`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Complete sentences stay separate",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -77,11 +77,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `output: "${output.slice(0, 60)}"`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Handle hyphenated line breaks",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
@@ -95,11 +95,11 @@ export default defineEventHandler(async () => {
       passed,
       detail: `newlines collapsed: ${!output.includes("\n\n\n")}`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     results.push({
       name: "Collapse excessive newlines",
       passed: false,
-      detail: e.message,
+      detail: (e as Error).message,
     });
   }
 
