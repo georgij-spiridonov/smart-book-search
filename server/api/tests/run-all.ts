@@ -17,6 +17,8 @@ interface TestEndpointResponse {
 const testEndpoints = [
   "/api/tests/ai-gateway",
   "/api/tests/blob",
+  "/api/tests/books-list",
+  "/api/tests/redis-stores",
   "/api/tests/file-validator",
   "/api/tests/pinecone",
   "/api/tests/rate-limit",

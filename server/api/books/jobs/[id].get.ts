@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const job = getJob(id);
+  const job = await getJob(id);
 
   if (!job) {
     throw createError({

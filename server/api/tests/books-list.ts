@@ -138,6 +138,27 @@ export default defineEventHandler(async () => {
         detail: (e as Error).message,
       });
     }
+
+    // --- Test 6: getBookByBlobUrl (Reverse Index) ---
+    try {
+      const { getBookByBlobUrl } = await import("../../utils/bookStore");
+      const found = await getBookByBlobUrl(testBook.blobUrl);
+      const passed = found !== null && found.id === testBookId;
+
+      results.push({
+        name: "getBookByBlobUrl (O(1) index)",
+        passed,
+        detail: found
+          ? `Found book ID "${found.id}" for blobUrl`
+          : "Book not found by blobUrl",
+      });
+    } catch (e: unknown) {
+      results.push({
+        name: "getBookByBlobUrl",
+        passed: false,
+        detail: (e as Error).message,
+      });
+    }
   } finally {
     // Cleanup: remove test data from Redis
     try {
@@ -145,6 +166,9 @@ export default defineEventHandler(async () => {
       const redis = getRedisClient();
       await redis.del(`smart-book-search:books:${testBookId}`);
       await redis.srem("smart-book-search:books:index", testBookId);
+      // Cleanup reverse index
+      const blobUrlKey = `smart-book-search:blob-to-id:${Buffer.from(testBook.blobUrl).toString("base64")}`;
+      await redis.del(blobUrlKey);
     } catch {
       // Ignore cleanup errors
     }

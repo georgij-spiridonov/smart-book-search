@@ -1,9 +1,10 @@
 /**
- * In-memory job state store for async vectorization jobs.
+ * Redis-backed job state store for async vectorization jobs.
  *
  * Tracks job progress so clients can poll GET /api/books/jobs/:id.
- * For production, replace with Vercel KV or a database.
  */
+
+import { getRedisClient } from "./redis";
 
 export interface JobProgress {
   currentPage: number;
@@ -28,23 +29,17 @@ export interface JobState {
   updatedAt: number;
 }
 
-// In-memory store (sufficient for dev / single-instance)
-const jobs = new Map<string, JobState>();
+const JOB_KEY_PREFIX = "smart-book-search:jobs:";
+const MAX_JOB_AGE_SECONDS = 60 * 60; // 1 hour
 
-// Auto-cleanup: remove jobs older than 1 hour
-const MAX_JOB_AGE_MS = 60 * 60 * 1000;
-
-function cleanup() {
-  const now = Date.now();
-  for (const [id, job] of jobs) {
-    if (now - job.createdAt > MAX_JOB_AGE_MS) {
-      jobs.delete(id);
-    }
-  }
+function getJobKey(id: string): string {
+  return `${JOB_KEY_PREFIX}${id}`;
 }
 
-export function createJob(id: string, bookName: string): JobState {
-  cleanup();
+export async function createJob(id: string, bookName: string): Promise<JobState> {
+  const redis = getRedisClient();
+  const key = getJobKey(id);
+  
   const job: JobState = {
     id,
     bookName,
@@ -58,19 +53,61 @@ export function createJob(id: string, bookName: string): JobState {
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
-  jobs.set(id, job);
+
+  // Store fields in Redis Hash
+  await redis.hset(key, {
+    ...job,
+    progress: JSON.stringify(job.progress),
+  });
+  await redis.expire(key, MAX_JOB_AGE_SECONDS);
+  
   return job;
 }
 
-export function getJob(id: string): JobState | undefined {
-  return jobs.get(id);
+export async function getJob(id: string): Promise<JobState | undefined> {
+  const redis = getRedisClient();
+  const key = getJobKey(id);
+  const data = await redis.hgetall(key);
+
+  if (!data || Object.keys(data).length === 0) {
+    return undefined;
+  }
+
+  // Cast and parse JSON fields
+  const job = data as unknown as JobState;
+  if (typeof data.progress === "string") {
+    job.progress = JSON.parse(data.progress);
+  }
+  if (typeof data.result === "string") {
+    job.result = JSON.parse(data.result);
+  }
+  
+  // Ensure numeric fields are numbers (Redis hgetall might return strings depending on client)
+  job.createdAt = Number(job.createdAt);
+  job.updatedAt = Number(job.updatedAt);
+  
+  return job;
 }
 
-export function updateJob(id: string, update: Partial<JobState>): void {
-  const job = jobs.get(id);
-  if (job) {
-    Object.assign(job, update, { updatedAt: Date.now() });
+export async function updateJob(id: string, update: Partial<JobState>): Promise<void> {
+  const redis = getRedisClient();
+  const key = getJobKey(id);
+  
+  const hsetUpdate: Record<string, any> = {
+    ...update,
+    updatedAt: Date.now(),
+  };
+
+  if (update.progress) {
+    hsetUpdate.progress = JSON.stringify(update.progress);
   }
+  if (update.result) {
+    hsetUpdate.result = JSON.stringify(update.result);
+  }
+
+  await redis.hset(key, hsetUpdate);
+  // Refresh TTL on update
+  await redis.expire(key, MAX_JOB_AGE_SECONDS);
 }
 
 export function generateJobId(): string {

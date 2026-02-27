@@ -8,11 +8,12 @@ import {
   markFileAsVectorized,
 } from "../../utils/hashStore";
 import { createJob, updateJob, generateJobId } from "../../utils/jobStore";
-import { markBookVectorized, slugifyBookId } from "../../utils/bookStore";
+import { markBookVectorized, getBookByBlobUrl } from "../../utils/bookStore";
 
 const EMBED_BATCH_SIZE = 100;
 const MAX_PARALLEL_BATCHES = 3;
 const PINECONE_BATCH_SIZE = 100;
+const VERCEL_BODY_LIMIT_BYTES = 4.5 * 1024 * 1024;
 
 /**
  * POST /api/books/vectorize
@@ -20,6 +21,7 @@ const PINECONE_BATCH_SIZE = 100;
  * Accepts a JSON body with:
  *   - blobUrl: string   — URL of the uploaded file in Vercel Blob
  *   - bookName: string  — human-readable book title
+ *   - bookId?: string   — unique ID of the book in the store
  *   - resume?: boolean  — if true, skip already-vectorized chunks (default: false)
  *
  * Returns 202 Accepted immediately with a jobId.
@@ -31,7 +33,7 @@ export default defineEventHandler(async (event) => {
 
   // --- Validate input ---
   const body = await readBody(event);
-  const { blobUrl, bookName, resume, author } = body ?? {};
+  const { blobUrl, bookName, bookId: providedBookId, resume, author } = body ?? {};
 
   if (!blobUrl || typeof blobUrl !== "string") {
     throw createError({
@@ -46,12 +48,27 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  // Resolve bookId if not provided
+  let bookId = providedBookId;
+  if (!bookId) {
+    const book = await getBookByBlobUrl(blobUrl);
+    bookId = book?.id;
+  }
+
+  if (!bookId) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "Book not found in store for the provided blobUrl.",
+    });
+  }
+
   // Create job and start background processing
   const jobId = generateJobId();
-  createJob(jobId, bookName);
+  await createJob(jobId, bookName);
 
   const backgroundWork = processBook({
     jobId,
+    bookId,
     blobUrl,
     bookName,
     author: typeof author === "string" ? author.trim() : undefined,
@@ -82,6 +99,7 @@ export default defineEventHandler(async (event) => {
 
 interface ProcessBookParams {
   jobId: string;
+  bookId: string;
   blobUrl: string;
   bookName: string;
   author?: string;
@@ -93,6 +111,7 @@ interface ProcessBookParams {
 async function processBook(params: ProcessBookParams): Promise<void> {
   const {
     jobId,
+    bookId,
     blobUrl,
     bookName,
     author,
@@ -102,7 +121,7 @@ async function processBook(params: ProcessBookParams): Promise<void> {
   } = params;
 
   try {
-    updateJob(jobId, { status: "processing" });
+    await updateJob(jobId, { status: "processing" });
 
     // --- 1. Fetch file from Blob ---
     const filename = blobUrl.split("/").pop() || "unknown.txt";
@@ -112,14 +131,21 @@ async function processBook(params: ProcessBookParams): Promise<void> {
         `Failed to download file from Blob: ${response.statusText}`,
       );
     }
+    
+    // Check size for Vercel limits (warning only since this is background, but good to log)
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && parseInt(contentLength) > VERCEL_BODY_LIMIT_BYTES) {
+      console.warn(`File size (${contentLength} bytes) exceeds Vercel request body limit (4.5MB). Background processing might still work but check logs.`);
+    }
+
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
     // --- 1.5 Hash check ---
     // If exact file payload is already vectorized, skip processing to prevent abuse.
     const fileHash = getFileHash(buffer);
-    if (!resume && isFileVectorized(fileHash)) {
-      updateJob(jobId, {
+    if (!resume && (await isFileVectorized(fileHash))) {
+      await updateJob(jobId, {
         status: "completed",
         result: {
           totalPages: 0,
@@ -137,7 +163,6 @@ async function processBook(params: ProcessBookParams): Promise<void> {
       throw new Error("No text could be extracted from the file.");
     }
 
-    const bookSlug = slugify(bookName);
     const pc = new Pinecone({ apiKey: pineconeApiKey });
     const index = pc.index(pineconeIndex);
 
@@ -145,7 +170,7 @@ async function processBook(params: ProcessBookParams): Promise<void> {
     const allChunks = splitPages(pages);
     const totalChunks = allChunks.length;
 
-    updateJob(jobId, {
+    await updateJob(jobId, {
       progress: {
         currentPage: 0,
         totalPages: pages.length,
@@ -157,7 +182,7 @@ async function processBook(params: ProcessBookParams): Promise<void> {
     // --- 3. Get existing IDs for resume ---
     let existingIds = new Set<string>();
     if (resume) {
-      existingIds = await getExistingChunkIds(index, bookSlug, allChunks);
+      existingIds = await getExistingChunkIds(index, bookId, allChunks);
     }
 
     // --- 4. Stream: process page-by-page ---
@@ -167,74 +192,79 @@ async function processBook(params: ProcessBookParams): Promise<void> {
     let globalChunkOffset = 0;
 
     for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
-      const page = pages[pageIdx]!;
+      try {
+        const page = pages[pageIdx]!;
 
-      // Chunk this single page
-      const pageChunks = splitPages([page]).map((c) => ({
-        ...c,
-        chunkIndex: globalChunkOffset + c.chunkIndex,
-      }));
-      globalChunkOffset += pageChunks.length;
-
-      // Filter out already-processed chunks (resume mode)
-      const newChunks = pageChunks.filter(
-        (c) => !existingIds.has(`${bookSlug}-chunk-${c.chunkIndex}`),
-      );
-      skipped += pageChunks.length - newChunks.length;
-
-      if (newChunks.length > 0) {
-        // Generate embeddings for this page's chunks (parallel batches)
-        const embeddings = await generateEmbeddingsParallel(newChunks);
-
-        // Build vectors with metadata
-        const vectors = newChunks.map((chunk, i) => ({
-          id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
-          values: embeddings[i]!,
-          metadata: {
-            bookName,
-            author: author || "Unknown",
-            blobUrl,
-            chunkIndex: chunk.chunkIndex,
-            pageNumber: chunk.pageNumber,
-            chapterTitle: chunk.title || "",
-            text: chunk.text.slice(0, 1000),
-          },
+        // Chunk this single page
+        const pageChunks = splitPages([page]).map((c) => ({
+          ...c,
+          chunkIndex: globalChunkOffset + c.chunkIndex,
         }));
+        globalChunkOffset += pageChunks.length;
 
-        // Upsert this page's vectors
-        for (let i = 0; i < vectors.length; i += PINECONE_BATCH_SIZE) {
-          const batch = vectors.slice(i, i + PINECONE_BATCH_SIZE);
-          await index.upsert({ records: batch });
+        // Filter out already-processed chunks (resume mode)
+        const newChunks = pageChunks.filter(
+          (c) => !existingIds.has(`${bookId}-chunk-${c.chunkIndex}`),
+        );
+        skipped += pageChunks.length - newChunks.length;
+
+        if (newChunks.length > 0) {
+          // Generate embeddings for this page's chunks (parallel batches)
+          const embeddings = await generateEmbeddingsParallel(newChunks);
+
+          // Build vectors with metadata
+          const vectors = newChunks.map((chunk, i) => ({
+            id: `${bookId}-chunk-${chunk.chunkIndex}`,
+            values: embeddings[i]!,
+            metadata: {
+              bookId,
+              bookName,
+              author: author || "Unknown",
+              blobUrl,
+              chunkIndex: chunk.chunkIndex,
+              pageNumber: chunk.pageNumber,
+              chapterTitle: chunk.title || "",
+              text: chunk.text.slice(0, 1000),
+            },
+          }));
+
+          // Upsert this page's vectors
+          for (let i = 0; i < vectors.length; i += PINECONE_BATCH_SIZE) {
+            const batch = vectors.slice(i, i + PINECONE_BATCH_SIZE);
+            await index.upsert({ records: batch });
+          }
+
+          newVectors += vectors.length;
         }
 
-        newVectors += vectors.length;
+        chunksProcessed += pageChunks.length;
+
+        // Update progress after each page
+        await updateJob(jobId, {
+          progress: {
+            currentPage: pageIdx + 1,
+            totalPages: pages.length,
+            chunksProcessed,
+            totalChunks,
+          },
+        });
+      } catch (pageError) {
+        console.error(`Error processing page ${pageIdx + 1} of ${bookName}:`, pageError);
+        // Continue to next page instead of failing entire book
       }
-
-      chunksProcessed += pageChunks.length;
-
-      // Update progress after each page
-      updateJob(jobId, {
-        progress: {
-          currentPage: pageIdx + 1,
-          totalPages: pages.length,
-          chunksProcessed,
-          totalChunks,
-        },
-      });
     }
 
     // --- 5. Mark complete ---
-    markFileAsVectorized(fileHash);
+    await markFileAsVectorized(fileHash);
 
-    // Mark book as vectorized in the persistent KV store
-    const bookId = slugifyBookId(bookName);
+    // Mark book as vectorized in the persistent store
     try {
       await markBookVectorized(bookId);
     } catch {
       // Book may not exist in store if uploaded before this feature
     }
 
-    updateJob(jobId, {
+    await updateJob(jobId, {
       status: "completed",
       result: {
         totalPages: pages.length,
@@ -244,7 +274,7 @@ async function processBook(params: ProcessBookParams): Promise<void> {
       },
     });
   } catch (error: unknown) {
-    updateJob(jobId, {
+    await updateJob(jobId, {
       status: "failed",
       error: error instanceof Error ? error.message : "Unknown error",
     });
@@ -288,10 +318,10 @@ async function generateEmbeddingsParallel(
 
 async function getExistingChunkIds(
   index: ReturnType<Pinecone["index"]>,
-  bookSlug: string,
+  bookId: string,
   chunks: TextChunk[],
 ): Promise<Set<string>> {
-  const candidateIds = chunks.map((c) => `${bookSlug}-chunk-${c.chunkIndex}`);
+  const candidateIds = chunks.map((c) => `${bookId}-chunk-${c.chunkIndex}`);
 
   const existing = new Set<string>();
 
@@ -310,11 +340,4 @@ async function getExistingChunkIds(
   }
 
   return existing;
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 }

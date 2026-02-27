@@ -24,9 +24,14 @@ export interface BookRecord {
 
 const BOOKS_INDEX_KEY = "smart-book-search:books:index";
 const BOOK_KEY_PREFIX = "smart-book-search:books:";
+const BLOB_URL_KEY_PREFIX = "smart-book-search:blob-to-id:";
 
 function bookKey(id: string): string {
   return `${BOOK_KEY_PREFIX}${id}`;
+}
+
+function blobUrlKey(blobUrl: string): string {
+  return `${BLOB_URL_KEY_PREFIX}${Buffer.from(blobUrl).toString("base64")}`;
 }
 
 /**
@@ -74,6 +79,8 @@ export async function addBook(record: BookRecord): Promise<void> {
 
   await redis.hset(key, serialize(record));
   await redis.sadd(BOOKS_INDEX_KEY, record.id);
+  // Add reverse index for O(1) lookups by blobUrl
+  await redis.set(blobUrlKey(record.blobUrl), record.id);
 }
 
 /**
@@ -167,8 +174,14 @@ export async function markBookVectorized(id: string): Promise<void> {
 export async function getBookByBlobUrl(
   blobUrl: string,
 ): Promise<BookRecord | null> {
-  const books = await getAllBooks();
-  return books.find((b) => b.blobUrl === blobUrl) ?? null;
+  const redis = getRedisClient();
+  const bookId = await redis.get<string>(blobUrlKey(blobUrl));
+  if (!bookId) {
+    // Fallback to slow search if index is missing
+    const books = await getAllBooks();
+    return books.find((b) => b.blobUrl === blobUrl) ?? null;
+  }
+  return getBook(bookId);
 }
 
 /**

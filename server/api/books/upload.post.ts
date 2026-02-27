@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
 
     // Check if the exact same file was already uploaded to save Blob usage
     const hash = getFileHash(fileField.data);
-    const existingUrl = getExistingBlobUrl(hash);
+    const existingUrl = await getExistingBlobUrl(hash);
     if (existingUrl) {
       // Still register in book store if not already there
       const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
@@ -99,7 +99,7 @@ export default defineEventHandler(async (event) => {
     });
 
     // Save hash for future duplicate upload prevention
-    markFileAsUploaded(hash, blob.url);
+    await markFileAsUploaded(hash, blob.url);
 
     // Register book in the persistent KV store
     const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");

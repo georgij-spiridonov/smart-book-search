@@ -1,26 +1,31 @@
 import crypto from "crypto";
+import { getRedisClient } from "./redis";
 
-// In-memory store mapping file hash to its Vercel Blob URL
-const processedFiles = new Map<string, string>();
-// Set of file hashes that have completely finished vectorization
-const vectorizedHashes = new Set<string>();
+const BLOBS_HASH_KEY = "smart-book-search:blobs";
+const VECTORIZED_SET_KEY = "smart-book-search:vectorized";
 
 export function getFileHash(buffer: Buffer): string {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-export function getExistingBlobUrl(hash: string): string | undefined {
-  return processedFiles.get(hash);
+export async function getExistingBlobUrl(hash: string): Promise<string | undefined> {
+  const redis = getRedisClient();
+  const url = await redis.hget(BLOBS_HASH_KEY, hash);
+  return (url as string) || undefined;
 }
 
-export function markFileAsUploaded(hash: string, url: string): void {
-  processedFiles.set(hash, url);
+export async function markFileAsUploaded(hash: string, url: string): Promise<void> {
+  const redis = getRedisClient();
+  await redis.hset(BLOBS_HASH_KEY, { [hash]: url });
 }
 
-export function isFileVectorized(hash: string): boolean {
-  return vectorizedHashes.has(hash);
+export async function isFileVectorized(hash: string): Promise<boolean> {
+  const redis = getRedisClient();
+  const result = await redis.sismember(VECTORIZED_SET_KEY, hash);
+  return result === 1;
 }
 
-export function markFileAsVectorized(hash: string): void {
-  vectorizedHashes.add(hash);
+export async function markFileAsVectorized(hash: string): Promise<void> {
+  const redis = getRedisClient();
+  await redis.sadd(VECTORIZED_SET_KEY, hash);
 }
