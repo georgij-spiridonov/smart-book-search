@@ -1,4 +1,4 @@
-import { getRedisClient } from "../../utils/rateLimiter";
+import { getRedisClient } from "../../utils/redis";
 
 /**
  * GET /api/tests/rate-limit

@@ -8,6 +8,7 @@ import {
   markFileAsVectorized,
 } from "../../utils/hashStore";
 import { createJob, updateJob, generateJobId } from "../../utils/jobStore";
+import { markBookVectorized, slugifyBookId } from "../../utils/bookStore";
 
 const EMBED_BATCH_SIZE = 100;
 const MAX_PARALLEL_BATCHES = 3;
@@ -30,7 +31,7 @@ export default defineEventHandler(async (event) => {
 
   // --- Validate input ---
   const body = await readBody(event);
-  const { blobUrl, bookName, resume } = body ?? {};
+  const { blobUrl, bookName, resume, author } = body ?? {};
 
   if (!blobUrl || typeof blobUrl !== "string") {
     throw createError({
@@ -53,6 +54,7 @@ export default defineEventHandler(async (event) => {
     jobId,
     blobUrl,
     bookName,
+    author: typeof author === "string" ? author.trim() : undefined,
     resume: !!resume,
     pineconeApiKey: config.pineconeApiKey,
     pineconeIndex: config.pineconeIndex,
@@ -82,14 +84,22 @@ interface ProcessBookParams {
   jobId: string;
   blobUrl: string;
   bookName: string;
+  author?: string;
   resume: boolean;
   pineconeApiKey: string;
   pineconeIndex: string;
 }
 
 async function processBook(params: ProcessBookParams): Promise<void> {
-  const { jobId, blobUrl, bookName, resume, pineconeApiKey, pineconeIndex } =
-    params;
+  const {
+    jobId,
+    blobUrl,
+    bookName,
+    author,
+    resume,
+    pineconeApiKey,
+    pineconeIndex,
+  } = params;
 
   try {
     updateJob(jobId, { status: "processing" });
@@ -182,6 +192,7 @@ async function processBook(params: ProcessBookParams): Promise<void> {
           values: embeddings[i]!,
           metadata: {
             bookName,
+            author: author || "Unknown",
             blobUrl,
             chunkIndex: chunk.chunkIndex,
             pageNumber: chunk.pageNumber,
@@ -213,6 +224,14 @@ async function processBook(params: ProcessBookParams): Promise<void> {
 
     // --- 5. Mark complete ---
     markFileAsVectorized(fileHash);
+
+    // Mark book as vectorized in the persistent KV store
+    const bookId = slugifyBookId(bookName);
+    try {
+      await markBookVectorized(bookId);
+    } catch {
+      // Book may not exist in store if uploaded before this feature
+    }
 
     updateJob(jobId, {
       status: "completed",

@@ -5,6 +5,7 @@ import {
   getExistingBlobUrl,
   markFileAsUploaded,
 } from "../../utils/hashStore";
+import { addBook, getBook, slugifyBookId } from "../../utils/bookStore";
 
 /**
  * POST /api/books/upload
@@ -33,6 +34,12 @@ export default defineEventHandler(async (event) => {
       });
     }
 
+    // Extract optional metadata fields from multipart form
+    const authorField = formData.find((field) => field.name === "author");
+    const coverUrlField = formData.find((field) => field.name === "coverUrl");
+    const author = authorField?.data?.toString("utf-8")?.trim() || "Unknown";
+    const coverUrl = coverUrlField?.data?.toString("utf-8")?.trim() || "";
+
     const allowedExtensions = ["pdf", "txt", "epub"];
     const ext = fileField.filename.split(".").pop()?.toLowerCase();
     if (!ext || !allowedExtensions.includes(ext)) {
@@ -55,6 +62,24 @@ export default defineEventHandler(async (event) => {
     const hash = getFileHash(fileField.data);
     const existingUrl = getExistingBlobUrl(hash);
     if (existingUrl) {
+      // Still register in book store if not already there
+      const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
+      const bookId = slugifyBookId(bookTitle);
+      const existingBook = await getBook(bookId);
+      if (!existingBook) {
+        await addBook({
+          id: bookId,
+          title: bookTitle,
+          author,
+          coverUrl,
+          blobUrl: existingUrl,
+          filename: fileField.filename,
+          fileSize: fileField.data.length,
+          uploadedAt: Date.now(),
+          vectorized: false,
+        });
+      }
+
       return {
         status: "success",
         message: `File "${fileField.filename}" was already uploaded previously.`,
@@ -75,6 +100,21 @@ export default defineEventHandler(async (event) => {
 
     // Save hash for future duplicate upload prevention
     markFileAsUploaded(hash, blob.url);
+
+    // Register book in the persistent KV store
+    const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
+    const bookId = slugifyBookId(bookTitle);
+    await addBook({
+      id: bookId,
+      title: bookTitle,
+      author,
+      coverUrl,
+      blobUrl: blob.url,
+      filename: fileField.filename,
+      fileSize: fileField.data.length,
+      uploadedAt: Date.now(),
+      vectorized: false,
+    });
 
     return {
       status: "success",
