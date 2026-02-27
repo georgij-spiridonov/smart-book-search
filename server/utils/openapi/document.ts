@@ -51,16 +51,25 @@ export const openApiDocument = createDocument({
     ].join("\n"),
   },
   servers: [
-    { url: "http://localhost:3000", description: "Локальная разработка" },
-    { url: "https://book-search.projects.georgijspiridonov.ru", description: "Рабочая версия" },
+    {
+      url: "http://localhost:3000",
+      description: "Локальная разработка" },
+    {
+      url: "https://book-search.projects.georgijspiridonov.ru",
+      description: "Рабочая версия",
+    },
   ],
   tags: [
     {
       name: "Books",
       description: "Управление книгами: загрузка, просмотр, индексация.",
     },
-    { name: "Jobs", description: "Отслеживание фоновых задач индексации." },
-    { name: "Chat", description: "Чат с книгами (RAG-пайплайн)." },
+    { name: "Jobs",
+      description: "Отслеживание фоновых задач индексации."
+    },
+    { name: "Chat",
+      description: "Чат с книгами (RAG-пайплайн)."
+    },
   ],
 
   paths: {
@@ -165,7 +174,8 @@ export const openApiDocument = createDocument({
         operationId: "vectorizeBook",
         summary: "Запустить индексацию книги",
         description: [
-          "Ставит книгу в очередь на фоновую обработку (разбиение на чанки, генерация эмбеддингов, загрузка в Pinecone).",
+          "Ставит книгу в очередь на фоновую обработку.",
+          "Текст разбивается на чанки и загружается в Pinecone, где происходит автоматическая генерация эмбеддингов (Integrated Embedding).",
           "Возвращает `jobId` для поллинга статуса через `GET /api/books/jobs/{id}`.",
         ].join(" "),
         tags: ["Books"],
@@ -257,8 +267,8 @@ export const openApiDocument = createDocument({
         operationId: "chatWithBooks",
         summary: "Чат с книгами (SSE-стрим)",
         description: [
-          "Основной RAG-пайплайн. Получает запрос пользователя, ищет релевантные фрагменты в Pinecone,",
-          "затем стримит ответ LLM через Server-Sent Events (SSE) в формате Vercel AI SDK UI Message Stream.",
+          "Основной RAG-пайплайн. Pinecone автоматически векторизует запрос пользователя (Integrated Embedding) и находит релевантные фрагменты,",
+          "затем система стримит ответ LLM через Server-Sent Events (SSE) в формате Vercel AI SDK UI Message Stream.",
           "",
           "### Протокол SSE-ответа",
           "",
