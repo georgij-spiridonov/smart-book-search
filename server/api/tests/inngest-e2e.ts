@@ -19,9 +19,7 @@ export default defineEventHandler(async () => {
     const hasEventKey = !!(
       config.inngestEventKey || process.env.INNGEST_EVENT_KEY
     );
-    const isLocalhost =
-      process.env.NODE_ENV === "development" ||
-      process.env.NODE_ENV !== "production";
+    const isLocalhost = process.env.NODE_ENV !== "production";
 
     // 1. Create a job to track progress
     await createJob(jobId, bookName);
@@ -68,7 +66,8 @@ export default defineEventHandler(async () => {
     }
 
     if (!isProcessing) {
-      let hint = "Check if Inngest keys are correct.";
+      let hint =
+        "Check that the serve URL is registered in Inngest Cloud (app.inngest.com → App Settings → App URL → set to https://<your-domain>/api/inngest). Also verify INNGEST_EVENT_KEY and INNGEST_SIGNING_KEY are correct.";
       if (isLocalhost && hasEventKey) {
         hint =
           "CRITICAL: You are using Cloud Event Keys on localhost. Inngest Cloud cannot 'see' your localhost to trigger the function. SOLUTION: Either run 'npx inngest-cli@latest dev' OR use a tunnel (ngrok) and set your Inngest Cloud app URL to that tunnel.";

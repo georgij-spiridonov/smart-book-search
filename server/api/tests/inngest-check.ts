@@ -8,11 +8,13 @@ export default defineEventHandler(async () => {
     // We can't easily trigger a function from here without credentials,
     // but we can check if the endpoint returns the Inngest configuration.
     const response = await $fetch<Record<string, unknown>>("/api/inngest");
-    
-    // Inngest /serve endpoint returns a JSON with functions and client ID on GET
-    const functionIds = response?.function_ids;
-    const count = Array.isArray(functionIds) ? functionIds.length : 0;
-    
+
+    // Inngest /serve endpoint returns function_count on GET
+    const count =
+      typeof response?.function_count === "number"
+        ? response.function_count
+        : 0;
+
     return {
       status: "success",
       message: "Inngest endpoint is reachable.",
