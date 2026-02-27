@@ -49,19 +49,58 @@ export default defineEventHandler(async (event) => {
     historyLength: history?.length || 0,
   });
 
-  // --- Verify that all requested books exist ---
-  const booksExistResults = await Promise.all(
-    bookIds.map((id) => getBook(id).then((book) => book !== null)),
-  );
+  // --- Verify that all requested books exist and are vectorized ---
+  const books = await Promise.all(bookIds.map((id) => getBook(id)));
 
-  const missingBookIndex = booksExistResults.findIndex((exists) => !exists);
-  if (missingBookIndex !== -1) {
-    const missingId = bookIds[missingBookIndex];
+  const missingIndex = books.findIndex((b) => b === null);
+  if (missingIndex !== -1) {
+    const missingId = bookIds[missingIndex];
     log.warn("chat-api", "Requested book not found", { missingId });
     throw createError({
       statusCode: 404,
       statusMessage: "Not Found",
       message: `Book with ID '${missingId}' not found.`,
+    });
+  }
+
+  // Collect IDs of books that haven't been vectorized yet
+  const notVectorized = books
+    .filter((b) => b !== null && !b.vectorized)
+    .map((b) => b!.id);
+
+  if (notVectorized.length > 0) {
+    log.warn("chat-api", "Some requested books are not vectorized", {
+      notVectorized,
+    });
+  }
+
+  // If ALL requested books are un-vectorized, return early — no data to search
+  if (notVectorized.length === bookIds.length) {
+    log.info(
+      "chat-api",
+      "All requested books are un-vectorized, skipping pipeline",
+      { bookIds },
+    );
+
+    return createUIMessageStreamResponse({
+      stream: createUIMessageStream({
+        execute({ writer }) {
+          writer.write({
+            type: "data-meta",
+            data: {
+              queryType: "question_answer",
+              bookIds,
+              hasContext: false,
+              notVectorized,
+            },
+          });
+
+          writer.write({
+            type: "data-chunks",
+            data: [],
+          });
+        },
+      }),
     });
   }
 
@@ -91,7 +130,7 @@ export default defineEventHandler(async (event) => {
         execute({ writer }) {
           writer.write({
             type: "data-meta",
-            data: { queryType, bookIds, hasContext: false },
+            data: { queryType, bookIds, hasContext: false, notVectorized },
           });
 
           writer.write({
@@ -110,7 +149,7 @@ export default defineEventHandler(async (event) => {
         // 1. Send metadata instantly via custom data parts
         writer.write({
           type: "data-meta",
-          data: { queryType, bookIds, hasContext: true },
+          data: { queryType, bookIds, hasContext: true, notVectorized },
         });
 
         writer.write({
