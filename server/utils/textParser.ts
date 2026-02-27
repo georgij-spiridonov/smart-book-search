@@ -4,11 +4,12 @@ import * as path from "path";
 import { normalizePageText } from "./textNormalizer";
 
 /**
- * A piece of text with its source page/chapter number.
+ * A piece of text with its source page/chapter number and optional metadata.
  */
 export interface PageText {
   pageNumber: number;
   text: string;
+  title?: string;
 }
 
 /**
@@ -105,7 +106,11 @@ async function extractTextFromEpub(buffer: Buffer): Promise<PageText[]> {
           ],
         });
         if (text.trim()) {
-          pages.push({ pageNumber: i + 1, text: text.trim() });
+          pages.push({
+            pageNumber: i + 1,
+            text: text.trim(),
+            title: chapter.title,
+          });
         }
       } catch {
         // Skip chapters that can't be read

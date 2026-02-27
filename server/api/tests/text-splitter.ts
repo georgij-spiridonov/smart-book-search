@@ -1,4 +1,5 @@
-import { splitText } from "../../utils/textSplitter";
+import { splitText, splitPages } from "../../utils/textSplitter";
+import type { PageText } from "../../utils/textParser";
 
 /**
  * GET /api/tests/text-splitter
@@ -85,7 +86,33 @@ export default defineEventHandler(async () => {
     });
   }
 
-  // Test 5: Empty text should produce no chunks
+  // Test 5: splitPages should propagate title and pageNumber
+  try {
+    const pages: PageText[] = [
+      { pageNumber: 1, text: "Content of Chapter 1", title: "Chapter 1" },
+      { pageNumber: 2, text: "Content of Chapter 2", title: "Chapter 2" },
+    ];
+    const chunks = splitPages(pages);
+    const passed =
+      chunks.length === 2 &&
+      chunks[0]!.pageNumber === 1 &&
+      chunks[0]!.title === "Chapter 1" &&
+      chunks[1]!.pageNumber === 2 &&
+      chunks[1]!.title === "Chapter 2";
+    results.push({
+      name: "splitPages propagates metadata",
+      passed,
+      detail: `chunks: ${chunks.length}, c0Title: "${chunks[0]?.title}", c1Title: "${chunks[1]?.title}"`,
+    });
+  } catch (e: unknown) {
+    results.push({
+      name: "splitPages propagates metadata",
+      passed: false,
+      detail: (e as Error).message,
+    });
+  }
+
+  // Test 6: Empty text should produce no chunks
   try {
     const chunks = splitText("");
     results.push({

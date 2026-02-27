@@ -4,13 +4,14 @@ export interface TextChunk {
   text: string;
   chunkIndex: number;
   pageNumber: number;
+  title?: string;
 }
 
 const DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""];
 
 /**
  * Split an array of pages into smaller, overlapping chunks,
- * preserving the source page number in each chunk.
+ * preserving the source page number and metadata in each chunk.
  */
 export function splitPages(
   pages: PageText[],
@@ -29,6 +30,7 @@ export function splitPages(
         text: chunk.text,
         chunkIndex: globalIndex++,
         pageNumber: page.pageNumber,
+        title: page.title,
       });
     }
   }

@@ -19,14 +19,17 @@ export default defineEventHandler(async () => {
     {
       pageNumber: 1,
       text: "Artificial intelligence is a branch of computer science. It deals with creating systems that can perform tasks requiring human intelligence.",
+      title: "Introduction to AI",
     },
     {
       pageNumber: 2,
       text: "Machine learning is a subset of AI that enables systems to learn from data. Neural networks are computing systems inspired by biological neural networks.",
+      title: "Machine Learning Basics",
     },
     {
       pageNumber: 3,
       text: "Deep learning uses multi-layered neural networks to analyze complex patterns in large datasets.",
+      title: "Deep Learning Insights",
     },
   ];
 
@@ -34,18 +37,21 @@ export default defineEventHandler(async () => {
   let chunks: ReturnType<typeof splitPages> = [];
   try {
     chunks = splitPages(samplePages, { chunkSize: 200, chunkOverlap: 50 });
-    const hasPageNumbers = chunks.every(
-      (c) => c.pageNumber >= 1 && c.pageNumber <= 3,
+    const hasMetadata = chunks.every(
+      (c) =>
+        c.pageNumber >= 1 &&
+        c.pageNumber <= 3 &&
+        c.title?.startsWith("Introduction") || c.title?.includes("Learning"),
     );
-    const passed = chunks.length >= 1 && hasPageNumbers;
+    const passed = chunks.length >= 1 && hasMetadata;
     results.push({
-      name: "Page-aware chunking",
+      name: "Page-aware chunking with titles",
       passed,
       detail: `${chunks.length} chunk(s), pages: [${[...new Set(chunks.map((c) => c.pageNumber))].join(",")}]`,
     });
   } catch (e: unknown) {
     results.push({
-      name: "Page-aware chunking",
+      name: "Page-aware chunking with titles",
       passed: false,
       detail: (e as Error).message,
     });
@@ -90,8 +96,8 @@ export default defineEventHandler(async () => {
     };
   }
 
-  // --- Test 3: Pinecone upsert with pageNumber ---
-  const bookSlug = "test-pipeline-v3";
+  // --- Test 3: Pinecone upsert with pageNumber and chapterTitle ---
+  const bookSlug = "test-pipeline-v4";
   try {
     const pc = new Pinecone({ apiKey: config.pineconeApiKey });
     const index = pc.index(config.pineconeIndex);
@@ -100,9 +106,10 @@ export default defineEventHandler(async () => {
       id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
       values: embeddings[i]!,
       metadata: {
-        bookName: "__test_v3__",
+        bookName: "__test_v4__",
         chunkIndex: chunk.chunkIndex,
         pageNumber: chunk.pageNumber,
+        chapterTitle: chunk.title || "",
         text: chunk.text.slice(0, 200),
       },
     }));
@@ -110,18 +117,20 @@ export default defineEventHandler(async () => {
     await index.namespace("test").upsert({ records: vectors });
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Verify pageNumber in metadata
+    // Verify metadata in Pinecone
     const fetchResult = await index
       .namespace("test")
       .fetch({ ids: [vectors[0]!.id] });
 
     const fetchedRecord = fetchResult.records?.[vectors[0]!.id];
     const hasPageNumber = fetchedRecord?.metadata?.pageNumber !== undefined;
+    const hasChapterTitle =
+      fetchedRecord?.metadata?.chapterTitle === vectors[0]!.metadata.chapterTitle;
 
     results.push({
-      name: "Pinecone upsert (with pageNumber)",
-      passed: hasPageNumber,
-      detail: `pageNumber=${fetchedRecord?.metadata?.pageNumber}, vectorCount=${vectors.length}`,
+      name: "Pinecone upsert (with pageNumber and chapterTitle)",
+      passed: hasPageNumber && hasChapterTitle,
+      detail: `pageNumber=${fetchedRecord?.metadata?.pageNumber}, chapterTitle="${fetchedRecord?.metadata?.chapterTitle}"`,
     });
 
     // --- Test 4: Resume mechanism ---

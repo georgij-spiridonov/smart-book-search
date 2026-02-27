@@ -196,6 +196,7 @@ async function processBook(params: ProcessBookParams): Promise<void> {
             blobUrl,
             chunkIndex: chunk.chunkIndex,
             pageNumber: chunk.pageNumber,
+            chapterTitle: chunk.title || "",
             text: chunk.text.slice(0, 1000),
           },
         }));
