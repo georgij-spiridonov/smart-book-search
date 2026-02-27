@@ -1,0 +1,5 @@
+{
+  "protectionBypass": {
+    "/api/inngest": true
+  }
+}
