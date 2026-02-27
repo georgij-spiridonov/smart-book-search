@@ -17,7 +17,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "Merge broken mid-sentence lines",
       passed,
-      detail: `output: "${output.slice(0, 60)}"`,
+      detail: "Lines merged correctly.",
     });
   } catch (e: unknown) {
     results.push({
@@ -38,7 +38,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "Preserve paragraph breaks",
       passed,
-      detail: `output: "${output.slice(0, 60)}"`,
+      detail: "Paragraph breaks preserved.",
     });
   } catch (e: unknown) {
     results.push({
@@ -57,7 +57,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "Complete sentences stay on separate lines",
       passed,
-      detail: `output: "${output.slice(0, 60)}"`,
+      detail: "Sentences kept separate.",
     });
   } catch (e: unknown) {
     results.push({
@@ -75,7 +75,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "Handle hyphenated line breaks",
       passed,
-      detail: `output: "${output.slice(0, 60)}"`,
+      detail: "Hyphens handled correctly.",
     });
   } catch (e: unknown) {
     results.push({

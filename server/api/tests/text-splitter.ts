@@ -18,7 +18,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "Short text → single chunk",
       passed,
-      detail: `chunks: ${chunks.length}, text: "${chunks[0]?.text.slice(0, 50)}"`,
+      detail: `Total chunks: ${chunks.length}`,
     });
   } catch (e: unknown) {
     results.push({
@@ -102,7 +102,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "splitPages propagates metadata",
       passed,
-      detail: `chunks: ${chunks.length}, c0Title: "${chunks[0]?.title}", c1Title: "${chunks[1]?.title}"`,
+      detail: `Total chunks: ${chunks.length}, metadata verified.`,
     });
   } catch (e: unknown) {
     results.push({

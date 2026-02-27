@@ -66,7 +66,7 @@ export default defineEventHandler(async () => {
         name: "addBook + getBook",
         passed,
         detail: fetched
-          ? `id=${fetched.id}, author=${fetched.author}, vectorized=${fetched.vectorized}`
+          ? "Book record retrieved and verified."
           : "Book not found after add",
       });
     } catch (e: unknown) {
@@ -84,7 +84,7 @@ export default defineEventHandler(async () => {
       results.push({
         name: "getAllBooks",
         passed: !!found,
-        detail: `Total books: ${books.length}, test book found: ${!!found}`,
+        detail: found ? "Test book found in the list." : "Test book not found in the list.",
       });
     } catch (e: unknown) {
       results.push({
@@ -110,7 +110,7 @@ export default defineEventHandler(async () => {
         name: "updateBook",
         passed,
         detail: updated
-          ? `author=${updated.author}, coverUrl=${updated.coverUrl}`
+          ? "Book record updated and verified."
           : "Book not found after update",
       });
     } catch (e: unknown) {

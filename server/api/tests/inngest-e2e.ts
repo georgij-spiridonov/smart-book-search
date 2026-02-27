@@ -81,8 +81,6 @@ export default defineEventHandler(async () => {
         status: "failure",
         message: `Inngest function did not start within 15 seconds. Current status: ${finalStatus}`,
         hint,
-        jobId,
-        eventId: sendResult.ids[0],
       };
     }
 
@@ -90,7 +88,7 @@ export default defineEventHandler(async () => {
       status: "success",
       message:
         "Inngest E2E trigger successful! Event sent and function execution detected.",
-      detail: `Event ID: ${sendResult.ids[0]}, Job Status: '${finalStatus}'`,
+      detail: `Job Status: '${finalStatus}'`,
     };
   } catch (error: unknown) {
     return {

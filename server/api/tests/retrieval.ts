@@ -18,8 +18,7 @@ export default defineEventHandler(async (event) => {
       status: "success",
       query: q,
       bookIds: [bookId],
-      resultsCount: results.length,
-      results
+      resultsCount: results.length
     };
   } catch (error: unknown) {
     return {

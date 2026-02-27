@@ -21,7 +21,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "TXT extraction → PageText[]",
       passed,
-      detail: `pages: ${pages.length}, pageNum: ${pages[0]?.pageNumber}, text: "${pages[0]?.text.slice(0, 40)}"`,
+      detail: `Total pages: ${pages.length}`,
     });
   } catch (e: unknown) {
     results.push({
@@ -40,7 +40,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "TXT with unicode",
       passed,
-      detail: `pages: ${pages.length}, text: "${pages[0]?.text.slice(0, 40)}"`,
+      detail: `Total pages: ${pages.length}`,
     });
   } catch (e: unknown) {
     results.push({

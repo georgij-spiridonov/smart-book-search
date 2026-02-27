@@ -42,16 +42,16 @@ export default defineEventHandler(async () => {
         return {
           endpoint: testPath,
           status: response?.status || "unknown",
+          message: response?.message || "",
           durationMs: duration,
-          data: response,
         };
       } catch (e: unknown) {
         const duration = Date.now() - startTime;
         return {
           endpoint: testPath,
           status: "error",
+          message: e instanceof Error ? e.message : String(e),
           durationMs: duration,
-          error: e instanceof Error ? e.message : String(e),
         };
       }
     }),

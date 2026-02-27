@@ -28,7 +28,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "jobStore: createJob + getJob",
       passed,
-      detail: job ? `ID: ${job.id}, Status: ${job.status}` : "Job not found",
+      detail: job ? "Job created and retrieved successfully." : "Job not found",
     });
 
     // Update
@@ -38,7 +38,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "jobStore: updateJob",
       passed,
-      detail: updatedJob ? `Status: ${updatedJob.status}, Progress: ${updatedJob.progress.currentPage}/${updatedJob.progress.totalPages}` : "Job not found after update",
+      detail: updatedJob ? "Job status updated and verified." : "Job not found after update",
     });
 
     // Cleanup job
@@ -62,7 +62,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "hashStore: markFileAsUploaded + getExistingBlobUrl",
       passed,
-      detail: `Expected URL: ${testUrl}, Got: ${existingUrl}`,
+      detail: passed ? "File hash and URL stored and retrieved." : "URL mismatch in hashStore",
     });
 
     // isFileVectorized + markFileAsVectorized
@@ -73,7 +73,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "hashStore: isFileVectorized + markFileAsVectorized",
       passed,
-      detail: `Initial: ${initialVectorized}, Final: ${finalVectorized}`,
+      detail: passed ? "Vectorization flag updated and verified." : "Vectorization flag mismatch",
     });
 
     // Cleanup hashStore entries

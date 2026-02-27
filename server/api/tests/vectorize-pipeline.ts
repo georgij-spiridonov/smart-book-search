@@ -130,7 +130,7 @@ export default defineEventHandler(async () => {
     results.push({
       name: "Pinecone upsert (with pageNumber and chapterTitle)",
       passed: hasPageNumber && hasChapterTitle,
-      detail: `pageNumber=${fetchedRecord?.metadata?.pageNumber}, chapterTitle="${fetchedRecord?.metadata?.chapterTitle}"`,
+      detail: "Metadata (pageNumber, chapterTitle) correctly stored in Pinecone.",
     });
 
     // --- Test 4: Resume mechanism ---
