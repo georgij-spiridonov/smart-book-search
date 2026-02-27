@@ -16,5 +16,7 @@ export default defineNuxtConfig({
     pineconeHost: process.env.PINECONE_HOST,
     upstashRedisUrl: process.env.KV_REST_API_URL,
     upstashRedisToken: process.env.KV_REST_API_TOKEN,
+    inngestEventKey: process.env.INNGEST_EVENT_KEY,
+    inngestSigningKey: process.env.INNGEST_SIGNING_KEY,
   },
 });

@@ -93,17 +93,20 @@ export async function updateJob(id: string, update: Partial<JobState>): Promise<
   const redis = getRedisClient();
   const key = getJobKey(id);
   
-  const hsetUpdate: Record<string, any> = {
-    ...update,
-    updatedAt: Date.now(),
-  };
+  const hsetUpdate: Record<string, string | number> = {};
 
-  if (update.progress) {
-    hsetUpdate.progress = JSON.stringify(update.progress);
+  // Copy primitives and stringify objects
+  for (const [field, value] of Object.entries(update)) {
+    if (value === undefined) continue;
+    
+    if (field === "progress" || field === "result") {
+      hsetUpdate[field] = JSON.stringify(value);
+    } else if (typeof value === "string" || typeof value === "number") {
+      hsetUpdate[field] = value;
+    }
   }
-  if (update.result) {
-    hsetUpdate.result = JSON.stringify(update.result);
-  }
+
+  hsetUpdate.updatedAt = Date.now();
 
   await redis.hset(key, hsetUpdate);
   // Refresh TTL on update

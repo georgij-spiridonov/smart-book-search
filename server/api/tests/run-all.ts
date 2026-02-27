@@ -26,6 +26,8 @@ const testEndpoints = [
   "/api/tests/text-parser",
   "/api/tests/text-splitter",
   "/api/tests/vectorize-pipeline",
+  "/api/tests/inngest-check",
+  "/api/tests/inngest-e2e",
 ];
 
 export default defineEventHandler(async () => {
