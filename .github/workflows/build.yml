@@ -33,6 +33,10 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Запускаем unit-тесты (Vitest)
+      - name: Run Tests
+        run: npm test
+
       # Выполняем тестовую сборку, чтобы убедиться, что проект «соберется» на хостинге
       - name: Build
         run: npm run build
