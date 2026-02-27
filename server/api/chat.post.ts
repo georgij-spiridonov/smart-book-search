@@ -1,6 +1,5 @@
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
 import { searchBookKnowledge } from "../utils/retrieval";
-import { classifyQuery } from "../utils/classifyQuery";
 import { streamAnswer } from "../utils/generateAnswer";
 import { CHAT_CONFIG, ChatRequestSchema } from "../utils/chatConfig";
 import { log } from "../utils/logger";
@@ -12,12 +11,12 @@ import { getBook } from "../utils/bookStore";
  * Main book chat pipeline endpoint (streaming).
  *
  * Receives a user query (with book IDs and optional chat history),
- * classifies the query type, retrieves relevant chunks, then streams
+ * retrieves relevant chunks from the vector store, then streams
  * the answer back to the client while sending metadata via custom
  * data parts.
  *
  * Response format (SSE / UI Message Stream):
- *   1. data-meta   — { queryType, bookIds }
+ *   1. data-meta   — { bookIds, hasContext, notVectorized }
  *   2. data-chunks — array of retrieved text fragments
  *   3. text-start / text-delta / text-end — streamed LLM answer
  */
@@ -88,7 +87,6 @@ export default defineEventHandler(async (event) => {
           writer.write({
             type: "data-meta",
             data: {
-              queryType: "question_answer",
               bookIds,
               hasContext: false,
               notVectorized,
@@ -104,14 +102,14 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // --- Pipeline: parallel classification + retrieval ---
-  const [queryType, chunks] = await Promise.all([
-    classifyQuery(query),
-    searchBookKnowledge(query, bookIds, CHAT_CONFIG.retrievalLimit),
-  ]);
+  // --- Retrieval ---
+  const chunks = await searchBookKnowledge(
+    query,
+    bookIds,
+    CHAT_CONFIG.retrievalLimit,
+  );
 
-  log.info("chat-api", "Query classified and context retrieved", {
-    queryType,
+  log.info("chat-api", "Context retrieved", {
     chunksRetrieved: chunks.length,
     topScore: chunks[0]?.score,
   });
@@ -121,7 +119,6 @@ export default defineEventHandler(async (event) => {
   // --- Short-circuit: no relevant context found → skip LLM entirely ---
   if (!hasContext) {
     log.info("chat-api", "No relevant chunks found, skipping LLM call", {
-      queryType,
       bookIds,
     });
 
@@ -130,7 +127,7 @@ export default defineEventHandler(async (event) => {
         execute({ writer }) {
           writer.write({
             type: "data-meta",
-            data: { queryType, bookIds, hasContext: false, notVectorized },
+            data: { bookIds, hasContext: false, notVectorized },
           });
 
           writer.write({
@@ -149,7 +146,7 @@ export default defineEventHandler(async (event) => {
         // 1. Send metadata instantly via custom data parts
         writer.write({
           type: "data-meta",
-          data: { queryType, bookIds, hasContext: true, notVectorized },
+          data: { bookIds, hasContext: true, notVectorized },
         });
 
         writer.write({

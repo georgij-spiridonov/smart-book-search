@@ -53,7 +53,6 @@ vi.stubGlobal("useRuntimeConfig", () => ({
 
 import { generateText } from "ai";
 import { CHAT_CONFIG } from "../utils/chatConfig";
-import { classifyQuery } from "../utils/classifyQuery";
 import { generateAnswer } from "../utils/generateAnswer";
 
 const mockedGenerateText = vi.mocked(generateText);
@@ -66,62 +65,15 @@ describe("chatPipeline", () => {
   describe("config validation", () => {
     it("has all required config keys", () => {
       const requiredKeys = [
-        "classifierModel",
         "answerModel",
         "retrievalLimit",
         "maxHistoryMessages",
-        "classifierSystemPrompt",
         "answerSystemPrompt",
       ] as const;
 
       for (const key of requiredKeys) {
         expect(CHAT_CONFIG[key]).toBeTruthy();
       }
-    });
-  });
-
-  describe("query classifier (mocked)", () => {
-    it("classifies a Q&A query", async () => {
-      mockedGenerateText.mockResolvedValueOnce({
-        text: "question_answer",
-        usage: { inputTokens: 10, outputTokens: 2 },
-      } as any);
-
-      const result = await classifyQuery(
-        "Что означает понятие искусственного интеллекта?",
-      );
-
-      expect(result).toBe("question_answer");
-    });
-
-    it("classifies a fragment search query", async () => {
-      mockedGenerateText.mockResolvedValueOnce({
-        text: "fragment_search",
-        usage: { inputTokens: 10, outputTokens: 2 },
-      } as any);
-
-      const result = await classifyQuery(
-        "Найди где в тексте говорится про нейронные сети",
-      );
-
-      expect(result).toBe("fragment_search");
-    });
-
-    it("falls back to question_answer on unexpected output", async () => {
-      mockedGenerateText.mockResolvedValueOnce({
-        text: "unknown_type",
-        usage: { inputTokens: 10, outputTokens: 2 },
-      } as any);
-
-      const result = await classifyQuery("some query");
-      expect(result).toBe("question_answer");
-    });
-
-    it("falls back to question_answer on API error", async () => {
-      mockedGenerateText.mockRejectedValueOnce(new Error("API error"));
-
-      const result = await classifyQuery("some query");
-      expect(result).toBe("question_answer");
     });
   });
 

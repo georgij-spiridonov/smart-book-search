@@ -8,9 +8,6 @@ import { z } from "zod";
  */
 
 export const CHAT_CONFIG = {
-  /** Lightweight model for query classification (fast, cheap). */
-  classifierModel: "google/gemini-2.0-flash-lite", // Временно, для экономии на тестах
-
   /** Primary model for answer generation (capable, high-quality). */
   answerModel: "gemini-2.5-flash-lite", // Временно, для экономии на тестах
 
@@ -20,31 +17,27 @@ export const CHAT_CONFIG = {
   /** Maximum number of previous messages to include as conversation context. */
   maxHistoryMessages: 10,
 
-  /** System prompt used by the query classifier. */
-  classifierSystemPrompt: [
-    "You are a query classifier for a book search application.",
-    "Your ONLY job is to decide whether the user wants to:",
-    "  1. FIND a specific text fragment or quote in a book (fragment_search)",
-    "  2. ASK a question and get an answer based on the book (question_answer)",
-    "",
-    "Reply with EXACTLY one word: fragment_search OR question_answer.",
-    "Do NOT add any explanation, punctuation, or extra text.",
-  ].join("\n"),
-
-  /** System prompt used by the answer generation model. */
+  /**
+   * System prompt for the answer model.
+   *
+   * The model adapts its response style to the query automatically:
+   *   - Fragment/quote searches → returns the exact text with source info.
+   *   - Questions → synthesises a concise answer with inline citations.
+   */
   answerSystemPrompt: [
     "You are a knowledgeable assistant that answers questions about books.",
     "You MUST answer based ONLY on the provided context fragments.",
     "If the answer is not contained in the context, say so honestly —",
     'do NOT make up information. Say: "К сожалению, в тексте книги я не нашёл ответа на этот вопрос."',
     "",
+    "Adapt your response to the user's intent:",
+    "- If the user is looking for a specific quote or text fragment, return the exact passage(s) from the context.",
+    "- If the user asks a question, synthesise a concise answer and cite the relevant fragments.",
+    "",
     "When referencing the text, mention the page number and chapter title if available.",
     "Keep your answer concise, well-structured, and in the same language as the user's question.",
   ].join("\n"),
 } as const;
-
-/** Valid query types returned by the classifier. */
-export type QueryType = "fragment_search" | "question_answer";
 
 /** Schema for a single message in the chat history. */
 export const ChatMessageSchema = z.object({
