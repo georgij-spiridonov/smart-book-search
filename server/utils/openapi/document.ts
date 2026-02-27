@@ -1,5 +1,5 @@
 /**
- * OpenAPI 3.1 Document — generated from Zod schemas.
+ * OpenAPI 3.1.1 Document — generated from Zod schemas.
  *
  * This is the SINGLE SOURCE OF TRUTH for the API specification.
  * All schemas imported here carry `.meta()` annotations that
@@ -33,9 +33,9 @@ import {
 } from "./schemas";
 
 export const openApiDocument = createDocument({
-  openapi: "3.1.0",
+  openapi: "3.1.1",
   info: {
-    title: "📚 Smart Book Search API",
+    title: "Smart Book Search API",
     version: "1.0.0",
     description: [
       "API сервиса «Умный поиск по книгам».",
@@ -52,6 +52,7 @@ export const openApiDocument = createDocument({
   },
   servers: [
     { url: "http://localhost:3000", description: "Локальная разработка" },
+    { url: "https://book-search.projects.georgijspiridonov.ru", description: "Рабочая версия" },
   ],
   tags: [
     {
