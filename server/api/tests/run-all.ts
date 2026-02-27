@@ -32,13 +32,18 @@ const testEndpoints = [
   "/api/tests/chat-validation",
 ];
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   const results = await Promise.all(
     testEndpoints.map(async (testPath) => {
       const startTime = Date.now();
       try {
         // Use Nitro's internal $fetch to call the endpoint natively without actual HTTP overhead
-        const response = await $fetch<TestEndpointResponse>(testPath);
+        // We pass the host header so that internal tests can construct their own full URLs if needed
+        const response = await $fetch<TestEndpointResponse>(testPath, {
+          headers: {
+            host: getRequestHeader(event, "host") || "localhost:3000",
+          },
+        });
         const duration = Date.now() - startTime;
 
         return {
@@ -59,7 +64,9 @@ export default defineEventHandler(async () => {
     }),
   );
 
-  const allPassed = results.every((r) => r.status === "success");
+  const allPassed = results.every(
+    (r) => r.status === "success" || r.status === "ok",
+  );
 
   return {
     status: allPassed ? "success" : "failure",

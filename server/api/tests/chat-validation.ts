@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
 
   // Setup: Create a dummy book record
   await addBook({
-    id: "test-book",
+    id: "test-book-validation",
     title: "Test Book",
     author: "Test Author",
     coverUrl: "",
@@ -19,21 +19,22 @@ export default defineEventHandler(async (event) => {
 
   const runTest = async (
     name: string,
-    body: unknown,
+    body: Record<string, any>,
     expectedStatus: number,
   ) => {
     try {
-      const response = await globalThis.fetch(`${origin}/api/chat`, {
+      const response = await globalThis.$fetch.raw(`/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body,
+        ignoreResponseError: true,
       });
 
       const passed = response.status === expectedStatus;
       let detail = `Status: ${response.status} (expected ${expectedStatus})`;
 
       if (!passed && response.status === 400) {
-        const error = (await response.json()) as { message?: string };
+        const error = response._data as { message?: string };
         detail += `. Error: ${error.message || "Unknown error"}`;
       }
 
@@ -48,7 +49,7 @@ export default defineEventHandler(async (event) => {
     "Valid request",
     {
       query: "Test query",
-      bookIds: ["test-book"],
+      bookIds: ["test-book-validation"],
       history: [],
     },
     200,
@@ -58,7 +59,7 @@ export default defineEventHandler(async (event) => {
   await runTest(
     "Missing query",
     {
-      bookIds: ["test-book"],
+      bookIds: ["test-book-validation"],
       history: [],
     },
     400,
@@ -80,7 +81,7 @@ export default defineEventHandler(async (event) => {
     "Invalid history role",
     {
       query: "Test",
-      bookIds: ["test-book"],
+      bookIds: ["test-book-validation"],
       history: [{ role: "system", content: "Invalid role" }],
     },
     400,
@@ -91,7 +92,7 @@ export default defineEventHandler(async (event) => {
     "Empty history content",
     {
       query: "Test",
-      bookIds: ["test-book"],
+      bookIds: ["test-book-validation"],
       history: [{ role: "user", content: "" }],
     },
     400,
@@ -109,12 +110,15 @@ export default defineEventHandler(async (event) => {
   );
 
   // Teardown
-  await deleteBook("test-book");
+  await deleteBook("test-book-validation");
 
   const allPassed = results.every((r) => r.passed);
 
   return {
     status: allPassed ? "success" : "failure",
+    message: allPassed
+      ? "All validation tests passed"
+      : `${results.filter((r) => !r.passed).length} of ${results.length} tests failed.`,
     tests: results,
   };
 });

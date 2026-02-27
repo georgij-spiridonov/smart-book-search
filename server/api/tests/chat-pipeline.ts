@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
 
   // Setup: Create a dummy book record
   await addBook({
-    id: "test-book",
+    id: "test-book-pipeline",
     title: "Test Book",
     author: "Test Author",
     coverUrl: "",
@@ -89,7 +89,7 @@ export default defineEventHandler(async (event) => {
   try {
     const chunks = await searchBookKnowledge(
       "artificial intelligence",
-      ["test-book"],
+      ["test-book-pipeline"],
       2,
     );
 
@@ -119,7 +119,7 @@ export default defineEventHandler(async (event) => {
         pageNumber: 1,
         chapterTitle: "Introduction",
         score: 0.95,
-        bookId: "test-book",
+        bookId: "test-book-pipeline",
       },
     ];
 
@@ -148,32 +148,24 @@ export default defineEventHandler(async (event) => {
 
   // --- Test 5: Full pipeline via /api/chat endpoint (streaming) ---
   try {
-    const origin = getRequestURL(event).origin;
-    const response = await globalThis.fetch(`${origin}/api/chat`, {
+    const response = await globalThis.$fetch.raw(`/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: {
         query: "What is artificial intelligence?",
-        bookIds: ["test-book"],
+        bookIds: ["test-book-pipeline"],
         history: [],
-      }),
+      },
+      responseType: "text",
     });
 
-    if (!response.ok || !response.body) {
+    if (!response.ok || !response._data) {
       throw new Error(
         `Request failed: ${response.status} ${response.statusText}`,
       );
     }
 
-    // Read the full SSE stream as text
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let sseText = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      sseText += decoder.decode(value, { stream: true });
-    }
+    // With responseType: "text", _data contains the fully read text from the stream
+    let sseText = response._data as unknown as string;
 
     // Parse SSE data lines
     const dataLines = sseText
@@ -208,10 +200,26 @@ export default defineEventHandler(async (event) => {
       }
     });
 
+    const hasError = dataLines.find((line) => {
+      try {
+        const parsed = JSON.parse(line);
+        return parsed.type === "error";
+      } catch {
+        return false;
+      }
+    });
+
+    let errorDetail = "";
+    if (hasError) {
+      try {
+        errorDetail = ` | Error: ${JSON.parse(hasError).value}`;
+      } catch (e) {}
+    }
+
     results.push({
       name: "Full pipeline (POST /api/chat — streaming)",
       passed: hasMeta && hasChunks && hasTextDelta,
-      detail: `SSE parts — data-meta: ${hasMeta}, data-chunks: ${hasChunks}, text-delta: ${hasTextDelta}`,
+      detail: `SSE parts — data-meta: ${hasMeta}, data-chunks: ${hasChunks}, text-delta: ${hasTextDelta}${errorDetail}`,
     });
   } catch (e: unknown) {
     results.push({
@@ -222,7 +230,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Teardown
-  await deleteBook("test-book");
+  await deleteBook("test-book-pipeline");
 
   // --- Summary ---
   const allPassed = results.every((r) => r.passed);

@@ -9,10 +9,10 @@ import { z } from "zod";
 
 export const CHAT_CONFIG = {
   /** Lightweight model for query classification (fast, cheap). */
-  classifierModel: "google/gemini-2.5-flash-lite",
+  classifierModel: "google/gemini-2.0-flash-lite", // Временно, для экономии на тестах
 
   /** Primary model for answer generation (capable, high-quality). */
-  answerModel: "google/gemini-3-flash",
+  answerModel: "gemini-2.5-flash-lite", // Временно, для экономии на тестах
 
   /** Maximum number of chunks to retrieve from the vector store. */
   retrievalLimit: 5,
