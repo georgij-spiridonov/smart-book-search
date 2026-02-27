@@ -1,8 +1,7 @@
 import { addBook, deleteBook } from "../../utils/bookStore";
 
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (_event) => {
   const results: { name: string; passed: boolean; detail: string }[] = [];
-  const origin = getRequestURL(event).origin;
 
   // Setup: Create a dummy book record
   await addBook({
@@ -19,7 +18,7 @@ export default defineEventHandler(async (event) => {
 
   const runTest = async (
     name: string,
-    body: Record<string, any>,
+    body: Record<string, unknown>,
     expectedStatus: number,
   ) => {
     try {

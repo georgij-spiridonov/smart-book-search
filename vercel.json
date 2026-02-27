@@ -1,5 +1,3 @@
 {
-  "protectionBypass": {
-    "/api/inngest": true
-  }
+  "$schema": "https://openapi.vercel.sh/vercel.json"
 }

@@ -11,7 +11,7 @@ import { addBook, deleteBook } from "../../utils/bookStore";
  * Verifies: config, classifier, retrieval (with bookId), answer generation,
  * and the full pipeline response structure.
  */
-export default defineEventHandler(async (event) => {
+export default defineEventHandler(async (_event) => {
   const results: { name: string; passed: boolean; detail: string }[] = [];
 
   // Setup: Create a dummy book record
@@ -165,7 +165,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // With responseType: "text", _data contains the fully read text from the stream
-    let sseText = response._data as unknown as string;
+    const sseText = response._data as unknown as string;
 
     // Parse SSE data lines
     const dataLines = sseText
@@ -213,7 +213,9 @@ export default defineEventHandler(async (event) => {
     if (hasError) {
       try {
         errorDetail = ` | Error: ${JSON.parse(hasError).value}`;
-      } catch (e) {}
+      } catch {
+        // Ignore parsing error
+      }
     }
 
     results.push({
