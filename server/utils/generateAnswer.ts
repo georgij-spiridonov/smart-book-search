@@ -36,7 +36,7 @@ function formatContext(chunks: RetrievedChunk[]): string {
         .filter(Boolean)
         .join(" | ");
 
-      return `--- Fragment ${i + 1} (${location}) ---\n${chunk.text}`;
+      return `--- Fragment [${i + 1}] (${location}) ---\n${chunk.text}`;
     })
     .join("\n\n");
 }

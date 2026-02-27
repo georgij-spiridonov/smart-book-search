@@ -151,7 +151,8 @@ export default defineEventHandler(async (event) => {
 
         writer.write({
           type: "data-chunks",
-          data: chunks.map((chunk) => ({
+          data: chunks.map((chunk, i) => ({
+            index: i + 1,
             text: chunk.text,
             pageNumber: chunk.pageNumber,
             chapterTitle: chunk.chapterTitle,
