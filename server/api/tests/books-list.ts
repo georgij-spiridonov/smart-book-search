@@ -3,6 +3,7 @@ import {
   getBook,
   getAllBooks,
   updateBook,
+  deleteBook,
   markBookVectorized,
   slugifyBookId,
   type BookRecord,
@@ -160,15 +161,9 @@ export default defineEventHandler(async () => {
       });
     }
   } finally {
-    // Cleanup: remove test data from Redis
+    // Cleanup: remove test data from Redis using the helper
     try {
-      const { getRedisClient } = await import("../../utils/redis");
-      const redis = getRedisClient();
-      await redis.del(`smart-book-search:books:${testBookId}`);
-      await redis.srem("smart-book-search:books:index", testBookId);
-      // Cleanup reverse index
-      const blobUrlKey = `smart-book-search:blob-to-id:${Buffer.from(testBook.blobUrl).toString("base64")}`;
-      await redis.del(blobUrlKey);
+      await deleteBook(testBookId);
     } catch {
       // Ignore cleanup errors
     }

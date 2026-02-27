@@ -24,14 +24,10 @@ export interface BookRecord {
 
 const BOOKS_INDEX_KEY = "smart-book-search:books:index";
 const BOOK_KEY_PREFIX = "smart-book-search:books:";
-const BLOB_URL_KEY_PREFIX = "smart-book-search:blob-to-id:";
+const BLOB_INDEX_KEY = "smart-book-search:books:blob-index";
 
 function bookKey(id: string): string {
   return `${BOOK_KEY_PREFIX}${id}`;
-}
-
-function blobUrlKey(blobUrl: string): string {
-  return `${BLOB_URL_KEY_PREFIX}${Buffer.from(blobUrl).toString("base64")}`;
 }
 
 /**
@@ -77,10 +73,13 @@ export async function addBook(record: BookRecord): Promise<void> {
   const redis = getRedisClient();
   const key = bookKey(record.id);
 
-  await redis.hset(key, serialize(record));
-  await redis.sadd(BOOKS_INDEX_KEY, record.id);
+  // Use pipeline for atomic-like consistency
+  const pipeline = redis.pipeline();
+  pipeline.hset(key, serialize(record));
+  pipeline.sadd(BOOKS_INDEX_KEY, record.id);
   // Add reverse index for O(1) lookups by blobUrl
-  await redis.set(blobUrlKey(record.blobUrl), record.id);
+  pipeline.hset(BLOB_INDEX_KEY, { [record.blobUrl]: record.id });
+  await pipeline.exec();
 }
 
 /**
@@ -139,9 +138,9 @@ export async function updateBook(
   const redis = getRedisClient();
   const key = bookKey(id);
 
-  // Check if book exists
-  const exists = await redis.exists(key);
-  if (!exists) {
+  // Check if book exists and get current data for index management
+  const current = await getBook(id);
+  if (!current) {
     throw new Error(`Book "${id}" not found in store.`);
   }
 
@@ -149,16 +148,39 @@ export async function updateBook(
   if (update.title !== undefined) fields.title = update.title;
   if (update.author !== undefined) fields.author = update.author;
   if (update.coverUrl !== undefined) fields.coverUrl = update.coverUrl;
-  if (update.blobUrl !== undefined) fields.blobUrl = update.blobUrl;
   if (update.filename !== undefined) fields.filename = update.filename;
   if (update.fileSize !== undefined) fields.fileSize = update.fileSize;
   if (update.uploadedAt !== undefined) fields.uploadedAt = update.uploadedAt;
   if (update.vectorized !== undefined)
     fields.vectorized = update.vectorized ? "1" : "0";
 
+  // Handle blobUrl change and reverse index update
+  if (update.blobUrl !== undefined && update.blobUrl !== current.blobUrl) {
+    fields.blobUrl = update.blobUrl;
+    const pipeline = redis.pipeline();
+    pipeline.hdel(BLOB_INDEX_KEY, current.blobUrl);
+    pipeline.hset(BLOB_INDEX_KEY, { [update.blobUrl]: id });
+    await pipeline.exec();
+  }
+
   if (Object.keys(fields).length > 0) {
     await redis.hset(key, fields);
   }
+}
+
+/**
+ * Delete a book and all its index entries.
+ */
+export async function deleteBook(id: string): Promise<void> {
+  const redis = getRedisClient();
+  const book = await getBook(id);
+  if (!book) return;
+
+  const pipeline = redis.pipeline();
+  pipeline.del(bookKey(id));
+  pipeline.srem(BOOKS_INDEX_KEY, id);
+  pipeline.hdel(BLOB_INDEX_KEY, book.blobUrl);
+  await pipeline.exec();
 }
 
 /**
@@ -170,19 +192,21 @@ export async function markBookVectorized(id: string): Promise<void> {
 
 /**
  * Find a book by its blobUrl.
+ * Uses a Redis Hash for O(1) reverse lookup.
  */
 export async function getBookByBlobUrl(
   blobUrl: string,
 ): Promise<BookRecord | null> {
   const redis = getRedisClient();
-  const bookId = await redis.get<string>(blobUrlKey(blobUrl));
+  const bookId = await redis.hget<string>(BLOB_INDEX_KEY, blobUrl);
+
   if (!bookId) {
-    // Fallback to slow search if index is missing
-    const books = await getAllBooks();
-    return books.find((b) => b.blobUrl === blobUrl) ?? null;
+    return null;
   }
+
   return getBook(bookId);
 }
+
 
 /**
  * Generate a URL-friendly slug from a book title.
