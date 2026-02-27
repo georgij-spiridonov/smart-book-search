@@ -1,6 +1,13 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { getRedisClient } from "./redis";
 
+// Export config objects so OpenAPI documentation can read the exact limits
+export const RATE_LIMITS = {
+  default: { tokens: 20, window: "10 s" as const },
+  chat: { tokens: 12, window: "60 s" as const },
+  strict: { tokens: 5, window: "60 s" as const },
+};
+
 let _defaultLimiter: Ratelimit | null = null;
 let _chatLimiter: Ratelimit | null = null;
 let _strictLimiter: Ratelimit | null = null;
@@ -13,7 +20,10 @@ export function getDefaultLimiter(): Ratelimit {
   if (!_defaultLimiter) {
     _defaultLimiter = new Ratelimit({
       redis: getRedisClient(),
-      limiter: Ratelimit.slidingWindow(20, "10 s"),
+      limiter: Ratelimit.slidingWindow(
+        RATE_LIMITS.default.tokens,
+        RATE_LIMITS.default.window,
+      ),
       analytics: true,
       prefix: "smart-book-search:ratelimit:default",
     });
@@ -29,7 +39,10 @@ export function getChatLimiter(): Ratelimit {
   if (!_chatLimiter) {
     _chatLimiter = new Ratelimit({
       redis: getRedisClient(),
-      limiter: Ratelimit.slidingWindow(12, "60 s"),
+      limiter: Ratelimit.slidingWindow(
+        RATE_LIMITS.chat.tokens,
+        RATE_LIMITS.chat.window,
+      ),
       analytics: true,
       prefix: "smart-book-search:ratelimit:chat",
     });
@@ -45,7 +58,10 @@ export function getStrictLimiter(): Ratelimit {
   if (!_strictLimiter) {
     _strictLimiter = new Ratelimit({
       redis: getRedisClient(),
-      limiter: Ratelimit.slidingWindow(5, "60 s"),
+      limiter: Ratelimit.slidingWindow(
+        RATE_LIMITS.strict.tokens,
+        RATE_LIMITS.strict.window,
+      ),
       analytics: true,
       prefix: "smart-book-search:ratelimit:strict",
     });

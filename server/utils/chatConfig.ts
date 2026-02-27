@@ -1,4 +1,5 @@
 import { z } from "zod";
+import "zod-openapi";
 
 /**
  * Centralized configuration for the book chat pipeline.
@@ -46,20 +47,45 @@ export const CHAT_CONFIG = {
 } as const;
 
 /** Schema for a single message in the chat history. */
-export const ChatMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.string().min(1),
-});
+export const ChatMessageSchema = z
+  .object({
+    role: z.enum(["user", "assistant"]).meta({ description: "Message role." }),
+    content: z.string().min(1).meta({ description: "Message text content." }),
+  })
+  .meta({
+    id: "ChatMessage",
+    description: "A single message in the conversation history.",
+  });
 
 /** A single message in the chat history. */
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 /** Schema for the /api/chat request body. */
-export const ChatRequestSchema = z.object({
-  query: z.string().min(1, "Missing or empty 'query' field."),
-  bookIds: z.array(z.string()).min(1, "Missing or empty 'bookIds' array."),
-  history: z.array(ChatMessageSchema).optional().default([]),
-});
+export const ChatRequestSchema = z
+  .object({
+    query: z.string().min(1, "Missing or empty 'query' field.").meta({
+      description: "User's search query or question.",
+      example: "Что произошло с Наташей в эпилоге?",
+    }),
+    bookIds: z
+      .array(z.string())
+      .min(1, "Missing or empty 'bookIds' array.")
+      .meta({
+        description: "IDs of books to search across.",
+        example: ["war-and-peace"],
+      }),
+    history: z
+      .array(ChatMessageSchema)
+      .optional()
+      .default([])
+      .meta({
+        description: "Previous conversation messages for multi-turn context.",
+      }),
+  })
+  .meta({
+    id: "ChatRequest",
+    description: "Request body for the book chat pipeline.",
+  });
 
 /** A retrieved text chunk with location metadata. */
 export interface RetrievedChunk {
@@ -69,3 +95,59 @@ export interface RetrievedChunk {
   score: number;
   bookId: string;
 }
+
+// ─── SSE response schemas (for OpenAPI documentation) ───
+
+/** Schema for the `data-meta` SSE event payload. */
+export const DataMetaSchema = z
+  .object({
+    bookIds: z
+      .array(z.string())
+      .meta({ description: "IDs of books that were searched." }),
+    hasContext: z
+      .boolean()
+      .meta({ description: "Whether relevant text fragments were found." }),
+    notVectorized: z
+      .array(z.string())
+      .meta({ description: "Book IDs that have not been indexed yet." }),
+  })
+  .meta({
+    id: "DataMeta",
+    description: "Metadata sent as the first SSE event in the chat stream.",
+  });
+
+/** Schema for a single chunk in the `data-chunks` SSE event. */
+export const ChunkItemSchema = z
+  .object({
+    index: z
+      .number()
+      .int()
+      .meta({ description: "1-based fragment index.", example: 1 }),
+    text: z.string().meta({ description: "Text content of the fragment." }),
+    pageNumber: z
+      .number()
+      .int()
+      .meta({ description: "Page number (0 if unknown).", example: 42 }),
+    chapterTitle: z
+      .string()
+      .meta({
+        description: "Chapter title (empty string if unknown).",
+        example: "Эпилог",
+      }),
+    score: z
+      .number()
+      .meta({
+        description: "Cosine similarity relevance score (0.0–1.0).",
+        example: 0.87,
+      }),
+    bookId: z
+      .string()
+      .meta({
+        description: "ID of the source book.",
+        example: "war-and-peace",
+      }),
+  })
+  .meta({
+    id: "ChunkItem",
+    description: "A retrieved text fragment with source metadata.",
+  });

@@ -2,6 +2,7 @@ import { inngest } from "../../utils/inngest";
 import { generateJobId, createJob } from "../../utils/jobStore";
 import { getBookByBlobUrl } from "../../utils/bookStore";
 import { log } from "../../utils/logger";
+import { VectorizeRequestSchema } from "../../utils/openapi/schemas";
 
 /**
  * POST /api/books/vectorize
@@ -19,30 +20,31 @@ import { log } from "../../utils/logger";
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
 
-  // --- Validate input ---
+  // --- Validate input with Zod (single source of truth with OpenAPI docs) ---
   const body = await readBody(event);
+  const validation = VectorizeRequestSchema.safeParse(body);
+
+  if (!validation.success) {
+    const errorMsg =
+      validation.error.issues[0]?.message || "Invalid request body";
+    log.error("vectorize-api", "Vectorize request validation failed", {
+      error: errorMsg,
+      issues: validation.error.issues,
+    });
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Bad Request",
+      message: errorMsg,
+    });
+  }
+
   const {
     blobUrl,
     bookName,
     bookId: providedBookId,
     resume,
     author,
-  } = body ?? {};
-
-  if (!blobUrl || typeof blobUrl !== "string") {
-    log.error("vectorize-api", "Vectorize request missing blobUrl");
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Missing or invalid 'blobUrl' in request body.",
-    });
-  }
-  if (!bookName || typeof bookName !== "string") {
-    log.error("vectorize-api", "Vectorize request missing bookName");
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Missing or invalid 'bookName' in request body.",
-    });
-  }
+  } = validation.data;
 
   // Resolve bookId if not provided
   let bookId = providedBookId;
