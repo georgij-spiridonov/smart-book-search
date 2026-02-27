@@ -77,14 +77,40 @@ export default defineEventHandler(async (event) => {
     topScore: chunks[0]?.score,
   });
 
-  // --- Streaming response ---
+  const hasContext = chunks.length > 0;
+
+  // --- Short-circuit: no relevant context found → skip LLM entirely ---
+  if (!hasContext) {
+    log.info("chat-api", "No relevant chunks found, skipping LLM call", {
+      queryType,
+      bookIds,
+    });
+
+    return createUIMessageStreamResponse({
+      stream: createUIMessageStream({
+        execute({ writer }) {
+          writer.write({
+            type: "data-meta",
+            data: { queryType, bookIds, hasContext: false },
+          });
+
+          writer.write({
+            type: "data-chunks",
+            data: [],
+          });
+        },
+      }),
+    });
+  }
+
+  // --- Streaming response (has relevant context) ---
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
       execute({ writer }) {
         // 1. Send metadata instantly via custom data parts
         writer.write({
           type: "data-meta",
-          data: { queryType, bookIds },
+          data: { queryType, bookIds, hasContext: true },
         });
 
         writer.write({

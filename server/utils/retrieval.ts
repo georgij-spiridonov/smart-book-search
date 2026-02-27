@@ -3,6 +3,13 @@ import { Pinecone } from "@pinecone-database/pinecone";
 import { log } from "./logger";
 
 /**
+ * Minimum cosine similarity score for a chunk to be considered relevant.
+ * Chunks below this threshold are discarded before reaching the LLM,
+ * preventing hallucinated answers based on irrelevant context.
+ */
+const MIN_SCORE = 0.3;
+
+/**
  * Searches the book knowledge base for fragments relevant to the query.
  *
  * @param query - The search query string.
@@ -60,8 +67,21 @@ export async function searchBookKnowledge(
     topScore: queryResponse.matches[0]?.score,
   });
 
-  // 3. Format and return the results
-  return queryResponse.matches.map((match) => ({
+  // 3. Filter by minimum relevance score and format results
+  const relevant = queryResponse.matches.filter(
+    (match) => (match.score ?? 0) >= MIN_SCORE,
+  );
+
+  if (relevant.length < queryResponse.matches.length) {
+    log.info("retrieval", "Filtered low-score chunks", {
+      total: queryResponse.matches.length,
+      kept: relevant.length,
+      discarded: queryResponse.matches.length - relevant.length,
+      minScore: MIN_SCORE,
+    });
+  }
+
+  return relevant.map((match) => ({
     text: (match.metadata?.text as string) || "",
     pageNumber: (match.metadata?.pageNumber as number) || 0,
     chapterTitle: (match.metadata?.chapterTitle as string) || "",
