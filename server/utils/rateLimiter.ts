@@ -2,6 +2,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { getRedisClient } from "./redis";
 
 let _defaultLimiter: Ratelimit | null = null;
+let _chatLimiter: Ratelimit | null = null;
 let _strictLimiter: Ratelimit | null = null;
 
 /**
@@ -18,6 +19,22 @@ export function getDefaultLimiter(): Ratelimit {
     });
   }
   return _defaultLimiter;
+}
+
+/**
+ * Chat rate limiter: 12 requests per 60 seconds (sliding window).
+ * Balanced for human conversation speed while protecting LLM resources.
+ */
+export function getChatLimiter(): Ratelimit {
+  if (!_chatLimiter) {
+    _chatLimiter = new Ratelimit({
+      redis: getRedisClient(),
+      limiter: Ratelimit.slidingWindow(12, "60 s"),
+      analytics: true,
+      prefix: "smart-book-search:ratelimit:chat",
+    });
+  }
+  return _chatLimiter;
 }
 
 /**

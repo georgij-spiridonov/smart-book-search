@@ -28,6 +28,8 @@ const testEndpoints = [
   "/api/tests/vectorize-pipeline",
   "/api/tests/inngest-check",
   "/api/tests/inngest-e2e",
+  "/api/tests/chat-pipeline",
+  "/api/tests/chat-validation",
 ];
 
 export default defineEventHandler(async () => {

@@ -6,6 +6,7 @@ import {
   markFileAsUploaded,
 } from "../../utils/hashStore";
 import { addBook, getBook, slugifyBookId } from "../../utils/bookStore";
+import { log } from "../../utils/logger";
 
 /**
  * POST /api/books/upload
@@ -19,6 +20,7 @@ export default defineEventHandler(async (event) => {
 
     const formData = await readMultipartFormData(event);
     if (!formData || formData.length === 0) {
+      log.warn("upload-api", "Upload request rejected: no form data");
       throw createError({
         statusCode: 400,
         statusMessage:
@@ -28,6 +30,7 @@ export default defineEventHandler(async (event) => {
 
     const fileField = formData.find((field) => field.name === "file");
     if (!fileField || !fileField.filename || !fileField.data) {
+      log.warn("upload-api", "Upload request rejected: missing file field");
       throw createError({
         statusCode: 400,
         statusMessage: "Missing 'file' field with a valid filename.",
@@ -42,7 +45,15 @@ export default defineEventHandler(async (event) => {
 
     const allowedExtensions = ["pdf", "txt", "epub"];
     const ext = fileField.filename.split(".").pop()?.toLowerCase();
+
+    log.info("upload-api", "Processing file upload", {
+      filename: fileField.filename,
+      sizeBytes: fileField.data.length,
+      extension: ext,
+    });
+
     if (!ext || !allowedExtensions.includes(ext)) {
+      log.warn("upload-api", "Upload rejected: unsupported extension", { ext });
       throw createError({
         statusCode: 400,
         statusMessage: `Unsupported file type: .${ext}. Allowed: ${allowedExtensions.join(", ")}`,
@@ -52,6 +63,9 @@ export default defineEventHandler(async (event) => {
     // Validate actual file content via magic bytes
     const validation = validateFileType(fileField.data, ext);
     if (!validation.valid) {
+      log.warn("upload-api", "Upload rejected: magic byte validation failed", {
+        reason: validation.message,
+      });
       throw createError({
         statusCode: 400,
         statusMessage: validation.message,
@@ -62,6 +76,10 @@ export default defineEventHandler(async (event) => {
     const hash = getFileHash(fileField.data);
     const existingUrl = await getExistingBlobUrl(hash);
     if (existingUrl) {
+      log.info("upload-api", "File duplicate detected, skipping blob upload", {
+        hash,
+        existingUrl,
+      });
       // Still register in book store if not already there
       const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
       const bookId = slugifyBookId(bookTitle);
@@ -98,6 +116,11 @@ export default defineEventHandler(async (event) => {
       token: config.blobToken,
     });
 
+    log.info("upload-api", "File uploaded to Vercel Blob successfully", {
+      blobUrl: blob.url,
+      pathname: blob.pathname,
+    });
+
     // Save hash for future duplicate upload prevention
     await markFileAsUploaded(hash, blob.url);
 
@@ -129,6 +152,12 @@ export default defineEventHandler(async (event) => {
   } catch (error: unknown) {
     if (error && typeof error === "object" && "statusCode" in error)
       throw error;
+
+    log.error("upload-api", "Unhandled error during array upload", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
     throw createError({
       statusCode: 500,
       statusMessage: "Upload failed",

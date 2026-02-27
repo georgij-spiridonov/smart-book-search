@@ -1,13 +1,18 @@
-import { getDefaultLimiter, getStrictLimiter } from "../utils/rateLimiter";
+import {
+  getDefaultLimiter,
+  getChatLimiter,
+  getStrictLimiter,
+} from "../utils/rateLimiter";
+import { log } from "../utils/logger";
 
 /**
  * Nuxt server middleware — rate limiting for /api/** routes.
  *
  * - Skips non-API and test routes
- * - Uses strict limiter (5 req/60s) for heavy POST endpoints
+ * - Uses strict limiter (5 req/60s) for heavy background jobs (upload/vectorize)
+ * - Uses chat limiter (12 req/60s) for the chat pipeline
  * - Uses default limiter (20 req/10s) for everything else
  * - Identifies clients by IP address
- * - Returns 429 with Retry-After header when exceeded
  */
 export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname;
@@ -28,12 +33,22 @@ export default defineEventHandler(async (event) => {
     "unknown";
 
   // --- Choose limiter ---
-  const isHeavyEndpoint =
-    (path === "/api/books/upload" || path === "/api/books/vectorize") &&
-    event.method === "POST";
+  let limiter;
+  let identifier;
 
-  const limiter = isHeavyEndpoint ? getStrictLimiter() : getDefaultLimiter();
-  const identifier = isHeavyEndpoint ? `strict:${ip}` : `default:${ip}`;
+  if (
+    event.method === "POST" &&
+    (path === "/api/books/upload" || path === "/api/books/vectorize")
+  ) {
+    limiter = getStrictLimiter();
+    identifier = `strict:${ip}`;
+  } else if (event.method === "POST" && path === "/api/chat") {
+    limiter = getChatLimiter();
+    identifier = `chat:${ip}`;
+  } else {
+    limiter = getDefaultLimiter();
+    identifier = `default:${ip}`;
+  }
 
   try {
     const { success, limit, remaining, reset, pending } =
@@ -53,6 +68,14 @@ export default defineEventHandler(async (event) => {
 
     if (!success) {
       const retryAfterSec = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+
+      log.warn("rate-limit", "Rate limit exceeded", {
+        ip,
+        path,
+        identifier,
+        limit,
+        retryAfter: retryAfterSec,
+      });
 
       setResponseHeader(event, "Retry-After", retryAfterSec);
       throw createError({
@@ -76,9 +99,8 @@ export default defineEventHandler(async (event) => {
 
     // If Redis is unreachable, fail open (allow the request through)
     // Log the error but don't block the user
-    console.warn(
-      "[rate-limit] Redis error, failing open:",
-      error instanceof Error ? error.message : String(error),
-    );
+    log.error("rate-limit", "Redis error during rate limiting, failing open", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 });

@@ -1,4 +1,5 @@
 import { getAllBooks } from "../../utils/bookStore";
+import { log } from "../../utils/logger";
 
 /**
  * GET /api/books
@@ -12,6 +13,8 @@ import { getAllBooks } from "../../utils/bookStore";
 export default defineEventHandler(async () => {
   try {
     const books = await getAllBooks();
+
+    log.info("books-api", "Fetched books list", { count: books.length });
 
     return {
       status: "success",
@@ -29,6 +32,9 @@ export default defineEventHandler(async () => {
       })),
     };
   } catch (error: unknown) {
+    log.error("books-api", "Failed to fetch books list", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw createError({
       statusCode: 500,
       statusMessage: "Failed to fetch books list",

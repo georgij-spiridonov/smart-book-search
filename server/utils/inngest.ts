@@ -10,6 +10,7 @@ import {
 } from "./hashStore";
 import { updateJob } from "./jobStore";
 import { markBookVectorized } from "./bookStore";
+import { log } from "./logger";
 
 // Create Inngest client
 // In development:
@@ -45,6 +46,12 @@ export const vectorizeBook = inngest.createFunction(
       pineconeIndex,
     } = event.data;
 
+    log.info("inngest", "Starting vectorize-book step function", {
+      jobId,
+      bookId,
+      resume,
+    });
+
     try {
       await step.run("update-job-status", async () => {
         await updateJob(jobId, { status: "processing" });
@@ -54,8 +61,12 @@ export const vectorizeBook = inngest.createFunction(
       const { fileHash, filename } = await step.run(
         "fetch-and-hash",
         async () => {
+          log.info("inngest", "Fetching blob for hash check", { blobUrl });
           const response = await fetch(blobUrl);
           if (!response.ok) {
+            log.error("inngest", "Failed to download file from Blob", {
+              statusText: response.statusText,
+            });
             throw new Error(
               `Failed to download file from Blob: ${response.statusText}`,
             );
@@ -95,6 +106,7 @@ export const vectorizeBook = inngest.createFunction(
       // 2. Extract text
       // We re-fetch here to avoid passing large buffers through Inngest state
       const pages = await step.run("extract-text", async () => {
+        log.info("inngest", "Extracting text from document", { fileHash });
         const response = await fetch(blobUrl);
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
@@ -164,6 +176,9 @@ export const vectorizeBook = inngest.createFunction(
               batchSkipped += pageChunks.length - newChunks.length;
 
               if (newChunks.length > 0) {
+                log.info("inngest", "Embedding new chunks batch", {
+                  chunkCount: newChunks.length,
+                });
                 const embeddings = await generateEmbeddingsParallel(newChunks);
                 const vectors = newChunks.map((chunk, j) => ({
                   id: `${bookId}-chunk-${chunk.chunkIndex}`,
@@ -218,6 +233,12 @@ export const vectorizeBook = inngest.createFunction(
 
       // 4. Finalize
       await step.run("finalize-job", async () => {
+        log.info("inngest", "Finalizing vectorization process", {
+          totalPages: pages.length,
+          totalChunks,
+          skipped,
+          newVectors: newVectorsCount,
+        });
         await markFileAsVectorized(fileHash);
         try {
           await markBookVectorized(bookId);
@@ -240,6 +261,13 @@ export const vectorizeBook = inngest.createFunction(
         error instanceof Error
           ? error.message
           : "Unknown error during background processing";
+
+      log.error("inngest", "Background processing failed", {
+        jobId,
+        bookId,
+        error: errorMessage,
+      });
+
       await step.run("mark-failed", async () => {
         await updateJob(jobId, {
           status: "failed",

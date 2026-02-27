@@ -5,6 +5,7 @@
  */
 
 import { getRedisClient } from "./redis";
+import { log } from "./logger";
 
 export interface JobProgress {
   currentPage: number;
@@ -36,10 +37,13 @@ function getJobKey(id: string): string {
   return `${JOB_KEY_PREFIX}${id}`;
 }
 
-export async function createJob(id: string, bookName: string): Promise<JobState> {
+export async function createJob(
+  id: string,
+  bookName: string,
+): Promise<JobState> {
   const redis = getRedisClient();
   const key = getJobKey(id);
-  
+
   const job: JobState = {
     id,
     bookName,
@@ -60,7 +64,12 @@ export async function createJob(id: string, bookName: string): Promise<JobState>
     progress: JSON.stringify(job.progress),
   });
   await redis.expire(key, MAX_JOB_AGE_SECONDS);
-  
+
+  log.info("job-store", "Created new vectorization job", {
+    jobId: id,
+    bookName,
+  });
+
   return job;
 }
 
@@ -81,24 +90,27 @@ export async function getJob(id: string): Promise<JobState | undefined> {
   if (typeof data.result === "string") {
     job.result = JSON.parse(data.result);
   }
-  
+
   // Ensure numeric fields are numbers (Redis hgetall might return strings depending on client)
   job.createdAt = Number(job.createdAt);
   job.updatedAt = Number(job.updatedAt);
-  
+
   return job;
 }
 
-export async function updateJob(id: string, update: Partial<JobState>): Promise<void> {
+export async function updateJob(
+  id: string,
+  update: Partial<JobState>,
+): Promise<void> {
   const redis = getRedisClient();
   const key = getJobKey(id);
-  
+
   const hsetUpdate: Record<string, string | number> = {};
 
   // Copy primitives and stringify objects
   for (const [field, value] of Object.entries(update)) {
     if (value === undefined) continue;
-    
+
     if (field === "progress" || field === "result") {
       hsetUpdate[field] = JSON.stringify(value);
     } else if (typeof value === "string" || typeof value === "number") {
@@ -111,6 +123,13 @@ export async function updateJob(id: string, update: Partial<JobState>): Promise<
   await redis.hset(key, hsetUpdate);
   // Refresh TTL on update
   await redis.expire(key, MAX_JOB_AGE_SECONDS);
+
+  if (update.status) {
+    log.info("job-store", "Updated vectorization job status", {
+      jobId: id,
+      status: update.status,
+    });
+  }
 }
 
 export function generateJobId(): string {

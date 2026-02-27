@@ -1,4 +1,5 @@
 import { getJob } from "../../../utils/jobStore";
+import { log } from "../../../utils/logger";
 
 /**
  * GET /api/books/jobs/:id
@@ -9,6 +10,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, "id");
 
   if (!id) {
+    log.warn("jobs-api", "Job status requested without ID");
     throw createError({
       statusCode: 400,
       statusMessage: "Missing job ID.",
@@ -18,11 +20,14 @@ export default defineEventHandler(async (event) => {
   const job = await getJob(id);
 
   if (!job) {
+    log.warn("jobs-api", "Requested job not found", { jobId: id });
     throw createError({
       statusCode: 404,
       statusMessage: `Job "${id}" not found.`,
     });
   }
+
+  log.info("jobs-api", "Job status fetched", { jobId: id, status: job.status });
 
   return {
     id: job.id,

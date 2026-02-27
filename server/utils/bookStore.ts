@@ -1,4 +1,5 @@
 import { getRedisClient } from "./redis";
+import { log } from "./logger";
 
 /**
  * Book metadata store backed by Upstash Redis.
@@ -80,6 +81,8 @@ export async function addBook(record: BookRecord): Promise<void> {
   // Add reverse index for O(1) lookups by blobUrl
   pipeline.hset(BLOB_INDEX_KEY, { [record.blobUrl]: record.id });
   await pipeline.exec();
+
+  log.info("book-store", "Added new book record", { bookId: record.id });
 }
 
 /**
@@ -141,6 +144,7 @@ export async function updateBook(
   // Check if book exists and get current data for index management
   const current = await getBook(id);
   if (!current) {
+    log.error("book-store", "Cannot update: Book not found", { bookId: id });
     throw new Error(`Book "${id}" not found in store.`);
   }
 
@@ -165,6 +169,12 @@ export async function updateBook(
 
   if (Object.keys(fields).length > 0) {
     await redis.hset(key, fields);
+
+    // Minimal log that avoids logging the whole diff
+    log.info("book-store", "Updated book record", {
+      bookId: id,
+      updatedFields: Object.keys(fields),
+    });
   }
 }
 
@@ -181,6 +191,8 @@ export async function deleteBook(id: string): Promise<void> {
   pipeline.srem(BOOKS_INDEX_KEY, id);
   pipeline.hdel(BLOB_INDEX_KEY, book.blobUrl);
   await pipeline.exec();
+
+  log.info("book-store", "Deleted book record", { bookId: id });
 }
 
 /**
@@ -206,7 +218,6 @@ export async function getBookByBlobUrl(
 
   return getBook(bookId);
 }
-
 
 /**
  * Generate a URL-friendly slug from a book title.
