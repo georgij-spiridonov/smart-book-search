@@ -163,9 +163,31 @@ export default defineEventHandler(async (event) => {
           })),
         });
 
-        // 2. Stream LLM answer
-        const result = streamAnswer(query, chunks, history);
-        writer.merge(result.toUIMessageStream());
+        // 2. Stream LLM answer — wrapped in try/catch so a mid-stream
+        //    failure emits a structured error event instead of breaking the SSE.
+        try {
+          const result = streamAnswer(query, chunks, history);
+          writer.merge(result.toUIMessageStream());
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown generation error";
+          log.error("chat-api", "LLM stream failed", { error: message });
+
+          writer.write({
+            type: "data-error",
+            data: {
+              error:
+                "Произошла ошибка при генерации ответа. Попробуйте ещё раз.",
+            },
+          });
+        }
+      },
+      onError(error) {
+        // Prevent raw error details from leaking to the client
+        log.error("chat-api", "Stream-level error", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return "Произошла ошибка при генерации ответа. Попробуйте ещё раз.";
       },
     }),
   });
