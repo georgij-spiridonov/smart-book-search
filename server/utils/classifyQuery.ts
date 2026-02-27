@@ -8,6 +8,12 @@ const VALID_TYPES: ReadonlySet<string> = new Set<QueryType>([
 ]);
 
 /**
+ * Maximum time (ms) to wait for the classifier model before falling back.
+ * Classification is a simple one-word response, so 5 s is very generous.
+ */
+const CLASSIFIER_TIMEOUT_MS = 5_000;
+
+/**
  * Classifies a user query as either a fragment search or a Q&A request.
  *
  * Uses a lightweight model for fast, low-cost classification.
@@ -22,6 +28,7 @@ export async function classifyQuery(query: string): Promise<QueryType> {
       model: CHAT_CONFIG.classifierModel,
       system: CHAT_CONFIG.classifierSystemPrompt,
       prompt: query,
+      abortSignal: AbortSignal.timeout(CLASSIFIER_TIMEOUT_MS),
     });
 
     const normalized = text.trim().toLowerCase();
