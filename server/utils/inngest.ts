@@ -1,6 +1,5 @@
 import { Inngest } from "inngest";
 import { Pinecone } from "@pinecone-database/pinecone";
-import { embedMany } from "ai";
 import { extractText } from "./textParser";
 import { splitPages, type TextChunk } from "./textSplitter";
 import {
@@ -23,8 +22,6 @@ export const inngest = new Inngest({
   eventKey: isDev ? "test" : process.env.INNGEST_EVENT_KEY,
 });
 
-const EMBED_BATCH_SIZE = 100;
-const MAX_PARALLEL_BATCHES = 3;
 const PINECONE_BATCH_SIZE = 100;
 
 /**
@@ -176,31 +173,31 @@ export const vectorizeBook = inngest.createFunction(
               batchSkipped += pageChunks.length - newChunks.length;
 
               if (newChunks.length > 0) {
-                log.info("inngest", "Embedding new chunks batch", {
-                  chunkCount: newChunks.length,
-                });
-                const embeddings = await generateEmbeddingsParallel(newChunks);
-                const vectors = newChunks.map((chunk, j) => ({
-                  id: `${bookId}-chunk-${chunk.chunkIndex}`,
-                  values: embeddings[j]!,
-                  metadata: {
-                    bookId,
-                    bookName,
-                    author: author || "Unknown",
-                    blobUrl,
-                    chunkIndex: chunk.chunkIndex,
-                    pageNumber: chunk.pageNumber,
-                    chapterTitle: chunk.title || "",
-                    text: chunk.text.slice(0, 1000),
+                log.info(
+                  "inngest",
+                  "Upserting new chunks via integrated embedding",
+                  {
+                    chunkCount: newChunks.length,
                   },
+                );
+                const records = newChunks.map((chunk) => ({
+                  id: `${bookId}-chunk-${chunk.chunkIndex}`,
+                  text: chunk.text.slice(0, 1000),
+                  bookId,
+                  bookName,
+                  author: author || "Unknown",
+                  blobUrl,
+                  chunkIndex: chunk.chunkIndex,
+                  pageNumber: chunk.pageNumber,
+                  chapterTitle: chunk.title || "",
                 }));
 
-                for (let j = 0; j < vectors.length; j += PINECONE_BATCH_SIZE) {
-                  await index.upsert({
-                    records: vectors.slice(j, j + PINECONE_BATCH_SIZE),
+                for (let j = 0; j < records.length; j += PINECONE_BATCH_SIZE) {
+                  await index.upsertRecords({
+                    records: records.slice(j, j + PINECONE_BATCH_SIZE),
                   });
                 }
-                batchNewVectors += vectors.length;
+                batchNewVectors += records.length;
               }
               batchChunksProcessed += pageChunks.length;
             }
@@ -279,33 +276,7 @@ export const vectorizeBook = inngest.createFunction(
   },
 );
 
-// --- Helper functions (same as in original API but exported/adapted if needed) ---
-
-async function generateEmbeddingsParallel(
-  chunks: TextChunk[],
-): Promise<number[][]> {
-  const batches: TextChunk[][] = [];
-  for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
-    batches.push(chunks.slice(i, i + EMBED_BATCH_SIZE));
-  }
-  const allEmbeddings: number[][] = [];
-  for (let i = 0; i < batches.length; i += MAX_PARALLEL_BATCHES) {
-    const parallelBatches = batches.slice(i, i + MAX_PARALLEL_BATCHES);
-    const results = await Promise.all(
-      parallelBatches.map((batch) =>
-        embedMany({
-          model: "openai/text-embedding-3-large",
-          values: batch.map((c) => c.text),
-          providerOptions: { openai: { dimensions: 1024 } },
-        }),
-      ),
-    );
-    for (const result of results) {
-      allEmbeddings.push(...result.embeddings);
-    }
-  }
-  return allEmbeddings;
-}
+// --- Helper functions ---
 
 async function getExistingChunkIds(
   index: ReturnType<Pinecone["index"]>,

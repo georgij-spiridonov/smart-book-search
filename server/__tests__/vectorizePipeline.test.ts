@@ -2,21 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { splitPages } from "../utils/textSplitter";
 import type { PageText } from "../utils/textParser";
 
-// Mock embedMany from 'ai'
-vi.mock("ai", () => ({
-  embedMany: vi.fn(),
-}));
-
 // Mock Pinecone
-const { mockUpsert, mockFetch, mockDeleteMany } = vi.hoisted(() => ({
-  mockUpsert: vi.fn(),
+const { mockUpsertRecords, mockFetch, mockDeleteMany } = vi.hoisted(() => ({
+  mockUpsertRecords: vi.fn(),
   mockFetch: vi.fn(),
   mockDeleteMany: vi.fn(),
 }));
 
 vi.mock("@pinecone-database/pinecone", () => {
   class MockPineconeNamespace {
-    upsert = mockUpsert;
+    upsertRecords = mockUpsertRecords;
     fetch = mockFetch;
     deleteMany = mockDeleteMany;
   }
@@ -24,6 +19,7 @@ vi.mock("@pinecone-database/pinecone", () => {
     namespace() {
       return new MockPineconeNamespace();
     }
+    upsertRecords = mockUpsertRecords;
   }
   class MockPinecone {
     index() {
@@ -38,10 +34,6 @@ vi.stubGlobal("useRuntimeConfig", () => ({
   pineconeApiKey: "test-key",
   pineconeIndex: "test-index",
 }));
-
-import { embedMany } from "ai";
-
-const mockedEmbedMany = vi.mocked(embedMany);
 
 describe("vectorizePipeline", () => {
   const samplePages: PageText[] = [
@@ -91,62 +83,40 @@ describe("vectorizePipeline", () => {
     });
   });
 
-  describe("embedding generation (mocked)", () => {
-    it("generates 1024-dimensional embeddings for each chunk", async () => {
+  describe("Pinecone upsertRecords (integrated embedding)", () => {
+    it("upserts records with correct format for integrated embedding", async () => {
       const chunks = splitPages(samplePages, {
         chunkSize: 200,
         chunkOverlap: 50,
       });
 
-      const fakeEmbeddings = chunks.map(() => new Array(1024).fill(0.1));
-      mockedEmbedMany.mockResolvedValueOnce({
-        embeddings: fakeEmbeddings,
-        values: [],
-        usage: { tokens: 100 },
-      } as any);
-
-      const result = await embedMany({
-        model: "openai/text-embedding-3-large" as any,
-        values: chunks.map((c) => c.text),
-        providerOptions: { openai: { dimensions: 1024 } },
-      });
-
-      expect(result.embeddings).toHaveLength(chunks.length);
-      expect(result.embeddings[0]).toHaveLength(1024);
-    });
-  });
-
-  describe("Pinecone upsert (mocked)", () => {
-    it("upserts vectors with correct metadata", async () => {
-      const chunks = splitPages(samplePages, {
-        chunkSize: 200,
-        chunkOverlap: 50,
-      });
-
-      const fakeEmbeddings = chunks.map(() => new Array(1024).fill(0.1));
       const bookSlug = "test-pipeline-v4";
 
-      const vectors = chunks.map((chunk, i) => ({
+      // Records for integrated embedding: id, text (for embedding), and metadata fields
+      const records = chunks.map((chunk) => ({
         id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
-        values: fakeEmbeddings[i]!,
-        metadata: {
-          bookName: "__test_v4__",
-          chunkIndex: chunk.chunkIndex,
-          pageNumber: chunk.pageNumber,
-          chapterTitle: chunk.title || "",
-          text: chunk.text.slice(0, 200),
-        },
+        text: chunk.text.slice(0, 200),
+        bookName: "__test_v4__",
+        chunkIndex: chunk.chunkIndex,
+        pageNumber: chunk.pageNumber,
+        chapterTitle: chunk.title || "",
       }));
 
-      mockUpsert.mockResolvedValueOnce(undefined);
+      mockUpsertRecords.mockResolvedValueOnce(undefined);
 
       const { Pinecone } = await import("@pinecone-database/pinecone");
       const pc = new Pinecone({ apiKey: "test" });
       const index = pc.index("test");
-      await index.namespace("test").upsert({ records: vectors } as any);
+      await index.upsertRecords({ records });
 
-      expect(mockUpsert).toHaveBeenCalledOnce();
-      expect(mockUpsert).toHaveBeenCalledWith({ records: vectors });
+      expect(mockUpsertRecords).toHaveBeenCalledOnce();
+      expect(mockUpsertRecords).toHaveBeenCalledWith({ records });
+
+      // Verify record format: should have id and text, but NOT values
+      const upsertedRecords = mockUpsertRecords.mock.calls[0]![0].records;
+      expect(upsertedRecords[0]).toHaveProperty("id");
+      expect(upsertedRecords[0]).toHaveProperty("text");
+      expect(upsertedRecords[0]).not.toHaveProperty("values");
     });
 
     it("supports resume mechanism by checking existing IDs", async () => {

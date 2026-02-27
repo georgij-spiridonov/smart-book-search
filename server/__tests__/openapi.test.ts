@@ -1,7 +1,7 @@
 /**
  * Tests for the OpenAPI document generation.
  *
- * Verifies that zod-openapi produces a valid OpenAPI 3.1 document
+ * Verifies that zod-openapi produces a valid OpenAPI 3.1.1 document
  * with all expected paths, schemas, and metadata.
  */
 
@@ -10,7 +10,7 @@ import { openApiDocument } from "../utils/openapi/document";
 
 describe("OpenAPI document", () => {
   it("should have correct OpenAPI version and info", () => {
-    expect(openApiDocument.openapi).toBe("3.1.0");
+    expect(openApiDocument.openapi).toBe("3.1.1");
     expect(openApiDocument.info.title).toContain("Smart Book Search");
     expect(openApiDocument.info.version).toBe("1.0.0");
   });

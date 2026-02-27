@@ -1,21 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock embedMany from 'ai'
-vi.mock("ai", () => ({
-  embedMany: vi.fn(),
-}));
-
 // Use vi.hoisted to define mock functions that need to be shared
 // between the vi.mock factory and the test code
-const { mockQuery } = vi.hoisted(() => ({
-  mockQuery: vi.fn(),
+const { mockSearchRecords } = vi.hoisted(() => ({
+  mockSearchRecords: vi.fn(),
 }));
 
 // Mock Pinecone — class definitions must be inside the factory
 // because vi.mock is hoisted to the top of the file
 vi.mock("@pinecone-database/pinecone", () => {
   class MockPineconeIndex {
-    query = mockQuery;
+    searchRecords = mockSearchRecords;
   }
 
   class MockPinecone {
@@ -42,10 +37,7 @@ vi.mock("../utils/logger", () => ({
   },
 }));
 
-import { embedMany } from "ai";
 import { searchBookKnowledge } from "../utils/retrieval";
-
-const mockedEmbedMany = vi.mocked(embedMany);
 
 describe("retrieval", () => {
   beforeEach(() => {
@@ -54,37 +46,32 @@ describe("retrieval", () => {
 
   describe("unit (mocked)", () => {
     it("returns formatted search results", async () => {
-      // Mock embedding generation
-      mockedEmbedMany.mockResolvedValueOnce({
-        embeddings: [new Array(1024).fill(0.1)],
-        values: [],
-        usage: { tokens: 10 },
-      } as any);
-
-      // Mock Pinecone query
-      mockQuery.mockResolvedValueOnce({
-        matches: [
-          {
-            id: "chunk-1",
-            score: 0.95,
-            metadata: {
-              text: "Test chunk text about AI",
-              pageNumber: 5,
-              chapterTitle: "Introduction",
-              bookId: "test-book",
+      // Mock Pinecone searchRecords (integrated embedding)
+      mockSearchRecords.mockResolvedValueOnce({
+        result: {
+          hits: [
+            {
+              _id: "chunk-1",
+              _score: 0.95,
+              fields: {
+                text: "Test chunk text about AI",
+                pageNumber: 5,
+                chapterTitle: "Introduction",
+                bookId: "test-book",
+              },
             },
-          },
-          {
-            id: "chunk-2",
-            score: 0.88,
-            metadata: {
-              text: "Another relevant chunk",
-              pageNumber: 12,
-              chapterTitle: "Chapter 2",
-              bookId: "test-book",
+            {
+              _id: "chunk-2",
+              _score: 0.88,
+              fields: {
+                text: "Another relevant chunk",
+                pageNumber: 12,
+                chapterTitle: "Chapter 2",
+                bookId: "test-book",
+              },
             },
-          },
-        ],
+          ],
+        },
       });
 
       const results = await searchBookKnowledge(
@@ -102,33 +89,58 @@ describe("retrieval", () => {
         bookId: "test-book",
       });
       expect(results[1]!.score).toBe(0.88);
-      expect(mockedEmbedMany).toHaveBeenCalledOnce();
-      expect(mockQuery).toHaveBeenCalledOnce();
+      expect(mockSearchRecords).toHaveBeenCalledOnce();
+      expect(mockSearchRecords).toHaveBeenCalledWith({
+        query: {
+          topK: 2,
+          inputs: { text: "What is artificial intelligence?" },
+          filter: {
+            bookId: { $in: ["test-book"] },
+          },
+        },
+      });
     });
 
     it("returns empty array when no matches found", async () => {
-      mockedEmbedMany.mockResolvedValueOnce({
-        embeddings: [new Array(1024).fill(0.1)],
-        values: [],
-        usage: { tokens: 10 },
-      } as any);
-
-      mockQuery.mockResolvedValueOnce({ matches: [] });
+      mockSearchRecords.mockResolvedValueOnce({
+        result: { hits: [] },
+      });
 
       const results = await searchBookKnowledge("no match query", ["book-1"]);
       expect(results).toHaveLength(0);
     });
 
-    it("throws when embedding generation fails", async () => {
-      mockedEmbedMany.mockResolvedValueOnce({
-        embeddings: [],
-        values: [],
-        usage: { tokens: 0 },
-      } as any);
+    it("filters out low-score results below MIN_SCORE threshold", async () => {
+      mockSearchRecords.mockResolvedValueOnce({
+        result: {
+          hits: [
+            {
+              _id: "chunk-1",
+              _score: 0.95,
+              fields: {
+                text: "High relevance",
+                pageNumber: 1,
+                chapterTitle: "Ch1",
+                bookId: "book-1",
+              },
+            },
+            {
+              _id: "chunk-2",
+              _score: 0.1,
+              fields: {
+                text: "Low relevance",
+                pageNumber: 2,
+                chapterTitle: "Ch2",
+                bookId: "book-1",
+              },
+            },
+          ],
+        },
+      });
 
-      await expect(searchBookKnowledge("test", ["book-1"])).rejects.toThrow(
-        "Failed to generate embedding",
-      );
+      const results = await searchBookKnowledge("test query", ["book-1"]);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.score).toBe(0.95);
     });
   });
 

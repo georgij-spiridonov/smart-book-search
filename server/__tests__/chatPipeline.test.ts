@@ -4,14 +4,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("ai", () => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
-  embedMany: vi.fn(),
 }));
 
 // Mock Pinecone
 vi.mock("@pinecone-database/pinecone", () => ({
   Pinecone: vi.fn(() => ({
     index: vi.fn(() => ({
-      query: vi.fn().mockResolvedValue({ matches: [] }),
+      searchRecords: vi.fn().mockResolvedValue({ result: { hits: [] } }),
     })),
   })),
 }));

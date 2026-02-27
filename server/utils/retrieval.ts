@@ -1,4 +1,3 @@
-import { embedMany } from "ai";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { log } from "./logger";
 
@@ -11,6 +10,9 @@ const MIN_SCORE = 0.3;
 
 /**
  * Searches the book knowledge base for fragments relevant to the query.
+ *
+ * Uses Pinecone's integrated embedding (multilingual-e5-large) to convert
+ * the query text to a vector server-side and search the index.
  *
  * @param query - The search query string.
  * @param bookIds - Array of book IDs to filter by.
@@ -30,62 +32,51 @@ export async function searchBookKnowledge(
     limit,
   });
 
-  // 1. Generate embedding for the query
-  // We use embedMany with a single value to stay consistent with the project's AI SDK usage pattern
-  // found in server/utils/inngest.ts and server/api/tests/vectorize-pipeline.ts.
-  const { embeddings } = await embedMany({
-    model: "openai/text-embedding-3-large",
-    values: [query],
-    providerOptions: {
-      openai: { dimensions: 1024 },
-    },
-  });
-
-  const queryEmbedding = embeddings[0];
-  if (!queryEmbedding) {
-    log.error("retrieval", "Failed to generate embedding for the query");
-    throw new Error("Failed to generate embedding for the query.");
-  }
-
-  // 2. Initialize Pinecone and search the index
+  // 1. Initialize Pinecone and search using integrated embedding
+  // Pinecone converts the query text to a vector automatically using
+  // the index's configured model (multilingual-e5-large, input_type: query).
   const pc = new Pinecone({
     apiKey: config.pineconeApiKey,
   });
   const index = pc.index(config.pineconeIndex);
 
-  const queryResponse = await index.query({
-    vector: queryEmbedding,
-    topK: limit,
-    filter: {
-      bookId: { $in: bookIds },
+  const searchResponse = await index.searchRecords({
+    query: {
+      topK: limit,
+      inputs: { text: query },
+      filter: {
+        bookId: { $in: bookIds },
+      },
     },
-    includeMetadata: true,
   });
+
+  const hits = searchResponse.result?.hits ?? [];
 
   log.info("retrieval", "Pinecone search completed", {
-    matchesFound: queryResponse.matches.length,
-    topScore: queryResponse.matches[0]?.score,
+    matchesFound: hits.length,
+    topScore: hits[0]?._score,
   });
 
-  // 3. Filter by minimum relevance score and format results
-  const relevant = queryResponse.matches.filter(
-    (match) => (match.score ?? 0) >= MIN_SCORE,
-  );
+  // 2. Filter by minimum relevance score and format results
+  const relevant = hits.filter((hit) => (hit._score ?? 0) >= MIN_SCORE);
 
-  if (relevant.length < queryResponse.matches.length) {
+  if (relevant.length < hits.length) {
     log.info("retrieval", "Filtered low-score chunks", {
-      total: queryResponse.matches.length,
+      total: hits.length,
       kept: relevant.length,
-      discarded: queryResponse.matches.length - relevant.length,
+      discarded: hits.length - relevant.length,
       minScore: MIN_SCORE,
     });
   }
 
-  return relevant.map((match) => ({
-    text: (match.metadata?.text as string) || "",
-    pageNumber: (match.metadata?.pageNumber as number) || 0,
-    chapterTitle: (match.metadata?.chapterTitle as string) || "",
-    score: match.score || 0,
-    bookId: (match.metadata?.bookId as string) || "",
-  }));
+  return relevant.map((hit) => {
+    const fields = (hit.fields ?? {}) as Record<string, unknown>;
+    return {
+      text: (fields.text as string) || "",
+      pageNumber: (fields.pageNumber as number) || 0,
+      chapterTitle: (fields.chapterTitle as string) || "",
+      score: hit._score || 0,
+      bookId: (fields.bookId as string) || "",
+    };
+  });
 }
