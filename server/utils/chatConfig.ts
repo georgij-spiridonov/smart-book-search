@@ -78,9 +78,6 @@ export const ChatRequestSchema = z
         description: "IDs of books to search across.",
         example: ["war-and-peace"],
       }),
-    history: z.array(ChatMessageSchema).optional().default([]).meta({
-      description: "Previous conversation messages for multi-turn context.",
-    }),
   })
   .meta({
     id: "ChatRequest",
