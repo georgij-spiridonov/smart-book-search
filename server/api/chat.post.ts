@@ -1,9 +1,15 @@
-import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  generateText,
+} from "ai";
 import { searchBookKnowledge } from "../utils/retrieval";
 import { streamAnswer } from "../utils/generateAnswer";
 import { CHAT_CONFIG, ChatRequestSchema } from "../utils/chatConfig";
 import { log } from "../utils/logger";
 import { getBook } from "../utils/bookStore";
+import { db, schema } from "hub:db";
+import { eq } from "drizzle-orm";
 
 /**
  * POST /api/chat
@@ -21,6 +27,13 @@ import { getBook } from "../utils/bookStore";
  *   3. text-start / text-delta / text-end — streamed LLM answer
  */
 export default defineEventHandler(async (event) => {
+  const session = await getUserSession(event);
+  const userId = session.user?.id || session.id;
+
+  if (!userId) {
+    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+  }
+
   const body = await readBody(event);
 
   // --- Input validation with Zod ---
@@ -40,7 +53,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const { query, bookIds, history } = validation.data;
+  const { query, bookIds, history, chatId } = validation.data;
 
   log.info("chat-api", "Processing chat query", {
     queryLength: query.length,
@@ -140,6 +153,23 @@ export default defineEventHandler(async (event) => {
   }
 
   // --- Streaming response (has relevant context) ---
+  const currentChatId = chatId || crypto.randomUUID();
+
+  // If new chat, save to database
+  if (!chatId) {
+    await db.insert(schema.chats).values({
+      id: currentChatId,
+      title: "",
+      userId: userId,
+    });
+  }
+
+  // Save user's question to the database
+  await db.insert(schema.messages).values({
+    chatId: currentChatId,
+    role: "user",
+    parts: [{ type: "text", text: query }],
+  });
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
       execute({ writer }) {
@@ -165,7 +195,26 @@ export default defineEventHandler(async (event) => {
         //    failure emits a structured error event instead of breaking the SSE.
         try {
           const result = streamAnswer(query, chunks, history);
-          writer.merge(result.toUIMessageStream());
+          writer.merge(
+            result.toUIMessageStream({
+              sendReasoning: false,
+            }),
+          );
+
+          // Generate a title for the chat if it's new
+          if (!chatId) {
+            generateText({
+              model: "gemini-2.5-flash-lite", // or whatever model you use for internal stuff
+              system:
+                "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
+              prompt: query,
+            }).then(({ text: title }) => {
+              db.update(schema.chats)
+                .set({ title })
+                .where(eq(schema.chats.id, currentChatId))
+                .execute();
+            });
+          }
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Unknown generation error";
@@ -178,6 +227,18 @@ export default defineEventHandler(async (event) => {
                 "Произошла ошибка при генерации ответа. Попробуйте ещё раз.",
             },
           });
+        }
+      },
+      onFinish: async ({ messages }) => {
+        // Find the assistant message in the output payload and save it
+        for (const message of messages) {
+          if (message.role === "assistant") {
+            await db.insert(schema.messages).values({
+              chatId: currentChatId,
+              role: "assistant",
+              parts: message.parts,
+            });
+          }
         }
       },
       onError(error) {

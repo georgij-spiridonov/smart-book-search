@@ -63,6 +63,10 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 /** Schema for the /api/chat request body. */
 export const ChatRequestSchema = z
   .object({
+    chatId: z.string().optional().meta({
+      description: "Optional chat ID to continue an existing conversation.",
+      example: "123e4567-e89b-12d3-a456-426614174000",
+    }),
     query: z.string().min(1, "Missing or empty 'query' field.").meta({
       description: "User's search query or question.",
       example: "Что произошло с Наташей в эпилоге?",
@@ -74,13 +78,9 @@ export const ChatRequestSchema = z
         description: "IDs of books to search across.",
         example: ["war-and-peace"],
       }),
-    history: z
-      .array(ChatMessageSchema)
-      .optional()
-      .default([])
-      .meta({
-        description: "Previous conversation messages for multi-turn context.",
-      }),
+    history: z.array(ChatMessageSchema).optional().default([]).meta({
+      description: "Previous conversation messages for multi-turn context.",
+    }),
   })
   .meta({
     id: "ChatRequest",
@@ -128,24 +128,18 @@ export const ChunkItemSchema = z
       .number()
       .int()
       .meta({ description: "Page number (0 if unknown).", example: 42 }),
-    chapterTitle: z
-      .string()
-      .meta({
-        description: "Chapter title (empty string if unknown).",
-        example: "Эпилог",
-      }),
-    score: z
-      .number()
-      .meta({
-        description: "Cosine similarity relevance score (0.0–1.0).",
-        example: 0.87,
-      }),
-    bookId: z
-      .string()
-      .meta({
-        description: "ID of the source book.",
-        example: "war-and-peace",
-      }),
+    chapterTitle: z.string().meta({
+      description: "Chapter title (empty string if unknown).",
+      example: "Эпилог",
+    }),
+    score: z.number().meta({
+      description: "Cosine similarity relevance score (0.0–1.0).",
+      example: 0.87,
+    }),
+    bookId: z.string().meta({
+      description: "ID of the source book.",
+      example: "war-and-peace",
+    }),
   })
   .meta({
     id: "ChunkItem",
