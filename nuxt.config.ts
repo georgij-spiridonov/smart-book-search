@@ -13,7 +13,15 @@ export default defineNuxtConfig({
       enabled: true,
     },
   },
-  modules: ["@nuxt/eslint", "@nuxthub/core", "nuxt-auth-utils", "@nuxtjs/i18n"],
+  modules: [
+    "@nuxt/ui",
+    "@nuxt/eslint",
+    "@nuxthub/core",
+    "nuxt-auth-utils",
+    "@nuxtjs/i18n",
+    "@nuxtjs/mdc",
+  ],
+  css: ["~/assets/css/main.css"],
   i18n: {
     locales: [
       {
@@ -26,8 +34,24 @@ export default defineNuxtConfig({
     defaultLocale: "ru",
     strategy: "no_prefix",
   },
+  mdc: {
+    headings: {
+      anchorLinks: false,
+    },
+    highlight: {
+      shikiEngine: "javascript",
+    },
+  },
+  experimental: {
+    viewTransition: true,
+  },
   hub: {
     db: "sqlite",
+  },
+  vite: {
+    optimizeDeps: {
+      include: ["striptags"],
+    },
   },
   runtimeConfig: {
     blobToken: process.env.BOOKS_BLOB_READ_WRITE_TOKEN,

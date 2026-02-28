@@ -1,0 +1,22 @@
+{
+  "chat": {
+    "title": "Поиск по книгам",
+    "welcome": "Чем могу помочь?",
+    "newChat": "Новый чат",
+    "searchChats": "Поиск чатов...",
+    "untitled": "Без названия",
+    "deleteTitle": "Удалить чат",
+    "deleteDescription": "Вы уверены, что хотите удалить этот чат? Это действие нельзя отменить.",
+    "deleteButton": "Удалить",
+    "cancelButton": "Отмена",
+    "chatDeleted": "Чат удалён",
+    "chatDeletedDescription": "Ваш чат был удалён",
+    "thinking": "Размышления...",
+    "thoughts": "Размышления",
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "lastWeek": "На прошлой неделе",
+    "lastMonth": "В прошлом месяце",
+    "placeholder": "Введите сообщение..."
+  }
+}
