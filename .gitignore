@@ -30,3 +30,6 @@ AGENTS.md
 
 # Tests logs
 coverage
+
+# IDE files
+.vscode

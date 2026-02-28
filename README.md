@@ -38,7 +38,11 @@ Smart Book Search — это сервис поиска по книгам, исп
 
 Демонстрационную версию можно найти по указанному в описании репозитория адресу.
 
-## ⚙️ Установка и запуск
+## 🚀 Автоматический деплой
+
+[![Деплой с Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgeorgij-spiridonov%2Fsmart-book-search&env=AI_GATEWAY_API_KEY,PINECONE_API_KEY,PINECONE_INDEX,PINECONE_HOST,BOOKS_BLOB_READ_WRITE_TOKEN,KV_REST_API_URL,KV_REST_API_TOKEN,INNGEST_EVENT_KEY,INNGEST_SIGNING_KEY)
+
+## ⚙️ Ручной деплой
 
 ### 1. Установка зависимостей
 
