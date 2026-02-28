@@ -77,8 +77,16 @@ export default defineEventHandler(async (event) => {
     });
 
     history = dbMessages.map((msg) => {
-      const partsArr = (msg.parts as { text: string }[]) || [];
-      const content = partsArr.map((p) => p.text).join("");
+      let content = "";
+      if (Array.isArray(msg.parts)) {
+        content = msg.parts
+          .filter(
+            (p: any): p is { text: string } =>
+              p !== null && typeof p === "object" && typeof p.text === "string",
+          )
+          .map((p) => p.text)
+          .join("");
+      }
       return {
         role: msg.role as "user" | "assistant",
         content,
