@@ -6,7 +6,13 @@ export default defineNuxtConfig({
   future: {
     compatibilityVersion: 4,
   },
-  devtools: { enabled: true },
+  devtools: {
+    enabled: true,
+
+    timeline: {
+      enabled: true,
+    },
+  },
   modules: ["@nuxt/eslint"],
   runtimeConfig: {
     blobToken: process.env.BOOKS_BLOB_READ_WRITE_TOKEN,
