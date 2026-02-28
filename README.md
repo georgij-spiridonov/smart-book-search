@@ -1,75 +1,100 @@
-# Nuxt Minimal Starter
+# 📚 Smart Book Search
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+[![Nuxt](https://img.shields.io/badge/Nuxt-4-green?logo=nuxt.js)](https://nuxt.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Tests](https://img.shields.io/badge/Tests-Vitest-orange?logo=vitest)](https://vitest.dev/)
+[![Inngest](https://img.shields.io/badge/Background-Inngest-violet?logo=inngest)](https://www.inngest.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-## Setup
+> **Внимание:** Проект находится в стадии активной разработки. В данный момент реализована только backend-часть проекта, frontend (пользовательский интерфейс) ещё не готов.
 
-Make sure to install dependencies:
+> Проект создан для отборочного этапа ТехноСтрелки 2026.
+
+## ℹ️ О проекте
+
+Smart Book Search — это сервис поиска по книгам, использующий ИИ для семантического поиска и взаимодействия с содержимым книг.
+
+Бэкенд предоставляет API для загрузки книг (PDF, ePub, txt), извлечения текста, векторизации содержимого и хранения векторных представлений и умного поиска. Асинхронная обработка фоновых задач построена на базе Inngest.
+
+### 🛠️ Стек:
+
+- **Фреймворк:** Nuxt 4
+- **ИИ и Эмбеддинги:** [Vercel AI SDK](https://ai-sdk.dev/), [Pinecone](https://www.pinecone.io/)
+- **API и Валидация:** [Zod](https://zod.dev/), [Zod-OpenAPI](https://www.npmjs.com/package/zod-openapi)
+- **Хранилище файлов:** [Vercel Blob](https://vercel.com/docs/storage/vercel-blob)
+- **Кеширование и Rate Limits:** [Upstash Redis](https://upstash.com/)
+- **Фоновые задачи:** [Inngest](https://www.inngest.com/)
+
+### ⭐ Преимущества:
+
+- **Слабая привязка к платформе:** Благодаря модульной архитектуре сервис не имеет жесткой зависимости от используемых сервисов.
+- **Поддержка локального ИИ:** Благодаря использованию универсального роутера, сервис имеет поддержку локальных ИИ моделей (Ollama, LM Studio и др.).
+- **Эффективность:** Сервис имеет эффективное управление нагрузкой и состояниями, а также защиту от несанкционированного применения и перегрузки.
+- **Быстрый старт:** Запуск и настройка проекта занимает несколько минут.
+- **Отличный DX:** Проект хорошо структурирован, а код строго следует общепринятым принципам разработки.
+- **Тестируемость:** Тестами покрыто больше 95% кода.
+
+## ▶️ Демо
+
+Демонстрационную версию можно найти по указанному в описании репозитория адресу.
+
+## ⚙️ Установка и запуск
+
+### 1. Установка зависимостей
+
+Убедитесь, что у вас установлен Node.js (рекомендуется v22+). Клонируйте репозиторий и установите зависимости:
 
 ```bash
-# npm
 npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
 ```
 
-## Development Server
+### 2. Переменные окружения
 
-Start the development server on `http://localhost:3000`:
+Для работы приложения требуются сторонние сервисы (Pinecone, Vercel Blob, Upstash, Inngest и др.). Скопируйте файл конфигурации `.env.example` в `.env`:
 
 ```bash
-# npm
+cp .env.example .env
+```
+
+Затем заполните `.env` вашими актуальными ключами доступа или пропишите их в конфигурации сервера:
+
+- **Vercel AI Gateway:** `AI_GATEWAY_API_KEY`
+- **Pinecone:** `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_HOST`
+- **Vercel Blob:** `BOOKS_BLOB_READ_WRITE_TOKEN`
+- **Upstash Redis:** `KV_REST_API_URL`, `KV_REST_API_TOKEN`
+- **Inngest:** `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`
+
+### 3. Запуск сервера для разработки
+
+Запустите локальный сервер (по умолчанию доступен на `http://localhost:3000`):
+
+```bash
 npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
+## 🚀 Команды разработки
 
-Build the application for production:
+| Команда                      | Описание                                                 |
+| :--------------------------- | :------------------------------------------------------- |
+| `npm run dev`                | Запуск сервера разработки Nuxt                           |
+| `npm run test`               | Запуск юнит-тестов (Vitest)                              |
+| `npm run lint`               | Проверка кода линтером (ESLint)                          |
+| `npm run typecheck`          | Проверка типов TypeScript                                |
+| `npx inngest-cli@latest dev` | Запуск локального Inngest Dev Server (для фоновых задач) |
 
-```bash
-# npm
-npm run build
+---
 
-# pnpm
-pnpm build
+## 📖 API Эндпоинты и Документация
 
-# yarn
-yarn build
+Проект автоматически генерирует подробную интерактивную документацию OpenAPI. Когда сервер запущен, документация и спецификации доступны по адресам:
 
-# bun
-bun run build
-```
+- **Интерактивная документация API:** `/api/docs`
+- **Спецификация OpenAPI (JSON):** `/api/openapi`
 
-Locally preview production build:
+А также по соответствующим адресам production-среды.
 
-```bash
-# npm
-npm run preview
+В этих разделах вы найдёте описание форматов запросов и ответов для всех эндпоинтов сервиса.
 
-# pnpm
-pnpm preview
+## 📄 Лицензия
 
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+Проект распространяется под лицензией MIT. Подробности см. в файле [LICENSE](LICENSE).
