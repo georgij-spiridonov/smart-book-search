@@ -41,7 +41,7 @@ Smart Book Search — это сервис поиска по книгам, исп
 
 ## 🚀 Автоматический деплой
 
-[![Деплой с Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgeorgij-spiridonov%2Fsmart-book-search&env=AI_GATEWAY_API_KEY,PINECONE_API_KEY,PINECONE_INDEX,PINECONE_HOST,BOOKS_BLOB_READ_WRITE_TOKEN,KV_REST_API_URL,KV_REST_API_TOKEN,INNGEST_EVENT_KEY,INNGEST_SIGNING_KEY)
+[![Деплой с Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgeorgij-spiridonov%2Fsmart-book-search&env=AI_GATEWAY_API_KEY,PINECONE_API_KEY,PINECONE_INDEX,PINECONE_HOST,BOOKS_BLOB_READ_WRITE_TOKEN,KV_REST_API_URL,KV_REST_API_TOKEN,INNGEST_EVENT_KEY,INNGEST_SIGNING_KEY,TURSO_AUTH_TOKEN,TURSO_DATABASE_URL,NUXT_SESSION_PASSWORD)
 
 ## ⚙️ Ручной деплой
 
@@ -68,6 +68,8 @@ cp .env.example .env
 - **Vercel Blob:** `BOOKS_BLOB_READ_WRITE_TOKEN`
 - **Upstash Redis:** `KV_REST_API_URL`, `KV_REST_API_TOKEN`
 - **Inngest:** `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`
+- **Turso Database:** `TURSO_AUTH_TOKEN`, `TURSO_DATABASE_URL`
+- **Auth Utils:** `NUXT_SESSION_PASSWORD`
 
 ### 3. Запуск сервера для разработки
 
