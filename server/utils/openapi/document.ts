@@ -30,6 +30,12 @@ import {
   UploadResponseSchema,
   VectorizeRequestSchema,
   VectorizeResponseSchema,
+  Error401Schema,
+  ChatItemSchema,
+  MessageItemSchema,
+  GetChatsResponseSchema,
+  GetChatByIdResponseSchema,
+  DeleteChatResponseSchema,
 } from "./schemas";
 
 export const openApiDocument = createDocument({
@@ -53,7 +59,8 @@ export const openApiDocument = createDocument({
   servers: [
     {
       url: "http://localhost:3000",
-      description: "Локальная разработка" },
+      description: "Локальная разработка",
+    },
     {
       url: "https://book-search.projects.georgijspiridonov.ru",
       description: "Рабочая версия",
@@ -64,12 +71,9 @@ export const openApiDocument = createDocument({
       name: "Books",
       description: "Управление книгами: загрузка, просмотр, индексация.",
     },
-    { name: "Jobs",
-      description: "Отслеживание фоновых задач индексации."
-    },
-    { name: "Chat",
-      description: "Чат с книгами (RAG-пайплайн)."
-    },
+    { name: "Jobs", description: "Отслеживание фоновых задач индексации." },
+    { name: "Chat", description: "Чат с книгами (RAG-пайплайн)." },
+    { name: "Chat History", description: "Управление историей чатов." },
   ],
 
   paths: {
@@ -261,6 +265,104 @@ export const openApiDocument = createDocument({
       },
     },
 
+    // ───────────────── GET /api/chats ─────────────────
+    "/api/chats": {
+      get: {
+        operationId: "getChats",
+        summary: "Получить список чатов пользователя",
+        description:
+          "Возвращает список всех чатов текущего пользователя, отсортированных по дате создания (новые первыми). Требует авторизации (cookie сессии).",
+        tags: ["Chat History"],
+        responses: {
+          "200": {
+            description: "Список чатов успешно получен.",
+            content: {
+              "application/json": { schema: GetChatsResponseSchema },
+            },
+          },
+          "401": {
+            description: "Пользователь не авторизован.",
+            content: {
+              "application/json": { schema: Error401Schema },
+            },
+          },
+        },
+      },
+    },
+
+    // ───────────────── GET /api/chats/{id} ─────────────────
+    "/api/chats/{id}": {
+      get: {
+        operationId: "getChatById",
+        summary: "Получить чат по ID",
+        description:
+          "Возвращает чат и список его сообщений. Требует авторизации.",
+        tags: ["Chat History"],
+        requestParams: {
+          path: z.object({
+            id: z.string().meta({
+              description: "ID чата.",
+              example: "123e4567-e89b-12d3-a456-426614174000",
+            }),
+          }),
+        },
+        responses: {
+          "200": {
+            description: "Чат успешно получен.",
+            content: {
+              "application/json": { schema: GetChatByIdResponseSchema },
+            },
+          },
+          "401": {
+            description: "Пользователь не авторизован.",
+            content: {
+              "application/json": { schema: Error401Schema },
+            },
+          },
+          "404": {
+            description: "Чат не найден или принадлежит другому пользователю.",
+            content: {
+              "application/json": { schema: Error404Schema },
+            },
+          },
+        },
+      },
+      delete: {
+        operationId: "deleteChat",
+        summary: "Удалить чат по ID",
+        description: "Удаляет чат и все его сообщения. Требует авторизации.",
+        tags: ["Chat History"],
+        requestParams: {
+          path: z.object({
+            id: z.string().meta({
+              description: "ID чата.",
+              example: "123e4567-e89b-12d3-a456-426614174000",
+            }),
+          }),
+        },
+        responses: {
+          "200": {
+            description: "Чат успешно удален.",
+            content: {
+              "application/json": { schema: DeleteChatResponseSchema },
+            },
+          },
+          "401": {
+            description: "Пользователь не авторизован.",
+            content: {
+              "application/json": { schema: Error401Schema },
+            },
+          },
+          "404": {
+            description: "Чат не найден или принадлежит другому пользователю.",
+            content: {
+              "application/json": { schema: Error404Schema },
+            },
+          },
+        },
+      },
+    },
+
     // ───────────────── POST /api/chat ─────────────────
     "/api/chat": {
       post: {
@@ -319,6 +421,12 @@ export const openApiDocument = createDocument({
               "application/json": { schema: Error400Schema },
             },
           },
+          "401": {
+            description: "Пользователь не авторизован.",
+            content: {
+              "application/json": { schema: Error401Schema },
+            },
+          },
           "404": {
             description: "Одна из указанных книг не найдена.",
             content: {
@@ -341,9 +449,12 @@ export const openApiDocument = createDocument({
     schemas: {
       BookItem: BookItemSchema,
       Error400: Error400Schema,
+      Error401: Error401Schema,
       Error404: Error404Schema,
       Error429: Error429Schema,
       Error500: Error500Schema,
+      ChatItem: ChatItemSchema,
+      MessageItem: MessageItemSchema,
     },
   },
 });

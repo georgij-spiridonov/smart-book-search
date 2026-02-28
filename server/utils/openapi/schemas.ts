@@ -255,6 +255,68 @@ export const createErrorSchema = (
 
 // Common error schemas
 export const Error400Schema = createErrorSchema(400, "Bad Request");
+export const Error401Schema = createErrorSchema(401, "Unauthorized");
 export const Error404Schema = createErrorSchema(404, "Not Found");
 export const Error429Schema = createErrorSchema(429, "Too Many Requests");
 export const Error500Schema = createErrorSchema(500, "Internal Server Error");
+
+// ─────────────────────────── Chat Endpoints ───────────────────────────
+
+export const ChatItemSchema = z
+  .object({
+    id: z
+      .string()
+      .meta({
+        description: "Chat ID",
+        example: "123e4567-e89b-12d3-a456-426614174000",
+      }),
+    title: z
+      .string()
+      .nullable()
+      .meta({
+        description: "Generated chat title based on the first message",
+        example: "Discussing War and Peace",
+      }),
+    userId: z
+      .string()
+      .meta({ description: "User ID owner of this chat", example: "user_123" }),
+    createdAt: z
+      .string()
+      .datetime()
+      .meta({ description: "Creation timestamp" }),
+  })
+  .meta({ id: "ChatItem" });
+
+export const MessageItemSchema = z
+  .object({
+    id: z.string().meta({ description: "Message ID" }),
+    chatId: z.string().meta({ description: "Chat ID this message belongs to" }),
+    role: z
+      .enum(["user", "assistant", "system"])
+      .meta({ description: "Role of the message sender" }),
+    parts: z
+      .any()
+      .meta({
+        description: "Array of message parts (e.g. text blocks)",
+        example: [{ type: "text", text: "Hello" }],
+      }),
+    createdAt: z
+      .string()
+      .datetime()
+      .meta({ description: "Creation timestamp" }),
+  })
+  .meta({ id: "MessageItem" });
+
+export const GetChatsResponseSchema = z
+  .array(ChatItemSchema)
+  .meta({ id: "GetChatsResponse" });
+
+export const GetChatByIdResponseSchema = ChatItemSchema.extend({
+  messages: z
+    .array(MessageItemSchema)
+    .meta({ description: "Messages in the chat ordered by creation time" }),
+}).meta({ id: "GetChatByIdResponse" });
+
+export const DeleteChatResponseSchema = z
+  .array(ChatItemSchema)
+  .meta({ id: "DeleteChatResponse" });
