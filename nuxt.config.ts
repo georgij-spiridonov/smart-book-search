@@ -13,7 +13,10 @@ export default defineNuxtConfig({
       enabled: true,
     },
   },
-  modules: ["@nuxt/eslint"],
+  modules: ["@nuxt/eslint", "@nuxthub/core", "nuxt-auth-utils"],
+  hub: {
+    db: "sqlite",
+  },
   runtimeConfig: {
     blobToken: process.env.BOOKS_BLOB_READ_WRITE_TOKEN,
     aiGatewayApiKey: process.env.AI_GATEWAY_API_KEY,

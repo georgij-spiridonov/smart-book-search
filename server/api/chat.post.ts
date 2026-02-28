@@ -1,9 +1,16 @@
-import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  generateText,
+} from "ai";
 import { searchBookKnowledge } from "../utils/retrieval";
 import { streamAnswer } from "../utils/generateAnswer";
 import { CHAT_CONFIG, ChatRequestSchema } from "../utils/chatConfig";
 import { log } from "../utils/logger";
 import { getBook } from "../utils/bookStore";
+import { db, schema } from "hub:db";
+import { eq, asc } from "drizzle-orm";
+import type { ChatMessage } from "../utils/chatConfig";
 
 /**
  * POST /api/chat
@@ -21,6 +28,13 @@ import { getBook } from "../utils/bookStore";
  *   3. text-start / text-delta / text-end — streamed LLM answer
  */
 export default defineEventHandler(async (event) => {
+  const session = await getUserSession(event);
+  const userId = session.user?.id || session.id;
+
+  if (!userId) {
+    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+  }
+
   const body = await readBody(event);
 
   // --- Input validation with Zod ---
@@ -40,12 +54,53 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const { query, bookIds, history } = validation.data;
+  const { query, bookIds, chatId } = validation.data;
+
+  // Fetch history from DB instead of trusting the client payload
+  let history: ChatMessage[] = [];
+  if (chatId) {
+    const existingChat = await db.query.chats.findFirst({
+      where: eq(schema.chats.id, chatId),
+    });
+
+    if (!existingChat) {
+      throw createError({ statusCode: 404, statusMessage: "Chat not found" });
+    }
+
+    if (existingChat.userId !== userId) {
+      throw createError({ statusCode: 403, statusMessage: "Forbidden" });
+    }
+
+    const dbMessages = await db.query.messages.findMany({
+      where: () => eq(schema.messages.chatId, chatId),
+      orderBy: () => [asc(schema.messages.createdAt)],
+    });
+
+    history = dbMessages.map((msg) => {
+      let content = "";
+      if (Array.isArray(msg.parts)) {
+        content = msg.parts
+          .filter(
+            (p: unknown): p is { text: string } =>
+              p !== null &&
+              typeof p === "object" &&
+              "text" in p &&
+              typeof p.text === "string",
+          )
+          .map((p) => p.text)
+          .join("");
+      }
+      return {
+        role: msg.role as "user" | "assistant",
+        content,
+      };
+    });
+  }
 
   log.info("chat-api", "Processing chat query", {
     queryLength: query.length,
     bookCount: bookIds?.length || 0,
-    historyLength: history?.length || 0,
+    historyLength: history.length,
   });
 
   // --- Verify that all requested books exist and are vectorized ---
@@ -140,6 +195,23 @@ export default defineEventHandler(async (event) => {
   }
 
   // --- Streaming response (has relevant context) ---
+  const currentChatId = chatId || crypto.randomUUID();
+
+  // If new chat, save to database
+  if (!chatId) {
+    await db.insert(schema.chats).values({
+      id: currentChatId,
+      title: "",
+      userId: userId,
+    });
+  }
+
+  // Save user's question to the database
+  await db.insert(schema.messages).values({
+    chatId: currentChatId,
+    role: "user",
+    parts: [{ type: "text", text: query }],
+  });
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
       execute({ writer }) {
@@ -165,7 +237,29 @@ export default defineEventHandler(async (event) => {
         //    failure emits a structured error event instead of breaking the SSE.
         try {
           const result = streamAnswer(query, chunks, history);
-          writer.merge(result.toUIMessageStream());
+          writer.merge(
+            result.toUIMessageStream({
+              sendReasoning: false,
+            }),
+          );
+
+          // Generate a title for the chat if it's new
+          if (!chatId) {
+            event.waitUntil(
+              generateText({
+                model: "gemini-2.5-flash-lite", // or whatever model you use for internal stuff
+                system:
+                  "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
+                prompt: query,
+              }).then(({ text: title }) => {
+                return db
+                  .update(schema.chats)
+                  .set({ title })
+                  .where(eq(schema.chats.id, currentChatId))
+                  .execute();
+              }),
+            );
+          }
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Unknown generation error";
@@ -178,6 +272,18 @@ export default defineEventHandler(async (event) => {
                 "Произошла ошибка при генерации ответа. Попробуйте ещё раз.",
             },
           });
+        }
+      },
+      onFinish: async ({ messages }) => {
+        // Find the assistant message in the output payload and save it
+        for (const message of messages) {
+          if (message.role === "assistant") {
+            await db.insert(schema.messages).values({
+              chatId: currentChatId,
+              role: "assistant",
+              parts: message.parts,
+            });
+          }
         }
       },
       onError(error) {

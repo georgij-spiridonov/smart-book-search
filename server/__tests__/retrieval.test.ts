@@ -142,6 +142,71 @@ describe("retrieval", () => {
       expect(results).toHaveLength(1);
       expect(results[0]!.score).toBe(0.95);
     });
+
+    it("handles missing or undefined data correctly", async () => {
+      // 1. Missing bookIds handled by fallback `|| 0` in logger
+      // 1. Missing result handled by fallback `?? []`
+      mockSearchRecords.mockResolvedValueOnce({
+        result: undefined, // Missing result to cover ?? []
+      });
+      const results1 = await searchBookKnowledge("query", undefined as any);
+      expect(results1).toHaveLength(0);
+
+      const missingScoreHit = {
+        _id: "missing-score",
+        _score: 0.5,
+        fields: {},
+      } as any;
+
+      mockSearchRecords.mockResolvedValueOnce({
+        result: {
+          hits: [
+            missingScoreHit,
+            {
+              _id: "valid-but-empty-fields",
+              _score: 0.5,
+              // missing fields entirely, should fallback to {}
+            },
+            {
+              _id: "completely-missing-score-for-filter",
+              // this covers the `hit._score ?? 0` where score is undefined
+              fields: {},
+            },
+          ],
+        },
+      });
+
+      // Intercept map to make _score undefined after filter
+      const originalMap = Array.prototype.map;
+      const mapMock = vi
+        .spyOn(Array.prototype, "map")
+        .mockImplementation(function (this: any[], callback: any) {
+          if (this.length > 0 && this[0]._id === "missing-score") {
+            this[0]._score = undefined;
+          }
+          return originalMap.call(this, callback);
+        });
+
+      const results2 = await searchBookKnowledge("query", ["book"]);
+
+      mapMock.mockRestore();
+
+      expect(results2).toHaveLength(2);
+      expect(results2[0]).toEqual({
+        text: "",
+        pageNumber: 0,
+        chapterTitle: "",
+        score: 0, // Should be 0 because _score was set to undefined by the mock
+        bookId: "",
+      });
+      expect(results2[1]).toEqual({
+        text: "",
+        pageNumber: 0,
+        chapterTitle: "",
+        score: 0.5,
+        bookId: "",
+      });
+    });
   });
 
   describe("availability", () => {

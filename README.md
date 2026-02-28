@@ -14,7 +14,7 @@
 
 Smart Book Search — это сервис поиска по книгам, использующий ИИ для семантического поиска и взаимодействия с содержимым книг.
 
-Бэкенд предоставляет API для загрузки книг (PDF, ePub, txt), извлечения текста, векторизации содержимого и хранения векторных представлений и умного поиска. Асинхронная обработка фоновых задач построена на базе Inngest.
+Бэкенд предоставляет API для загрузки книг (PDF, ePub, txt), извлечения текста, векторизации содержимого, умного поиска и безопасного хранения истории чатов на сервере. Асинхронная обработка фоновых задач построена на базе Inngest.
 
 ### 🛠️ Стек:
 
@@ -22,6 +22,7 @@ Smart Book Search — это сервис поиска по книгам, исп
 - **ИИ и Эмбеддинги:** [Vercel AI SDK](https://ai-sdk.dev/), [Pinecone](https://www.pinecone.io/)
 - **API и Валидация:** [Zod](https://zod.dev/), [Zod-OpenAPI](https://www.npmjs.com/package/zod-openapi)
 - **Хранилище файлов:** [Vercel Blob](https://vercel.com/docs/storage/vercel-blob)
+- **БД и История чатов:** SQLite (через [NuxtHub](https://hub.nuxt.com/)), [Drizzle ORM](https://orm.drizzle.team/)
 - **Кеширование и Rate Limits:** [Upstash Redis](https://upstash.com/)
 - **Фоновые задачи:** [Inngest](https://www.inngest.com/)
 
