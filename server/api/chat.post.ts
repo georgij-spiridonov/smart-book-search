@@ -59,6 +59,18 @@ export default defineEventHandler(async (event) => {
   // Fetch history from DB instead of trusting the client payload
   let history: ChatMessage[] = [];
   if (chatId) {
+    const existingChat = await db.query.chats.findFirst({
+      where: eq(schema.chats.id, chatId),
+    });
+
+    if (!existingChat) {
+      throw createError({ statusCode: 404, statusMessage: "Chat not found" });
+    }
+
+    if (existingChat.userId !== userId) {
+      throw createError({ statusCode: 403, statusMessage: "Forbidden" });
+    }
+
     const dbMessages = await db.query.messages.findMany({
       where: () => eq(schema.messages.chatId, chatId),
       orderBy: () => [asc(schema.messages.createdAt)],

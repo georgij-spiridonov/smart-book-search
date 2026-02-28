@@ -65,31 +65,40 @@ vi.mock("ai", () => ({
 // =======================
 // Mocks for DB
 // =======================
-const { mockInsert, mockUpdate, mockInsertValues, mockFindMany } = vi.hoisted(
-  () => {
-    const mockInsertValues = vi.fn();
-    const mockUpdateExecute = vi.fn();
-    const mockUpdateWhere = vi.fn(() => ({ execute: mockUpdateExecute }));
-    const mockUpdateSet = vi.fn(() => ({ where: mockUpdateWhere }));
-    const mockFindMany = vi.fn();
+const {
+  mockInsert,
+  mockUpdate,
+  mockInsertValues,
+  mockFindMany,
+  mockFindFirstChat,
+} = vi.hoisted(() => {
+  const mockInsertValues = vi.fn();
+  const mockUpdateExecute = vi.fn();
+  const mockUpdateWhere = vi.fn(() => ({ execute: mockUpdateExecute }));
+  const mockUpdateSet = vi.fn(() => ({ where: mockUpdateWhere }));
+  const mockFindMany = vi.fn();
+  const mockFindFirstChat = vi.fn();
 
-    return {
-      mockFindMany,
-      mockInsertValues,
-      mockUpdateExecute,
-      mockUpdateWhere,
-      mockUpdateSet,
-      mockInsert: vi.fn(() => ({ values: mockInsertValues })),
-      mockUpdate: vi.fn(() => ({ set: mockUpdateSet })),
-    };
-  },
-);
+  return {
+    mockFindMany,
+    mockFindFirstChat,
+    mockInsertValues,
+    mockUpdateExecute,
+    mockUpdateWhere,
+    mockUpdateSet,
+    mockInsert: vi.fn(() => ({ values: mockInsertValues })),
+    mockUpdate: vi.fn(() => ({ set: mockUpdateSet })),
+  };
+});
 
 vi.mock("hub:db", () => ({
   db: {
     query: {
       messages: {
         findMany: (...args: any[]) => mockFindMany(...args),
+      },
+      chats: {
+        findFirst: (...args: any[]) => mockFindFirstChat(...args),
       },
     },
     insert: mockInsert,
@@ -325,6 +334,43 @@ describe("POST /api/chat", () => {
     await chatPostHandler(event as any);
   });
 
+  it("should throw 403 Forbidden if user requests chat belonging to another user", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({
+      id: "anon",
+      user: { id: "user-1" },
+    } as any);
+    mockedReadBody.mockResolvedValueOnce({
+      query: "Random question",
+      bookIds: ["book-2"],
+      chatId: "other-users-chat",
+    });
+
+    mockFindFirstChat.mockResolvedValueOnce({
+      id: "other-users-chat",
+      userId: "user-2", // Different user
+    });
+
+    await expect(chatPostHandler({} as any)).rejects.toThrowError("Forbidden");
+  });
+
+  it("should throw 404 Not Found if requested chat does not exist", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({
+      id: "anon",
+      user: { id: "user-1" },
+    } as any);
+    mockedReadBody.mockResolvedValueOnce({
+      query: "Random question",
+      bookIds: ["book-2"],
+      chatId: "nonexistent-chat",
+    });
+
+    mockFindFirstChat.mockResolvedValueOnce(undefined);
+
+    await expect(chatPostHandler({} as any)).rejects.toThrowError(
+      "Chat not found",
+    );
+  });
+
   it("should fetch history and not insert new chat if chatId is provided", async () => {
     mockedGetUserSession.mockResolvedValueOnce({
       id: "anon",
@@ -334,6 +380,11 @@ describe("POST /api/chat", () => {
       query: "Second question",
       bookIds: ["book-2"],
       chatId: "existing-chat-id",
+    });
+
+    mockFindFirstChat.mockResolvedValueOnce({
+      id: "existing-chat-id",
+      userId: "user-1",
     });
 
     mockFindMany.mockImplementationOnce((args: any) => {
