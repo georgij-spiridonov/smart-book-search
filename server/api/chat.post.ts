@@ -81,8 +81,11 @@ export default defineEventHandler(async (event) => {
       if (Array.isArray(msg.parts)) {
         content = msg.parts
           .filter(
-            (p: any): p is { text: string } =>
-              p !== null && typeof p === "object" && typeof p.text === "string",
+            (p: unknown): p is { text: string } =>
+              p !== null &&
+              typeof p === "object" &&
+              "text" in p &&
+              typeof p.text === "string",
           )
           .map((p) => p.text)
           .join("");
