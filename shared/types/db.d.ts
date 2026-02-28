@@ -6,6 +6,5 @@ export type Message = typeof messages.$inferSelect;
 declare module "#auth-utils" {
   interface User {
     id: string;
-    username: string;
   }
 }

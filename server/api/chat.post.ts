@@ -9,7 +9,8 @@ import { CHAT_CONFIG, ChatRequestSchema } from "../utils/chatConfig";
 import { log } from "../utils/logger";
 import { getBook } from "../utils/bookStore";
 import { db, schema } from "hub:db";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
+import type { ChatMessage } from "../utils/chatConfig";
 
 /**
  * POST /api/chat
@@ -53,12 +54,30 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const { query, bookIds, history, chatId } = validation.data;
+  const { query, bookIds, chatId } = validation.data;
+
+  // Fetch history from DB instead of trusting the client payload
+  let history: ChatMessage[] = [];
+  if (chatId) {
+    const dbMessages = await db.query.messages.findMany({
+      where: () => eq(schema.messages.chatId, chatId),
+      orderBy: () => [asc(schema.messages.createdAt)],
+    });
+
+    history = dbMessages.map((msg) => {
+      const partsArr = (msg.parts as { text: string }[]) || [];
+      const content = partsArr.map((p) => p.text).join("");
+      return {
+        role: msg.role as "user" | "assistant",
+        content,
+      };
+    });
+  }
 
   log.info("chat-api", "Processing chat query", {
     queryLength: query.length,
     bookCount: bookIds?.length || 0,
-    historyLength: history?.length || 0,
+    historyLength: history.length,
   });
 
   // --- Verify that all requested books exist and are vectorized ---
@@ -203,17 +222,20 @@ export default defineEventHandler(async (event) => {
 
           // Generate a title for the chat if it's new
           if (!chatId) {
-            generateText({
-              model: "gemini-2.5-flash-lite", // or whatever model you use for internal stuff
-              system:
-                "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
-              prompt: query,
-            }).then(({ text: title }) => {
-              db.update(schema.chats)
-                .set({ title })
-                .where(eq(schema.chats.id, currentChatId))
-                .execute();
-            });
+            event.waitUntil(
+              generateText({
+                model: "gemini-2.5-flash-lite", // or whatever model you use for internal stuff
+                system:
+                  "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
+                prompt: query,
+              }).then(({ text: title }) => {
+                return db
+                  .update(schema.chats)
+                  .set({ title })
+                  .where(eq(schema.chats.id, currentChatId))
+                  .execute();
+              }),
+            );
           }
         } catch (error) {
           const message =
