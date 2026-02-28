@@ -50,12 +50,12 @@ vi.stubGlobal("useRuntimeConfig", () => ({
   upstashRedisToken: "token",
 }));
 
-import { generateText } from "ai";
+import { generateText, streamText } from "ai";
 import { CHAT_CONFIG } from "../utils/chatConfig";
-import { generateAnswer } from "../utils/generateAnswer";
+import { generateAnswer, streamAnswer } from "../utils/generateAnswer";
 
 const mockedGenerateText = vi.mocked(generateText);
-
+const mockedStreamText = vi.mocked(streamText);
 describe("chatPipeline", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -112,6 +112,45 @@ describe("chatPipeline", () => {
 
       const answer = await generateAnswer("test question", [], []);
       expect(answer.text).toBeTruthy();
+    });
+
+    it("includes history in the prompt", async () => {
+      mockedGenerateText.mockResolvedValueOnce({
+        text: "History response",
+        usage: { inputTokens: 50, outputTokens: 10 },
+      } as any);
+
+      const answer = await generateAnswer(
+        "question",
+        [],
+        [
+          { role: "user", content: "prev q" },
+          { role: "assistant", content: "prev a" },
+        ],
+      );
+      expect(answer.text).toBe("History response");
+      expect(mockedGenerateText).toHaveBeenCalledOnce();
+    });
+
+    it("supports streamAnswer with history and chunks", () => {
+      mockedStreamText.mockReturnValueOnce("mock-stream" as any);
+
+      const result = streamAnswer(
+        "question",
+        [
+          {
+            text: "ctx",
+            score: 1,
+            bookId: "1",
+            pageNumber: 1,
+            chapterTitle: "1",
+          },
+        ],
+        [{ role: "user", content: "hello" }],
+      );
+
+      expect(result).toBe("mock-stream");
+      expect(mockedStreamText).toHaveBeenCalledOnce();
     });
   });
 
