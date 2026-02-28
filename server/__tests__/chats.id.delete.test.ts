@@ -80,7 +80,7 @@ describe("DELETE /api/chats/[id]", () => {
   it("should throw 404 Not Found if chat doesn't exist", async () => {
     mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-123" } });
     mockedGetRouterParams.mockReturnValue({ id: "chat-unknown" });
-    mockFindFirst.mockResolvedValueOnce(null);
+    mockDeleteReturning.mockResolvedValueOnce([]);
 
     await expect(chatDeleteHandler({} as any)).rejects.toThrowError(
       "Chat not found",
@@ -96,17 +96,12 @@ describe("DELETE /api/chats/[id]", () => {
 
     mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-123" } });
     mockedGetRouterParams.mockReturnValue({ id: "chat-to-delete" });
-    mockFindFirst.mockImplementationOnce((args: any) => {
-      if (typeof args?.where === "function") args.where();
-      return Promise.resolve(mockChat);
-    });
     mockDeleteReturning.mockResolvedValueOnce([mockChat]);
 
     const result = await chatDeleteHandler({} as any);
 
     expect(mockedGetUserSession).toHaveBeenCalledOnce();
     expect(mockedGetRouterParams).toHaveBeenCalledOnce();
-    expect(mockFindFirst).toHaveBeenCalledOnce();
     expect(mockDelete).toHaveBeenCalledWith(expect.anything()); // schema.chats
     expect(mockDeleteWhere).toHaveBeenCalledOnce();
     expect(mockDeleteReturning).toHaveBeenCalledOnce();

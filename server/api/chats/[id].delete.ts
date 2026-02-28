@@ -10,22 +10,24 @@ export default defineEventHandler(async (event) => {
   }
   const { id } = getRouterParams(event);
 
-  const chat = await db.query.chats.findFirst({
-    where: () =>
-      and(eq(schema.chats.id, id as string), eq(schema.chats.userId, userId)),
-  });
+  if (!id) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Bad Request: Missing id parameter",
+    });
+  }
 
-  if (!chat) {
+  const [deletedChat] = await db
+    .delete(schema.chats)
+    .where(and(eq(schema.chats.id, id), eq(schema.chats.userId, userId)))
+    .returning();
+
+  if (!deletedChat) {
     throw createError({
       statusCode: 404,
       statusMessage: "Chat not found",
     });
   }
 
-  return await db
-    .delete(schema.chats)
-    .where(
-      and(eq(schema.chats.id, id as string), eq(schema.chats.userId, userId)),
-    )
-    .returning();
+  return [deletedChat];
 });
