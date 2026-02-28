@@ -262,21 +262,34 @@ export const Error500Schema = createErrorSchema(500, "Internal Server Error");
 
 // ─────────────────────────── Chat Endpoints ───────────────────────────
 
+export const TextPartSchema = z.object({
+  type: z.literal("text"),
+  text: z.string().meta({
+    description: "Text content of the message part.",
+    example: "Hello, how can I help you today?",
+  }),
+});
+
+export const MessagePartSchema = z
+  .union([
+    TextPartSchema,
+    z
+      .object({ type: z.string() })
+      .passthrough()
+      .meta({ description: "Generic message part for future-proofing." }),
+  ])
+  .meta({ id: "MessagePart" });
+
 export const ChatItemSchema = z
   .object({
-    id: z
-      .string()
-      .meta({
-        description: "Chat ID",
-        example: "123e4567-e89b-12d3-a456-426614174000",
-      }),
-    title: z
-      .string()
-      .nullable()
-      .meta({
-        description: "Generated chat title based on the first message",
-        example: "Discussing War and Peace",
-      }),
+    id: z.string().meta({
+      description: "Chat ID",
+      example: "123e4567-e89b-12d3-a456-426614174000",
+    }),
+    title: z.string().nullable().meta({
+      description: "Generated chat title based on the first message",
+      example: "Discussing War and Peace",
+    }),
     userId: z
       .string()
       .meta({ description: "User ID owner of this chat", example: "user_123" }),
@@ -294,12 +307,10 @@ export const MessageItemSchema = z
     role: z
       .enum(["user", "assistant", "system"])
       .meta({ description: "Role of the message sender" }),
-    parts: z
-      .any()
-      .meta({
-        description: "Array of message parts (e.g. text blocks)",
-        example: [{ type: "text", text: "Hello" }],
-      }),
+    parts: z.array(MessagePartSchema).meta({
+      description: "Array of message parts (e.g. text blocks)",
+      example: [{ type: "text", text: "Hello" }],
+    }),
     createdAt: z
       .string()
       .datetime()
