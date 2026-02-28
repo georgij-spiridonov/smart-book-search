@@ -13,7 +13,19 @@ export default defineNuxtConfig({
       enabled: true,
     },
   },
-  modules: ["@nuxt/eslint", "@nuxthub/core", "nuxt-auth-utils"],
+  modules: ["@nuxt/eslint", "@nuxthub/core", "nuxt-auth-utils", "@nuxtjs/i18n"],
+  i18n: {
+    locales: [
+      {
+        code: "ru",
+        file: "ru.json",
+        name: "Русский",
+      },
+    ],
+    langDir: "locales",
+    defaultLocale: "ru",
+    strategy: "no_prefix",
+  },
   hub: {
     db: "sqlite",
   },
