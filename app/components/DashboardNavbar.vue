@@ -17,7 +17,7 @@ const availableLocales = computed(() => {
 
 <template>
   <UDashboardNavbar
-    class="sticky lg:absolute top-0 inset-x-0 border-b-0 z-10 bg-default/75 backdrop-blur lg:bg-transparent lg:backdrop-blur-none pointer-events-none sm:px-4"
+    class="sticky lg:absolute top-0 inset-x-0 border-b-0 z-10 bg-default/75 backdrop-blur lg:bg-transparent lg:backdrop-blur-none pointer-events-none px-4 sm:px-6 lg:px-8"
     :ui="{ left: 'pointer-events-auto', right: 'pointer-events-auto' }"
   >
     <template #left>

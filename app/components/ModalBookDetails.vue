@@ -81,7 +81,7 @@ function startChat() {
       <div class="flex flex-col gap-4">
         <div
           v-if="book.coverUrl"
-          class="w-full h-48 sm:h-64 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0"
+          class="w-full aspect-2/3 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0"
         >
           <img
             :src="book.coverUrl"

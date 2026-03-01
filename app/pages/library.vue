@@ -75,7 +75,7 @@ function openBookDetails(book: BookRecord) {
     <template #body>
       <div class="flex flex-1 flex-col overflow-y-auto">
         <UContainer
-          class="p-4 sm:p-6 w-full max-w-7xl mx-auto flex flex-col gap-6"
+          class="px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:pb-8 lg:pt-(--ui-header-height) w-full max-w-none flex flex-col gap-6"
         >
           <div class="sm:hidden flex justify-between items-center mb-2">
             <h1 class="text-2xl font-bold text-highlighted">
@@ -114,7 +114,7 @@ function openBookDetails(book: BookRecord) {
 
           <div
             v-else
-            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6"
           >
             <UPageCard
               v-for="book in books"
@@ -126,7 +126,7 @@ function openBookDetails(book: BookRecord) {
             >
               <template #header>
                 <div
-                  class="w-full h-40 bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center pb-0"
+                  class="w-full aspect-2/3 bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center pb-0 rounded-md overflow-hidden"
                 >
                   <img
                     v-if="book.coverUrl"
@@ -144,13 +144,14 @@ function openBookDetails(book: BookRecord) {
 
               <template #footer>
                 <div
-                  class="flex items-center justify-between text-xs text-muted w-full pt-2"
+                  class="flex items-center justify-between text-xs text-muted w-full pt-2 gap-2"
                 >
-                  <span>{{ formatBytes(book.fileSize) }}</span>
+                  <span class="shrink-0">{{ formatBytes(book.fileSize) }}</span>
                   <UBadge
                     :color="book.vectorized ? 'success' : 'warning'"
                     variant="subtle"
                     size="sm"
+                    class="truncate"
                   >
                     {{
                       book.vectorized
