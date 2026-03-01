@@ -195,7 +195,7 @@ defineShortcuts({
             </UButton>
           </div>
 
-          <UDivider v-if="!collapsed" class="px-4" />
+          <USeparator v-if="!collapsed" class="px-4" />
 
           <div v-if="!collapsed" class="w-full flex-1 overflow-y-auto px-2">
             <UNavigationMenu

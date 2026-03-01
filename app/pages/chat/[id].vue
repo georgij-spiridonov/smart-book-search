@@ -170,6 +170,17 @@ onMounted(() => {
                   {{ (part as any).text }}
                 </p>
               </template>
+
+              <!-- Citations rendered after the main content -->
+              <template
+                v-for="(part, index) in message.parts"
+                :key="`cit-${message.id}-${index}`"
+              >
+                <AppCitations
+                  v-if="part.type === 'data-chunks'"
+                  :chunks="(part as any).data"
+                />
+              </template>
             </template>
           </UChatMessages>
 
