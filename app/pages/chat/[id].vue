@@ -26,14 +26,18 @@ if (!data.value) {
 
 const { data: booksData } = await useFetch("/api/books");
 const books = computed(() => booksData.value?.books || []);
-const selectedBook = ref(books.value.find(b => data.value?.bookIds?.includes(b.id)));
+const selectedBook = ref(
+  books.value.find((b) => data.value?.bookIds?.includes(b.id)),
+);
 
 const input = ref("");
 
 const chat = new Chat({
   id: data.value.id,
   messages: data.value.messages as UIMessage[],
-  transport: createBookChatTransport(computed(() => selectedBook.value ? [selectedBook.value.id] : [])),
+  transport: createBookChatTransport(
+    computed(() => (selectedBook.value ? [selectedBook.value.id] : [])),
+  ),
   onError(error) {
     const { message } =
       typeof error.message === "string" && error.message[0] === "{"
@@ -166,6 +170,12 @@ onMounted(() => {
                 >
                   <template #leading>
                     <UIcon name="i-lucide-book" class="size-4" />
+                  </template>
+                  <template #empty="{ searchTerm }">
+                    <span v-if="searchTerm">{{
+                      t("chat.noMatchingBooks")
+                    }}</span>
+                    <span v-else>{{ t("chat.noBooks") }}</span>
                   </template>
                 </USelectMenu>
               </div>

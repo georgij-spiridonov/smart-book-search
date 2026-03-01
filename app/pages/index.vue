@@ -76,6 +76,12 @@ async function onSubmit() {
                   <template #leading>
                     <UIcon name="i-lucide-book" class="size-4" />
                   </template>
+                  <template #empty="{ searchTerm }">
+                    <span v-if="searchTerm">{{
+                      t("chat.noMatchingBooks")
+                    }}</span>
+                    <span v-else>{{ t("chat.noBooks") }}</span>
+                  </template>
                 </USelectMenu>
               </div>
 

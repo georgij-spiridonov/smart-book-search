@@ -24,6 +24,8 @@
     "placeholder": "Введите сообщение...",
     "selectBook": "Выберите книгу",
     "searchBooks": "Поиск книг...",
+    "noBooks": "Нет книг",
+    "noMatchingBooks": "Книги не найдены",
     "copy": "Копировать",
     "notFound": "Чат не найден",
     "sourceCode": "Исходный код"

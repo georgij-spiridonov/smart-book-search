@@ -24,6 +24,8 @@
     "placeholder": "Type a message...",
     "selectBook": "Select a book",
     "searchBooks": "Search books...",
+    "noBooks": "No books",
+    "noMatchingBooks": "No matching books",
     "copy": "Copy",
     "notFound": "Chat not found",
     "sourceCode": "Source code"
