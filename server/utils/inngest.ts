@@ -41,7 +41,7 @@ export const inngest = new Inngest({
   eventKey: isDev ? "test" : process.env.INNGEST_EVENT_KEY,
 });
 
-const PINECONE_BATCH_SIZE = 100;
+const PINECONE_BATCH_SIZE = 96;
 
 /**
  * Inngest function for book vectorization.
@@ -250,11 +250,15 @@ export const vectorizeBook = inngest.createFunction(
                   chapterTitle: chunk.title || "",
                 }));
 
+                const upsertPromises = [];
                 for (let j = 0; j < records.length; j += PINECONE_BATCH_SIZE) {
-                  await index.upsertRecords({
-                    records: records.slice(j, j + PINECONE_BATCH_SIZE),
-                  });
+                  upsertPromises.push(
+                    index.upsertRecords({
+                      records: records.slice(j, j + PINECONE_BATCH_SIZE),
+                    }),
+                  );
                 }
+                await Promise.all(upsertPromises);
                 batchNewVectors += records.length;
               }
               batchChunksProcessed += pageChunks.length;
@@ -345,18 +349,26 @@ async function getExistingChunkIds(
     (c) => `${Buffer.from(bookId).toString("base64url")}-chunk-${c.chunkIndex}`,
   );
   const existing = new Set<string>();
+
+  const fetchPromises = [];
   for (let i = 0; i < candidateIds.length; i += 1000) {
     const batch = candidateIds.slice(i, i + 1000);
-    try {
-      const fetched = await index.fetch({ ids: batch });
-      if (fetched.records) {
-        for (const id of Object.keys(fetched.records)) {
-          existing.add(id);
-        }
+    fetchPromises.push(
+      index.fetch({ ids: batch }).catch(() => {
+        // If fetch fails, assume nothing exists to proceed with vectorization
+        return { records: {} };
+      }),
+    );
+  }
+
+  const results = await Promise.all(fetchPromises);
+  for (const fetched of results) {
+    if (fetched && fetched.records) {
+      for (const id of Object.keys(fetched.records)) {
+        existing.add(id);
       }
-    } catch {
-      // If fetch fails, assume nothing exists to proceed with vectorization
     }
   }
+
   return existing;
 }
