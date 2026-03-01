@@ -5,7 +5,9 @@ const route = useRoute();
 const input = ref("");
 const loading = ref(false);
 
-const { data: booksData } = await useFetch("/api/books");
+const { data: booksData } = await useFetch("/api/books", {
+  key: "books",
+});
 const books = computed(() => booksData.value?.books || []);
 const selectedBook = ref(books.value.find((b) => b.id === route.query.bookId));
 

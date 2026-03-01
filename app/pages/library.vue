@@ -13,13 +13,73 @@ interface BookRecord {
   fileSize: number;
   uploadedAt: string;
   vectorized: boolean;
+  job?: {
+    id: string;
+    status: "pending" | "processing" | "completed" | "failed";
+    progress: {
+      currentPage: number;
+      totalPages: number;
+      chunksProcessed: number;
+      totalChunks: number;
+    };
+  } | null;
 }
 
 const { t } = useI18n();
 const overlay = useOverlay();
 
-const { data: booksData, refresh } = await useFetch("/api/books");
+const { data: booksData, refresh } = await useFetch("/api/books", {
+  key: "books",
+});
 const books = computed(() => booksData.value?.books || []);
+
+// Adaptive polling for book status/progress updates
+const pollingActive = ref(false);
+let timer: NodeJS.Timeout | null = null;
+
+function startPolling(interval: number) {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      refresh();
+    }
+  }, interval);
+}
+
+// Watch for books that need active monitoring (processing or pending)
+watch(
+  () => books.value,
+  (newBooks) => {
+    const hasActiveJobs = newBooks.some(
+      (b) =>
+        !b.vectorized &&
+        b.job &&
+        (b.job.status === "processing" || b.job.status === "pending"),
+    );
+
+    if (hasActiveJobs) {
+      // If there are active jobs, poll every 5 seconds
+      startPolling(5000);
+      pollingActive.value = true;
+    } else if (pollingActive.value) {
+      // If no active jobs, but we were in "fast mode", slow down to 30s
+      startPolling(30000);
+      pollingActive.value = false;
+    }
+  },
+  { immediate: true, deep: true },
+);
+
+onMounted(() => {
+  // Initial slow poll for background updates
+  if (!pollingActive.value) {
+    startPolling(30000);
+  }
+});
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+});
 
 function openUploadModal() {
   const modal = overlay.create(LazyModalBookUpload, {
@@ -143,22 +203,59 @@ function openBookDetails(book: BookRecord) {
               </template>
 
               <template #footer>
-                <div
-                  class="flex items-center justify-between text-xs text-muted w-full pt-2 gap-2"
-                >
-                  <span class="shrink-0">{{ formatBytes(book.fileSize) }}</span>
-                  <UBadge
-                    :color="book.vectorized ? 'success' : 'warning'"
-                    variant="subtle"
-                    size="sm"
-                    class="truncate"
+                <div class="flex flex-col w-full gap-2 pt-2">
+                  <div
+                    v-if="book.job && book.job.status === 'processing'"
+                    class="w-full space-y-1"
                   >
-                    {{
-                      book.vectorized
-                        ? t("library.processed")
-                        : t("library.pending")
-                    }}
-                  </UBadge>
+                    <div class="flex justify-between text-[10px] text-muted">
+                      <span>{{ t("library.processing") }}</span>
+                      <span>{{
+                        Math.round(
+                          (book.job.progress.chunksProcessed /
+                            book.job.progress.totalChunks) *
+                            100,
+                        ) || 0
+                      }}%</span>
+                    </div>
+                    <UProgress
+                      :value="book.job.progress.chunksProcessed"
+                      :max="book.job.progress.totalChunks"
+                      size="xs"
+                      color="primary"
+                    />
+                  </div>
+
+                  <div
+                    class="flex items-center justify-between text-xs text-muted w-full gap-2"
+                  >
+                    <span class="shrink-0">{{
+                      formatBytes(book.fileSize)
+                    }}</span>
+                    <UBadge
+                      :color="
+                        book.vectorized
+                          ? 'success'
+                          : book.job?.status === 'processing' ||
+                              book.job?.status === 'pending'
+                            ? 'primary'
+                            : 'warning'
+                      "
+                      variant="subtle"
+                      size="sm"
+                      class="truncate"
+                    >
+                      {{
+                        book.vectorized
+                          ? t("library.processed")
+                          : book.job?.status === "processing"
+                            ? t("library.processing")
+                            : book.job?.status === "pending"
+                              ? t("library.pending")
+                              : t("library.waiting")
+                      }}
+                    </UBadge>
+                  </div>
                 </div>
               </template>
             </UPageCard>

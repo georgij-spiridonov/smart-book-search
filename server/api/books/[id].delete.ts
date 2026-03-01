@@ -3,6 +3,7 @@ import { Pinecone } from "@pinecone-database/pinecone";
 import { getBook, deleteBook } from "../../utils/bookStore";
 import { deleteHashesByBlobUrl } from "../../utils/hashStore";
 import { log } from "../../utils/logger";
+import { publishEvent } from "../../utils/events";
 
 /**
  * DELETE /api/books/[id]
@@ -13,6 +14,9 @@ import { log } from "../../utils/logger";
  * 3. Deletes the book record and indexes from Upstash Redis.
  */
 export default defineEventHandler(async (event) => {
+  const session = await getUserSession(event);
+  const userId = session.user?.id || session.id;
+
   const config = useRuntimeConfig();
   const rawId = getRouterParam(event, "id");
   const id = rawId ? decodeURIComponent(rawId) : undefined;
@@ -68,6 +72,14 @@ export default defineEventHandler(async (event) => {
 
     // 3. Delete from Redis Store
     await deleteBook(id);
+
+    // Notify client about book deletion
+    if (userId) {
+      await publishEvent(userId, "book:updated", {
+        bookId: id,
+        status: "deleted",
+      });
+    }
 
     return {
       status: "success",

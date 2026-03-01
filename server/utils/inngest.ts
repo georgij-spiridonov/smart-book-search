@@ -10,6 +10,7 @@ import {
 import { updateJob } from "./jobStore";
 import { markBookVectorized } from "./bookStore";
 import { log } from "./logger";
+import { publishEvent } from "./events";
 
 async function fetchBlobWithRetries(
   url: string,
@@ -31,9 +32,6 @@ async function fetchBlobWithRetries(
 }
 
 // Create Inngest client
-// In development:
-//   - isDev: true → routes events to local Dev Server (localhost:8288) instead of Inngest Cloud
-//   - eventKey: "test" → prevents SDK from auto-reading the cloud INNGEST_EVENT_KEY from .env
 const isDev = process.env.NODE_ENV !== "production";
 export const inngest = new Inngest({
   id: "smart-book-search",
@@ -54,6 +52,7 @@ export const vectorizeBook = inngest.createFunction(
     const {
       jobId,
       bookId,
+      userId,
       blobUrl,
       bookName,
       author,
@@ -68,8 +67,16 @@ export const vectorizeBook = inngest.createFunction(
           jobId,
           bookId,
           resume,
+          userId,
         });
         await updateJob(jobId, { status: "processing" });
+
+        if (userId) {
+          await publishEvent(userId, "job:updated", {
+            jobId,
+            status: "processing",
+          });
+        }
       });
 
       // 1. Wait for blob availability
@@ -78,53 +85,28 @@ export const vectorizeBook = inngest.createFunction(
         let retries = 0;
 
         while (retries < maxRetries) {
-          log.info("inngest", "Checking blob availability", {
-            blobUrl,
-            attempt: retries + 1,
-          });
           try {
             const response = await fetch(blobUrl, { method: "HEAD" });
-            if (response.ok) {
-              log.info("inngest", "Blob is available", { blobUrl });
-              return true;
-            }
+            if (response.ok) return true;
           } catch {
-            // ignore network errors during check
+            // ignore
           }
-
-          log.info("inngest", "Blob not yet available, waiting...", {
-            blobUrl,
-          });
           await new Promise((resolve) => setTimeout(resolve, 2000));
           retries++;
         }
-
-        throw new Error(
-          "Blob did not become available within the expected time limit.",
-        );
+        throw new Error("Blob did not become available.");
       });
 
       // 2. Fetch and hash check
       const { fileHash, filename } = await step.run(
         "fetch-and-hash",
         async () => {
-          log.info("inngest", "Fetching blob for hash check", { blobUrl });
           const response = await fetchBlobWithRetries(blobUrl);
-          if (!response.ok) {
-            log.error("inngest", "Failed to download file from Blob", {
-              statusText: response.statusText,
-            });
-            throw new Error(
-              `Failed to download file from Blob: ${response.statusText}`,
-            );
-          }
+          if (!response.ok) throw new Error("Failed to download file.");
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
           const fileHash = getFileHash(buffer);
           const filename = blobUrl.split("/").pop() || "unknown.txt";
-
-          // Return only what's needed for next steps.
-          // We re-fetch in extraction to avoid passing large buffers through Inngest state (4MB limit).
           return { fileHash, filename };
         },
       );
@@ -133,15 +115,20 @@ export const vectorizeBook = inngest.createFunction(
         "check-already-vectorized",
         async () => {
           if (!resume && (await isFileVectorized(fileHash))) {
-            await updateJob(jobId, {
-              status: "completed",
-              result: {
-                totalPages: 0,
-                totalChunks: 0,
-                skipped: 0,
-                newVectors: 0,
-              },
-            });
+            const result = {
+              totalPages: 0,
+              totalChunks: 0,
+              skipped: 0,
+              newVectors: 0,
+            };
+            await updateJob(jobId, { status: "completed", result });
+            if (userId) {
+              await publishEvent(userId, "job:updated", {
+                jobId,
+                status: "completed",
+                result,
+              });
+            }
             return true;
           }
           return false;
@@ -150,41 +137,42 @@ export const vectorizeBook = inngest.createFunction(
 
       if (alreadyVectorized) return;
 
-      // 2. Extract text
-      // We re-fetch here to avoid passing large buffers through Inngest state
+      // 3. Extract text
       const pages = await step.run("extract-text", async () => {
-        log.info("inngest", "Extracting text from document", { fileHash });
         const response = await fetchBlobWithRetries(blobUrl);
-        if (!response.ok) {
-          throw new Error(
-            `Failed to download file from Blob: ${response.statusText}`,
-          );
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        if (!response.ok) throw new Error("Failed to download file.");
+        const buffer = Buffer.from(await response.arrayBuffer());
         const extractedPages = await extractText(buffer, filename);
-        if (!extractedPages.length) {
-          throw new Error("No text could be extracted from the file.");
-        }
+        if (!extractedPages.length) throw new Error("No text extracted.");
         return extractedPages;
       });
 
       const totalChunks = await step.run("calculate-total-chunks", async () => {
         const allChunks = splitPages(pages);
         const count = allChunks.length;
-        await updateJob(jobId, {
-          progress: {
-            currentPage: 0,
-            totalPages: pages.length,
-            chunksProcessed: 0,
-            totalChunks: count,
-          },
-        });
+        const progress = {
+          currentPage: 0,
+          totalPages: pages.length,
+          chunksProcessed: 0,
+          totalChunks: count,
+        };
+        await updateJob(jobId, { progress });
+        if (userId) {
+          await publishEvent(userId, "job:updated", {
+            jobId,
+            status: "processing",
+            progress,
+          });
+        }
         return count;
       });
 
-      // 3. Process in batches of pages to stay within step limits
-      const PAGE_BATCH_SIZE = 10;
+      // 4. Process in batches
+      // Dynamically adjust batch size: for small files process 1 by 1, for large up to 10
+      const PAGE_BATCH_SIZE = Math.max(
+        1,
+        Math.min(10, Math.floor(pages.length / 10)),
+      );
       let chunksProcessed = 0;
       let skipped = 0;
       let newVectorsCount = 0;
@@ -231,13 +219,6 @@ export const vectorizeBook = inngest.createFunction(
               batchSkipped += pageChunks.length - newChunks.length;
 
               if (newChunks.length > 0) {
-                log.info(
-                  "inngest",
-                  "Upserting new chunks via integrated embedding",
-                  {
-                    chunkCount: newChunks.length,
-                  },
-                );
                 const records = newChunks.map((chunk) => ({
                   id: `${Buffer.from(bookId).toString("base64url")}-chunk-${chunk.chunkIndex}`,
                   text: chunk.text.slice(0, 1000),
@@ -279,69 +260,73 @@ export const vectorizeBook = inngest.createFunction(
         globalChunkOffset = result.nextOffset;
 
         await step.run(`update-progress-${i}`, async () => {
-          await updateJob(jobId, {
-            progress: {
-              currentPage: Math.min(i + PAGE_BATCH_SIZE, pages.length),
-              totalPages: pages.length,
-              chunksProcessed,
-              totalChunks,
-            },
-          });
+          const progress = {
+            currentPage: Math.min(i + PAGE_BATCH_SIZE, pages.length),
+            totalPages: pages.length,
+            chunksProcessed,
+            totalChunks,
+          };
+          await updateJob(jobId, { progress });
+          if (userId) {
+            await publishEvent(userId, "job:updated", {
+              jobId,
+              status: "processing",
+              progress,
+            });
+          }
         });
       }
 
-      // 4. Finalize
+      // 5. Finalize
       await step.run("finalize-job", async () => {
-        log.info("inngest", "Finalizing vectorization process", {
-          totalPages: pages.length,
-          totalChunks,
-          skipped,
-          newVectors: newVectorsCount,
-        });
         await markFileAsVectorized(fileHash);
         try {
           await markBookVectorized(bookId);
         } catch {
-          // Book may not exist in store if uploaded before this feature
+          // ignore
         }
 
-        await updateJob(jobId, {
-          status: "completed",
-          result: {
-            totalPages: pages.length,
-            totalChunks,
-            skipped,
-            newVectors: newVectorsCount,
-          },
-        });
+        const result = {
+          totalPages: pages.length,
+          totalChunks,
+          skipped,
+          newVectors: newVectorsCount,
+        };
+
+        await updateJob(jobId, { status: "completed", result });
+
+        if (userId) {
+          await publishEvent(userId, "job:updated", {
+            jobId,
+            status: "completed",
+            result,
+          });
+          await publishEvent(userId, "book:updated", {
+            bookId,
+            vectorized: true,
+          });
+        }
       });
     } catch (error: unknown) {
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "Unknown error during background processing";
-
-      log.error("inngest", "Background processing failed", {
-        jobId,
-        bookId,
-        error: errorMessage,
-      });
-
+        error instanceof Error ? error.message : "Unknown error";
       await step.run("mark-failed", async () => {
-        await updateJob(jobId, {
-          status: "failed",
-          error: errorMessage,
-        });
+        await updateJob(jobId, { status: "failed", error: errorMessage });
+        if (userId) {
+          await publishEvent(userId, "job:updated", {
+            jobId,
+            status: "failed",
+            error: errorMessage,
+          });
+        }
       });
-      throw error; // Re-throw for Inngest retry logic
+      throw error;
     }
   },
 );
 
-// --- Helper functions ---
-
 async function getExistingChunkIds(
-  index: ReturnType<Pinecone["index"]>,
+  index: any,
   bookId: string,
   chunks: TextChunk[],
 ): Promise<Set<string>> {
@@ -349,26 +334,12 @@ async function getExistingChunkIds(
     (c) => `${Buffer.from(bookId).toString("base64url")}-chunk-${c.chunkIndex}`,
   );
   const existing = new Set<string>();
-
-  const fetchPromises = [];
   for (let i = 0; i < candidateIds.length; i += 1000) {
     const batch = candidateIds.slice(i, i + 1000);
-    fetchPromises.push(
-      index.fetch({ ids: batch }).catch(() => {
-        // If fetch fails, assume nothing exists to proceed with vectorization
-        return { records: {} };
-      }),
-    );
-  }
-
-  const results = await Promise.all(fetchPromises);
-  for (const fetched of results) {
+    const fetched = await index.fetch({ ids: batch }).catch(() => ({ records: {} }));
     if (fetched && fetched.records) {
-      for (const id of Object.keys(fetched.records)) {
-        existing.add(id);
-      }
+      for (const id of Object.keys(fetched.records)) existing.add(id);
     }
   }
-
   return existing;
 }

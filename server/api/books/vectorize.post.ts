@@ -19,6 +19,12 @@ import { VectorizeRequestSchema } from "../../utils/openapi/schemas";
  */
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
+  const session = await getUserSession(event);
+  const userId = session.user?.id || session.id;
+
+  if (!userId) {
+    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+  }
 
   // --- Validate input with Zod (single source of truth with OpenAPI docs) ---
   const body = await readBody(event);
@@ -65,11 +71,12 @@ export default defineEventHandler(async (event) => {
     bookId,
     bookName,
     resume: !!resume,
+    userId,
   });
 
   // Create job tracking entry
   const jobId = generateJobId();
-  await createJob(jobId, bookName);
+  await createJob(jobId, bookId, bookName, userId);
 
   // Trigger background processing via Inngest
   await inngest.send({
@@ -77,6 +84,7 @@ export default defineEventHandler(async (event) => {
     data: {
       jobId,
       bookId,
+      userId,
       blobUrl,
       bookName,
       author: typeof author === "string" ? author.trim() : undefined,

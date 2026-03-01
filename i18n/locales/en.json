@@ -51,6 +51,8 @@
     "status": "Status",
     "processed": "Processed",
     "pending": "Pending",
+    "processing": "Processing",
+    "waiting": "Waiting",
     "uploading": "Uploading...",
     "error": "Error",
     "selectFile": "Select a file to upload",

@@ -1,6 +1,8 @@
 import { db, schema } from "hub:db";
 import { and, eq } from "drizzle-orm";
 
+import { publishEvent } from "../../utils/events";
+
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
   const userId = session.user?.id || session.id;
@@ -26,6 +28,13 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 404,
       statusMessage: "Chat not found",
+    });
+  }
+
+  // Notify client about chat deletion
+  if (userId) {
+    await publishEvent(userId, "chat:updated", {
+      deletedChatId: id,
     });
   }
 

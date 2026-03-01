@@ -27,7 +27,49 @@ const { data: chats, refresh: refreshChats } = await useFetch("/api/chats", {
     })),
 });
 
+// Adaptive polling for chats (fallback for SSE)
+const pollingActive = ref(false);
+let timer: NodeJS.Timeout | null = null;
+
+function startPolling(interval: number) {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      refreshChats();
+    }
+  }, interval);
+}
+
+// Watch for chats that need title updates
+watch(
+  () => chats.value,
+  (newChats) => {
+    const hasUntitled =
+      newChats?.some((chat) => chat.label === t("chat.untitled")) || false;
+
+    if (hasUntitled) {
+      startPolling(5000); // 5s when waiting for title
+      pollingActive.value = true;
+    } else if (pollingActive.value) {
+      startPolling(60000); // 60s for background check
+      pollingActive.value = false;
+    }
+  },
+  { immediate: true, deep: true },
+);
+
+onMounted(() => {
+  if (!pollingActive.value) {
+    startPolling(60000);
+  }
+});
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+});
+
 const { groups } = useChats(chats);
+useEvents();
 
 const items = computed(() =>
   groups.value?.flatMap((group) => {

@@ -10,6 +10,7 @@ import { log } from "../utils/logger";
 import { getBook } from "../utils/bookStore";
 import { db, schema } from "hub:db";
 import { eq, asc } from "drizzle-orm";
+import { publishEvent } from "../utils/events";
 import type { ChatMessage } from "../utils/chatConfig";
 
 /**
@@ -205,6 +206,12 @@ export default defineEventHandler(async (event) => {
       userId: userId,
       bookIds,
     });
+
+    // Notify client about new chat immediately
+    await publishEvent(userId, "chat:updated", {
+      chatId: currentChatId,
+      status: "created",
+    });
   }
 
   // Save user's question to the database
@@ -254,16 +261,22 @@ export default defineEventHandler(async (event) => {
                   "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
                 prompt: query,
               })
-                .then(({ text: title }) => {
+                .then(async ({ text: title }) => {
                   log.info("chat-api", "Generated chat title", {
                     title,
                     chatId: currentChatId,
                   });
-                  return db
+                  await db
                     .update(schema.chats)
                     .set({ title })
                     .where(eq(schema.chats.id, currentChatId))
                     .execute();
+
+                  // Notify client about title update
+                  await publishEvent(userId, "chat:updated", {
+                    chatId: currentChatId,
+                    title,
+                  });
                 })
                 .catch((error) => {
                   log.error("chat-api", "Title generation failed", {
