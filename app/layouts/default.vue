@@ -1,12 +1,24 @@
 <script setup lang="ts">
+import * as locales from "@nuxt/ui/locale";
 import { LazyModalConfirm } from "#components";
 
-const { t } = useI18n();
+const { locale: i18nLocale, locales: i18nLocales, setLocale, t } = useI18n();
 const route = useRoute();
 const toast = useToast();
 const overlay = useOverlay();
 
 const open = ref(false);
+
+const currentLocale = computed({
+  get: () => i18nLocale.value,
+  set: (val) => {
+    setLocale(val);
+  },
+});
+
+const availableLocales = computed(() => {
+  return i18nLocales.value.map((l) => locales[l.code as keyof typeof locales]);
+});
 
 const deleteModal = overlay.create(LazyModalConfirm, {
   props: {
@@ -216,15 +228,43 @@ defineShortcuts({
       </template>
 
       <template #footer="{ collapsed }">
-        <UButton
-          icon="i-lucide-github"
-          color="neutral"
-          variant="ghost"
-          :label="collapsed ? undefined : t('chat.sourceCode')"
-          to="https://github.com/georgij-spiridonov/smart-book-search"
-          target="_blank"
-          :block="!collapsed"
-        />
+        <div class="flex flex-col gap-1 w-full" :class="collapsed ? 'items-center' : 'px-4'">
+          <UButton
+            icon="i-lucide-github"
+            color="neutral"
+            variant="ghost"
+            :label="collapsed ? undefined : t('chat.sourceCode')"
+            to="https://github.com/georgij-spiridonov/smart-book-search"
+            target="_blank"
+            :block="!collapsed"
+          />
+
+          <div
+            v-if="!collapsed"
+            class="flex items-center w-full mt-1"
+          >
+            <ULocaleSelect
+              v-model="currentLocale"
+              :locales="availableLocales"
+              variant="subtle"
+              color="neutral"
+              class="flex-1"
+              :ui="{ base: 'rounded-r-none focus-visible:ring-inset' }"
+            />
+            <UColorModeButton
+              variant="subtle"
+              color="neutral"
+              class="rounded-l-none border-l-0"
+              :ui="{ base: 'focus-visible:ring-inset' }"
+            />
+          </div>
+          <div
+            v-else
+            class="mt-1"
+          >
+            <UColorModeButton />
+          </div>
+        </div>
       </template>
     </UDashboardSidebar>
 

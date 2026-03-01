@@ -1,21 +1,8 @@
 <script setup lang="ts">
-import * as locales from "@nuxt/ui/locale";
-
-const { locale: i18nLocale, locales: i18nLocales, setLocale, t } = useI18n();
+const { t } = useI18n();
 const { user } = useUserSession();
 
 const isAdmin = computed(() => user.value?.isAdmin === true);
-
-const currentLocale = computed({
-  get: () => i18nLocale.value,
-  set: (val) => {
-    setLocale(val);
-  },
-});
-
-const availableLocales = computed(() => {
-  return i18nLocales.value.map((l) => locales[l.code as keyof typeof locales]);
-});
 </script>
 
 <template>
@@ -42,9 +29,6 @@ const availableLocales = computed(() => {
       >
         {{ t('admin.title') }}
       </UButton>
-
-      <ULocaleSelect v-model="currentLocale" :locales="availableLocales" />
-      <UColorModeButton />
 
       <UButton
         color="primary"
