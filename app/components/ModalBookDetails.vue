@@ -23,10 +23,55 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   deleted: [bookId: string];
+  updated: [book: { id: string; title: string; author: string }];
 }>();
 
 const toast = useToast();
 const isDeleting = ref(false);
+const isUpdating = ref(false);
+const isEditing = ref(false);
+
+const editForm = ref({
+  title: props.book.title,
+  author: props.book.author,
+  coverUrl: props.book.coverUrl,
+});
+
+function startEditing() {
+  editForm.value = {
+    title: props.book.title,
+    author: props.book.author,
+    coverUrl: props.book.coverUrl,
+  };
+  isEditing.value = true;
+}
+
+function cancelEditing() {
+  isEditing.value = false;
+}
+
+async function saveMetadata() {
+  isUpdating.value = true;
+  try {
+    await $fetch(`/api/books/${props.book.id}`, {
+      method: "PATCH",
+      body: editForm.value,
+    });
+    toast.add({ title: t("library.updateSuccess"), color: "success" });
+    isEditing.value = false;
+    // We notify parent to refresh the list
+    emit("updated", { id: props.book.id, ...editForm.value });
+  } catch (err: unknown) {
+    const error = err as { data?: { message?: string }; message?: string };
+    toast.add({
+      title: t("library.error"),
+      description: error.data?.message || error.message,
+      color: "error",
+    });
+  } finally {
+    isUpdating.value = false;
+  }
+}
 
 async function deleteBook() {
   if (!window.confirm(t("library.deleteConfirm"))) return;
@@ -70,15 +115,37 @@ function startChat() {
 
 <template>
   <UModal
-    :title="book.title"
-    :description="book.author"
+    :title="isEditing ? t('library.editBook') : book.title"
+    :description="isEditing ? '' : book.author"
     :ui="{
-      footer: 'flex justify-between items-center w-full gap-2',
+      footer: 'flex items-center w-full gap-2 overflow-x-auto no-scrollbar py-3',
     }"
     :fullscreen="isMobile"
   >
     <template #body>
-      <div class="flex flex-col gap-4">
+      <div v-if="isEditing" class="flex flex-col gap-4">
+        <div
+          v-if="editForm.coverUrl"
+          class="w-full aspect-2/3 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0"
+        >
+          <img
+            :src="editForm.coverUrl"
+            :alt="editForm.title"
+            class="w-full h-full object-cover"
+          >
+        </div>
+
+        <UFormField :label="t('library.uploadTitle')">
+          <UInput v-model="editForm.title" class="w-full" autofocus />
+        </UFormField>
+        <UFormField :label="t('library.author')">
+          <UInput v-model="editForm.author" class="w-full" />
+        </UFormField>
+        <UFormField :label="t('library.coverUrl')">
+          <UInput v-model="editForm.coverUrl" class="w-full" placeholder="https://..." />
+        </UFormField>
+      </div>
+      <div v-else class="flex flex-col gap-4">
         <div
           v-if="book.coverUrl"
           class="w-full aspect-2/3 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0"
@@ -117,27 +184,48 @@ function startChat() {
     </template>
 
     <template #footer>
-      <UButton
-        color="error"
-        variant="soft"
-        icon="i-lucide-trash"
-        :label="t('library.deleteBook')"
-        :loading="isDeleting"
-        @click="deleteBook"
-      />
-      <div class="flex gap-2">
+      <template v-if="isEditing">
         <UButton
           color="neutral"
           variant="ghost"
-          :label="t('library.close')"
-          @click="emit('close')"
+          :label="t('chat.cancelButton')"
+          class="shrink-0"
+          @click="cancelEditing"
         />
+        <UButton
+          color="primary"
+          icon="i-lucide-check"
+          :label="t('library.save')"
+          :loading="isUpdating"
+          class="shrink-0 ml-auto"
+          @click="saveMetadata"
+        />
+      </template>
+      <template v-else>
         <UButton
           :label="t('library.startChat')"
           icon="i-lucide-message-circle"
+          class="shrink-0"
           @click="startChat"
         />
-      </div>
+        <UButton
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-pencil"
+          :label="t('library.edit')"
+          class="shrink-0"
+          @click="startEditing"
+        />
+        <UButton
+          color="error"
+          variant="soft"
+          icon="i-lucide-trash"
+          :label="t('library.delete')"
+          :loading="isDeleting"
+          class="shrink-0"
+          @click="deleteBook"
+        />
+      </template>
     </template>
   </UModal>
 </template>

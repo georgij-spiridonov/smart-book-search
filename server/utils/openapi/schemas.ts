@@ -107,6 +107,36 @@ export const UploadResponseSchema = z
 
 // ─────────────────────────── POST /api/books/vectorize ───────────────────────────
 
+export const UpdateBookRequestSchema = z
+  .object({
+    title: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({
+        description: "New title for the book.",
+        example: "Война и мир (новое издание)",
+      }),
+    author: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({
+        description: "New author for the book.",
+        example: "Лев Николаевич Толстой",
+      }),
+    coverUrl: z
+      .string()
+      .url()
+      .or(z.literal(""))
+      .optional()
+      .meta({
+        description: "New cover image URL for the book.",
+        example: "https://example.com/cover.jpg",
+      }),
+  })
+  .meta({ id: "UpdateBookRequest" });
+
 export const VectorizeRequestSchema = z
   .object({
     blobUrl: z.string().url().meta({

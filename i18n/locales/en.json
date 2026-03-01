@@ -67,7 +67,12 @@
     "vectorizeSuccess": "Book processed successfully",
     "unknown": "Unknown",
     "deleteBook": "Delete Book",
+    "delete": "Delete",
     "deleteConfirm": "Are you sure you want to completely delete this book? This action cannot be undone.",
-    "deleteSuccess": "Book deleted successfully"
+    "deleteSuccess": "Book deleted successfully",
+    "editBook": "Edit Metadata",
+    "edit": "Edit",
+    "save": "Save",
+    "updateSuccess": "Book metadata updated successfully"
   }
 }

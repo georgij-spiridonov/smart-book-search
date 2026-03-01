@@ -102,6 +102,9 @@ function openBookDetails(book: BookRecord) {
         modal.close();
         refresh();
       },
+      onUpdated: () => {
+        refresh();
+      },
     },
   });
   modal.open();
