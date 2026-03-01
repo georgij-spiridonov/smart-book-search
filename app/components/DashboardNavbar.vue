@@ -47,8 +47,8 @@ const availableLocales = computed(() => {
       <UColorModeButton />
 
       <UButton
-        color="neutral"
-        variant="ghost"
+        color="primary"
+        variant="subtle"
         icon="i-lucide-square-pen"
         to="/"
         class="lg:hidden"

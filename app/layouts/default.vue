@@ -71,6 +71,14 @@ onUnmounted(() => {
 const { groups } = useChats(chats);
 useEvents();
 
+const navigationItems = computed(() => [
+  {
+    label: t("library.title"),
+    to: "/library",
+    icon: "i-lucide-library",
+  },
+]);
+
 const items = computed(() =>
   groups.value?.flatMap((group) => {
     return [
@@ -81,7 +89,6 @@ const items = computed(() =>
       ...group.items.map((item) => ({
         ...item,
         slot: "chat" as const,
-        icon: undefined,
         class: item.label === t("chat.untitled") ? "text-muted" : "",
       })),
     ];
@@ -128,8 +135,8 @@ defineShortcuts({
       class="border-r-0 py-4"
     >
       <template #header="{ collapsed }">
-        <NuxtLink to="/" class="flex items-center gap-2.5">
-          <AppLogo class="h-8 w-auto shrink-0" />
+        <NuxtLink to="/" class="flex items-center gap-2.5" :class="{ 'justify-center w-full': collapsed }">
+          <AppLogo class="shrink-0 transition-all duration-200" :class="collapsed ? 'h-10 w-10' : 'h-8 w-8'" />
           <span v-if="!collapsed" class="text-xl font-bold text-highlighted">{{
             t("chat.title")
           }}</span>
@@ -141,58 +148,85 @@ defineShortcuts({
       </template>
 
       <template #default="{ collapsed }">
-        <div class="flex flex-col gap-1.5">
-          <template v-if="collapsed">
-            <UDashboardSearchButton collapsed />
-          </template>
+        <div class="flex flex-col gap-6" :class="{ 'items-center': collapsed }">
+          <div class="flex flex-col gap-2 w-full" :class="collapsed ? 'items-center' : 'px-4'">
+            <template v-if="collapsed">
+              <UDashboardSearchButton
+                collapsed
+                class="w-10 h-10 justify-center transition-all duration-200"
+                :ui="{
+                  input: 'hidden',
+                  button: {
+                    base: 'w-10 h-10 p-0 flex items-center justify-center',
+                    icon: { base: 'w-5 h-5' }
+                  }
+                }"
+              />
+            </template>
 
-          <UButton
-            v-bind="
-              collapsed
-                ? { icon: 'i-lucide-square-pen' }
-                : { label: t('chat.newChat') }
-            "
-            variant="soft"
-            block
-            to="/"
-            @click="open = false"
-          />
-          <UButton
-            v-bind="
-              collapsed
-                ? { icon: 'i-lucide-library' }
-                : { label: t('library.title') }
-            "
-            variant="soft"
-            block
-            to="/library"
-            @click="open = false"
-          />
-        </div>
-
-        <UNavigationMenu
-          v-if="!collapsed"
-          :items="items"
-          :collapsed="collapsed"
-          orientation="vertical"
-          :ui="{ link: 'overflow-hidden' }"
-        >
-          <template #chat-trailing="{ item }">
-            <div
-              class="flex -mr-1.25 translate-x-full group-hover:translate-x-0 transition-transform"
-            >
-              <UButton
-                icon="i-lucide-x"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                class="text-muted hover:text-primary hover:bg-accented/50 focus-visible:bg-accented/50 p-0.5"
-                tabindex="-1"
-                @click.stop.prevent="deleteChat((item as any).id)"
+            <div class="w-full" :class="{ 'flex justify-center': collapsed }">
+              <UNavigationMenu
+                :items="navigationItems"
+                :collapsed="collapsed"
+                orientation="vertical"
+                :ui="{
+                  link: collapsed
+                    ? 'w-10 h-10 flex items-center justify-center rounded-lg p-0'
+                    : 'px-2.5 h-9 justify-center',
+                  icon: 'w-5 h-5 text-highlighted'
+                }"
               />
             </div>
-          </template>
-        </UNavigationMenu>
+
+            <UButton
+              v-bind="
+                collapsed
+                  ? { icon: 'i-lucide-square-pen', square: true }
+                  : { label: t('chat.newChat'), icon: 'i-lucide-square-pen', block: true }
+              "
+              variant="solid"
+              color="primary"
+              to="/"
+              @click="open = false"
+              class="transition-all duration-200 justify-center"
+              :class="collapsed ? 'h-10 w-10 rounded-xl' : 'h-9'"
+            >
+              <template #leading v-if="collapsed">
+                <UIcon name="i-lucide-square-pen" class="w-5 h-5" />
+              </template>
+            </UButton>
+          </div>
+
+          <UDivider v-if="!collapsed" class="px-4" />
+
+          <div class="w-full flex-1 overflow-y-auto" :class="collapsed ? 'px-1.5' : 'px-2'">
+            <UNavigationMenu
+              :items="items"
+              :collapsed="collapsed"
+              orientation="vertical"
+              :ui="{
+                link: 'overflow-hidden px-2.5 h-10 flex items-center justify-center rounded-lg',
+                icon: 'w-5 h-5'
+              }"
+            >
+              <template #chat-trailing="{ item }">
+                <div
+                  class="flex -mr-1.25 translate-x-full group-hover:translate-x-0 transition-transform"
+                >
+                  <UButton
+                    icon="i-lucide-x"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    class="text-muted hover:text-primary hover:bg-accented/50 focus-visible:bg-accented/50 p-0.5"
+                    tabindex="-1"
+                    @click.stop.prevent="deleteChat((item as any).id)"
+                  />
+                </div>
+              </template>
+            </UNavigationMenu>
+          </div>
+        </div>
       </template>
 
       <template #footer="{ collapsed }">
