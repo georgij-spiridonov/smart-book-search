@@ -36,7 +36,6 @@ describe("textSplitter", () => {
 
   it("preserves line breaks and punctuation", () => {
     const textWithNewlines = "First sentence.\nSecond sentence with\na newline.\nThird sentence!";
-    const chunks = splitText(textWithNewlines, { chunkSize: 20 });
     
     // Join all chunks (ignoring overlaps for this test by setting overlap to 0)
     const chunksNoOverlap = splitText(textWithNewlines, { chunkSize: 20, chunkOverlap: 0 });

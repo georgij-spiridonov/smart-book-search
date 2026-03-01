@@ -8,7 +8,7 @@ const props = defineProps<{
   pageNumber?: number;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   close: [];
 }>();
 
