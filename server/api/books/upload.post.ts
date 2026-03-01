@@ -18,6 +18,16 @@ export default defineEventHandler(async (event) => {
   try {
     const config = useRuntimeConfig();
 
+    const session = await getUserSession(event);
+    const userId = session.user?.id || session.id;
+
+    if (!userId) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: "Unauthorized: Session not found",
+      });
+    }
+
     const formData = await readMultipartFormData(event);
     if (!formData || formData.length === 0) {
       log.warn("upload-api", "Upload request rejected: no form data");
@@ -56,6 +66,7 @@ export default defineEventHandler(async (event) => {
       filename: fileField.filename,
       sizeBytes: fileField.data.length,
       extension: ext,
+      userId,
     });
 
     if (!ext || !allowedExtensions.includes(ext)) {
@@ -93,6 +104,7 @@ export default defineEventHandler(async (event) => {
       if (!existingBook) {
         await addBook({
           id: bookId,
+          userId,
           title: bookTitle,
           author,
           coverUrl,
@@ -137,6 +149,7 @@ export default defineEventHandler(async (event) => {
     const bookId = slugifyBookId(bookTitle);
     await addBook({
       id: bookId,
+      userId,
       title: bookTitle,
       author,
       coverUrl,

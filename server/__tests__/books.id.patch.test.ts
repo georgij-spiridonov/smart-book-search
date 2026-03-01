@@ -85,6 +85,7 @@ describe("PATCH /api/books/[id]", () => {
   it("should successfully update book metadata and publish event", async () => {
     const mockBook = {
       id: "valid-book",
+      userId: "test-user",
       title: "Old Title",
       author: "Old Author",
     };
@@ -122,8 +123,28 @@ describe("PATCH /api/books/[id]", () => {
     });
   });
 
+  it("should throw 403 if user is not the owner", async () => {
+    const mockBook = {
+      id: "other-book",
+      userId: "other-user",
+      title: "Other Title",
+    };
+
+    mockedGetRouterParam.mockReturnValueOnce("other-book");
+    mockedReadBody.mockResolvedValueOnce({ title: "New Title" });
+    mockGetBook.mockResolvedValueOnce(mockBook);
+
+    await expect(patchBookHandler({} as any)).rejects.toThrowError(
+      "Forbidden: You can only edit books you uploaded.",
+    );
+  });
+
   it("should throw 500 if updateBook fails", async () => {
-    const mockBook = { id: "error-book", title: "Title" };
+    const mockBook = {
+      id: "error-book",
+      userId: "test-user",
+      title: "Title",
+    };
     mockedGetRouterParam.mockReturnValueOnce("error-book");
     mockedReadBody.mockResolvedValueOnce({ title: "New Title" });
     mockGetBook.mockResolvedValueOnce(mockBook);

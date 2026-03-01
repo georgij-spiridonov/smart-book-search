@@ -4,6 +4,7 @@ import { formatBytes } from "~/utils/formatBytes";
 
 interface BookRecord {
   id: string;
+  userId: string;
   title: string;
   author: string;
   coverUrl: string;
@@ -18,6 +19,7 @@ const { t } = useI18n();
 
 const props = defineProps<{
   book: BookRecord;
+  isOwner?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -209,6 +211,7 @@ function startChat() {
           @click="startChat"
         />
         <UButton
+          v-if="isOwner"
           color="neutral"
           variant="soft"
           icon="i-lucide-pencil"
@@ -217,6 +220,7 @@ function startChat() {
           @click="startEditing"
         />
         <UButton
+          v-if="isOwner"
           color="error"
           variant="soft"
           icon="i-lucide-trash"

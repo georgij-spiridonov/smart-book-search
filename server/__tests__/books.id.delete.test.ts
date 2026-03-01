@@ -30,13 +30,20 @@ const {
   mockGetBook,
   mockDeleteBook,
   mockDeleteHashesByBlobUrl,
+  mockGetUserSession,
+  mockPublishEvent,
 } = vi.hoisted(() => ({
   mockDeleteMany: vi.fn(),
   mockDel: vi.fn(),
   mockGetBook: vi.fn(),
   mockDeleteBook: vi.fn(),
   mockDeleteHashesByBlobUrl: vi.fn(),
+  mockGetUserSession: vi.fn(() => Promise.resolve({ user: { id: "test-user" } })),
+  mockPublishEvent: vi.fn(),
 }));
+
+// Mock h3 global session
+(globalThis as any).getUserSession = mockGetUserSession;
 
 // Mock 3rd-party services & local utils
 vi.mock("@pinecone-database/pinecone", () => {
@@ -62,6 +69,10 @@ vi.mock("../utils/bookStore", () => ({
 
 vi.mock("../utils/hashStore", () => ({
   deleteHashesByBlobUrl: mockDeleteHashesByBlobUrl,
+}));
+
+vi.mock("../utils/events", () => ({
+  publishEvent: mockPublishEvent,
 }));
 
 vi.mock("../utils/logger", () => ({
@@ -99,6 +110,7 @@ describe("DELETE /api/books/[id]", () => {
   it("should successfully delete a book from Pinecone, Blob, and Redis", async () => {
     const mockBook = {
       id: "valid-book",
+      userId: "test-user",
       title: "My Book",
       blobUrl: "https://blob.test/valid-book.txt",
     };
@@ -132,6 +144,7 @@ describe("DELETE /api/books/[id]", () => {
   it("should continue deletion even if Pinecone fails", async () => {
     const mockBook = {
       id: "valid-book-pinecone-fail",
+      userId: "test-user",
       title: "My Book",
       blobUrl: "https://blob.test/valid-book.txt",
     };
@@ -155,6 +168,7 @@ describe("DELETE /api/books/[id]", () => {
   it("should continue deletion even if Vercel Blob fails", async () => {
     const mockBook = {
       id: "valid-book-blob-fail",
+      userId: "test-user",
       title: "My Book",
       blobUrl: "https://blob.test/valid-book.txt",
     };
@@ -177,6 +191,7 @@ describe("DELETE /api/books/[id]", () => {
   it("should skip Vercel Blob deletion if book has no blobUrl", async () => {
     const mockBook = {
       id: "no-blob-book",
+      userId: "test-user",
       title: "My Book",
       blobUrl: "", // Emulate a book with no blob mapping
     };
@@ -197,6 +212,7 @@ describe("DELETE /api/books/[id]", () => {
   it("should throw 500 if an unexpected internal error occurs", async () => {
     const mockBook = {
       id: "error-book",
+      userId: "test-user",
       title: "My Book",
       blobUrl: "https://blob.test/err.txt",
     };
@@ -213,6 +229,7 @@ describe("DELETE /api/books/[id]", () => {
   it("should handle non-Error objects thrown in catch block", async () => {
     const mockBook = {
       id: "error-book-2",
+      userId: "test-user",
       title: "My Book",
       blobUrl: "https://blob.test/err2.txt",
     };
@@ -227,7 +244,12 @@ describe("DELETE /api/books/[id]", () => {
   });
 
   it("should skip Pinecone deletion if config is missing", async () => {
-    const mockBook = { id: "no-pc-config", title: "No PC", blobUrl: "" };
+    const mockBook = {
+      id: "no-pc-config",
+      userId: "test-user",
+      title: "No PC",
+      blobUrl: "",
+    };
     mockedGetRouterParam.mockReturnValueOnce("no-pc-config");
     mockGetBook.mockResolvedValueOnce(mockBook);
 
@@ -245,7 +267,12 @@ describe("DELETE /api/books/[id]", () => {
   });
 
   it("should handle non-Error objects when Pinecone deletion fails", async () => {
-    const mockBook = { id: "pc-non-error", title: "PC Error", blobUrl: "" };
+    const mockBook = {
+      id: "pc-non-error",
+      userId: "test-user",
+      title: "PC Error",
+      blobUrl: "",
+    };
     mockedGetRouterParam.mockReturnValueOnce("pc-non-error");
     mockGetBook.mockResolvedValueOnce(mockBook);
     mockDeleteMany.mockRejectedValueOnce("Pinecone crashed");
@@ -254,9 +281,26 @@ describe("DELETE /api/books/[id]", () => {
     expect(result.status).toBe("success");
   });
 
+  it("should throw 403 if user is not the owner", async () => {
+    const mockBook = {
+      id: "other-user-book",
+      userId: "other-user",
+      title: "Other Book",
+      blobUrl: "https://blob.test/other.txt",
+    };
+
+    mockedGetRouterParam.mockReturnValueOnce("other-user-book");
+    mockGetBook.mockResolvedValueOnce(mockBook);
+
+    await expect(deleteBookHandler({} as any)).rejects.toThrowError(
+      "Forbidden: You can only delete books you uploaded.",
+    );
+  });
+
   it("should handle non-Error objects when Vercel Blob deletion fails", async () => {
     const mockBook = {
       id: "blob-non-error",
+      userId: "test-user",
       title: "Blob Error",
       blobUrl: "http://blob",
     };

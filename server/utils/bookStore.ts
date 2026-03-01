@@ -13,6 +13,7 @@ import { log } from "./logger";
 
 export interface BookRecord {
   id: string;
+  userId: string;
   title: string;
   author: string;
   coverUrl: string;
@@ -39,6 +40,7 @@ function serialize(
 ): Record<string, string | number | boolean> {
   return {
     id: record.id,
+    userId: record.userId,
     title: record.title,
     author: record.author,
     coverUrl: record.coverUrl,
@@ -56,6 +58,7 @@ function serialize(
 function deserialize(data: Record<string, unknown>): BookRecord {
   return {
     id: String(data.id ?? ""),
+    userId: String(data.userId ?? "legacy"),
     title: String(data.title ?? ""),
     author: String(data.author ?? "Unknown"),
     coverUrl: String(data.coverUrl ?? ""),
@@ -220,7 +223,7 @@ export async function getBookByBlobUrl(
 }
 
 /**
- * Generate a URL-friendly slug from a book title.
+ * Generate a URL-friendly slug from a book title with a unique suffix.
  */
 export function slugifyBookId(title: string): string {
   const slug = title
@@ -228,5 +231,6 @@ export function slugifyBookId(title: string): string {
     .replace(/[^a-z0-9\u0400-\u04FF]+/gi, "-") // Allow English and Cyrillic
     .replace(/^-|-$/g, "");
 
-  return slug || crypto.randomUUID();
+  const suffix = crypto.randomUUID().split("-")[0];
+  return slug ? `${slug}-${suffix}` : crypto.randomUUID();
 }

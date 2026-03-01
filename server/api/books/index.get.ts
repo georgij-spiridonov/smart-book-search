@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
     return {
       status: "success",
       count: books.length,
+      currentUserId: userId,
       books: books.map((book) => {
         // Find active job for this book
         const job = jobs.find(
@@ -37,6 +38,7 @@ export default defineEventHandler(async (event) => {
 
         return {
           id: book.id,
+          userId: book.userId,
           title: book.title,
           author: book.author,
           coverUrl: book.coverUrl,

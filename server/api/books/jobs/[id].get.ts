@@ -17,6 +17,13 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const session = await getUserSession(event);
+  const userId = session.user?.id || session.id;
+
+  if (!userId) {
+    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+  }
+
   const job = await getJob(id);
 
   if (!job) {
@@ -24,6 +31,19 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 404,
       statusMessage: `Job "${id}" not found.`,
+    });
+  }
+
+  // Ownership check: only the user who started the job can see its status
+  if (job.userId !== userId) {
+    log.warn("jobs-api", "Unauthorized job status request", {
+      jobId: id,
+      attemptBy: userId,
+      ownedBy: job.userId,
+    });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Forbidden: You can only see status of your own jobs.",
     });
   }
 

@@ -36,6 +36,19 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  // Ownership check: only the uploader can delete the book
+  if (book.userId !== userId) {
+    log.warn("delete-api", "Unauthorized deletion attempt", {
+      bookId: id,
+      attemptBy: userId,
+      ownedBy: book.userId,
+    });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Forbidden: You can only delete books you uploaded.",
+    });
+  }
+
   try {
     // 1. Delete from Pinecone
     if (config.pineconeApiKey && config.pineconeIndex) {

@@ -43,6 +43,19 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  // Ownership check: only the uploader can edit the book
+  if (book.userId !== userId) {
+    log.warn("update-book-api", "Unauthorized update attempt", {
+      bookId: id,
+      attemptBy: userId,
+      ownedBy: book.userId,
+    });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Forbidden: You can only edit books you uploaded.",
+    });
+  }
+
   try {
     await updateBook(id, {
       title,

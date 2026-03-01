@@ -1,6 +1,6 @@
 import { inngest } from "../../utils/inngest";
 import { generateJobId, createJob } from "../../utils/jobStore";
-import { getBookByBlobUrl } from "../../utils/bookStore";
+import { getBook, getBookByBlobUrl } from "../../utils/bookStore";
 import { log } from "../../utils/logger";
 import { VectorizeRequestSchema } from "../../utils/openapi/schemas";
 
@@ -54,16 +54,33 @@ export default defineEventHandler(async (event) => {
 
   // Resolve bookId if not provided
   let bookId = providedBookId;
-  if (!bookId) {
-    const book = await getBookByBlobUrl(blobUrl);
+  let book = null;
+
+  if (bookId) {
+    book = await getBook(bookId);
+  } else {
+    book = await getBookByBlobUrl(blobUrl);
     bookId = book?.id;
   }
 
-  if (!bookId) {
-    log.error("vectorize-api", "Book not found for blobUrl", { blobUrl });
+  if (!book || !bookId) {
+    log.error("vectorize-api", "Book not found", { bookId, blobUrl });
     throw createError({
       statusCode: 404,
-      statusMessage: "Book not found in store for the provided blobUrl.",
+      statusMessage: "Book not found in store.",
+    });
+  }
+
+  // Ownership check: only the uploader can vectorize the book
+  if (book.userId !== userId) {
+    log.warn("vectorize-api", "Unauthorized vectorization attempt", {
+      bookId,
+      attemptBy: userId,
+      ownedBy: book.userId,
+    });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Forbidden: You can only vectorize books you uploaded.",
     });
   }
 

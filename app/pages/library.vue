@@ -5,6 +5,7 @@ import { LazyModalBookDetails, LazyModalBookUpload } from "#components";
 
 interface BookRecord {
   id: string;
+  userId: string;
   title: string;
   author: string;
   coverUrl: string;
@@ -32,6 +33,7 @@ const { data: booksData, refresh } = await useFetch("/api/books", {
   key: "books",
 });
 const books = computed(() => booksData.value?.books || []);
+const currentUserId = computed(() => booksData.value?.currentUserId);
 
 // Adaptive polling for book status/progress updates
 const pollingActive = ref(false);
@@ -97,6 +99,7 @@ function openBookDetails(book: BookRecord) {
   const modal = overlay.create(LazyModalBookDetails, {
     props: {
       book,
+      isOwner: book.userId === currentUserId.value,
       onClose: () => modal.close(),
       onDeleted: () => {
         modal.close();
