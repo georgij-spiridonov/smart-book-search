@@ -326,7 +326,7 @@ export const vectorizeBook = inngest.createFunction(
 );
 
 async function getExistingChunkIds(
-  index: any,
+  index: ReturnType<Pinecone["index"]>,
   bookId: string,
   chunks: TextChunk[],
 ): Promise<Set<string>> {

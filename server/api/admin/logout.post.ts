@@ -1,11 +1,11 @@
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
-  const userId = session.id || session.user?.id;
+  const currentId = session.id;
 
   // We overwrite the entire session with only the ID.
-  // We explicitly set user to an object with isAdmin: false to override any reactive state.
+  // We explicitly set user to an object with isAdmin: false to revoke elevated access.
   await setUserSession(event, {
-    id: userId,
+    id: currentId,
     user: {
       isAdmin: false
     }

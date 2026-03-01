@@ -19,7 +19,7 @@ const error = ref<string | undefined>(undefined)
 const success = ref(false)
 const revoked = ref(false)
 
-const { user, fetch: fetchSession, clear: clearSession } = useUserSession()
+const { user, fetch: fetchSession } = useUserSession()
 
 const isAdmin = computed(() => user.value?.isAdmin === true)
 
@@ -46,8 +46,9 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
     setTimeout(() => {
       navigateTo('/')
     }, 1500)
-  } catch (err: any) {
-    error.value = err.data?.statusMessage || t('admin.loginError')
+  } catch (err: unknown) {
+    const fetchError = err as { data?: { statusMessage?: string } }
+    error.value = fetchError.data?.statusMessage || t('admin.loginError')
   } finally {
     loading.value = false
   }
@@ -61,7 +62,7 @@ async function onLogout() {
     
     // Most reliable way to clear client state: full page reload
     window.location.reload()
-  } catch (err: any) {
+  } catch {
     error.value = t('error.unexpected')
   } finally {
     loading.value = false

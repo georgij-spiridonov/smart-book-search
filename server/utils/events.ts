@@ -7,7 +7,7 @@ export interface AppEvent {
     | "book:updated"
     | "job:updated";
   userId: string;
-  payload: any;
+  payload: Record<string, unknown>;
   timestamp: number;
 }
 
@@ -24,7 +24,7 @@ function getStreamKey(userId: string): string {
 export async function publishEvent(
   userId: string,
   type: AppEvent["type"],
-  payload: any,
+  payload: Record<string, unknown>,
 ): Promise<void> {
   try {
     const redis = getRedisClient();
@@ -85,7 +85,7 @@ export async function* subscribeToEvents(userId: string, lastEventId = "$") {
             try {
               const event = JSON.parse(fields.event) as AppEvent;
               yield { id, event };
-            } catch (e) {
+            } catch {
               log.error("events", "Failed to parse event from stream", { id });
             }
           }

@@ -1,5 +1,5 @@
 import { db, schema } from "hub:db";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { publishEvent } from "../../utils/events";
 

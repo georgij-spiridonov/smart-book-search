@@ -1,5 +1,5 @@
 import { getAllBooks } from "../../utils/bookStore";
-import { getUserJobs } from "../../utils/jobStore";
+import { getUserJobs, type JobState } from "../../utils/jobStore";
 import { log } from "../../utils/logger";
 
 /**
@@ -17,17 +17,28 @@ export default defineEventHandler(async (event) => {
     const userId = session.user?.id || session.id;
 
     const books = await getAllBooks();
-    const jobs = userId ? await getUserJobs(userId) : [];
+    
+    // Fetch jobs: admins see jobs for all books, regular users only their own.
+    let jobs: JobState[] = [];
+    if (session.user?.isAdmin) {
+      const uniqueUserIds = [...new Set(books.map((b) => b.userId))];
+      const jobResults = await Promise.all(uniqueUserIds.map((id) => getUserJobs(id)));
+      jobs = jobResults.flat();
+    } else if (userId) {
+      jobs = await getUserJobs(userId);
+    }
 
     log.info("books-api", "Fetched books list", {
       count: books.length,
       jobsCount: jobs.length,
+      isAdmin: !!session.user?.isAdmin,
     });
 
     return {
       status: "success",
       count: books.length,
       currentUserId: userId,
+      isAdmin: !!session.user?.isAdmin,
       books: books.map((book) => {
         // Find active job for this book
         const job = jobs.find(

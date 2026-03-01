@@ -17,7 +17,7 @@ const route = useRoute();
 const toast = useToast();
 const { copy: clipboardCopy } = useClipboard();
 
-const { data, refresh } = await useFetch(
+const { data } = await useFetch(
   () => `/api/chats/${route.params.id}`,
   {
     key: `chat-${route.params.id}`,
@@ -32,9 +32,14 @@ definePageMeta({
   key: (route) => route.params.id as string,
 });
 
+interface Book {
+  id: string;
+  title: string;
+}
+
 const { data: booksData } = await useFetch("/api/books");
-const books = computed(() => booksData.value?.books || []);
-const selectedBook = ref<any>(null);
+const books = computed(() => (booksData.value?.books || []) as Book[]);
+const selectedBook = ref<Book | null>(null);
 
 // Sync selectedBook with chat data
 watch(
@@ -42,7 +47,7 @@ watch(
   ([newBooks, newData]) => {
     if (newData?.bookIds && newBooks.length) {
       selectedBook.value =
-        newBooks.find((b: any) => newData.bookIds?.includes(b.id)) || null;
+        newBooks.find((b) => newData.bookIds?.includes(b.id)) || null;
     }
   },
   { immediate: true },

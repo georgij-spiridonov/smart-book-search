@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from "vitest";
-import { defineEventHandler } from "h3";
 import loginHandler from "../api/admin/login.post";
 
 // Mocking Nuxt Auth Utils
@@ -9,7 +8,7 @@ vi.mock("nuxt-auth-utils", () => ({
 }));
 
 // Mocking useRuntimeConfig
-vi.stubGlobal("useRuntimeConfig", (event?: any) => ({
+vi.stubGlobal("useRuntimeConfig", (_event?: any) => ({
   adminPassword: "test-password",
 }));
 
@@ -38,7 +37,7 @@ describe("Admin Login API", () => {
   });
 
   it("should fail if admin password not configured", async () => {
-    vi.stubGlobal("useRuntimeConfig", (event?: any) => ({
+    vi.stubGlobal("useRuntimeConfig", (_event?: any) => ({
       adminPassword: "",
     }));
     

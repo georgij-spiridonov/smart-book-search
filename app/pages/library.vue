@@ -34,6 +34,7 @@ const { data: booksData, refresh } = await useFetch("/api/books", {
 });
 const books = computed(() => booksData.value?.books || []);
 const currentUserId = computed(() => booksData.value?.currentUserId);
+const isAdminUser = computed(() => booksData.value?.isAdmin === true);
 
 // Adaptive polling for book status/progress updates
 const pollingActive = ref(false);
@@ -99,7 +100,7 @@ function openBookDetails(book: BookRecord) {
   const modal = overlay.create(LazyModalBookDetails, {
     props: {
       book,
-      isOwner: book.userId === currentUserId.value,
+      isOwner: isAdminUser.value || book.userId === currentUserId.value,
       onClose: () => modal.close(),
       onDeleted: () => {
         modal.close();

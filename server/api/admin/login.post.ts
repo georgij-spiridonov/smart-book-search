@@ -25,10 +25,15 @@ export default defineEventHandler(async (event) => {
 
   const session = await getUserSession(event);
   
-  // Explicitly set the session content, ensuring isAdmin is only in user object.
-  // We keep the 'id' (anonymous identity) but replace anything else.
+  // Ensure we have an ID to persist identity even after login
+  let userId = session.id;
+  if (!userId) {
+    userId = crypto.randomUUID();
+  }
+
+  // Explicitly set the session content, ensuring isAdmin is in user object.
   await setUserSession(event, {
-    id: session.id,
+    id: userId,
     user: {
       isAdmin: true,
     },

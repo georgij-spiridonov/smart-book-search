@@ -13,13 +13,13 @@ export function getRedisClient(): Redis {
     let token: string | undefined;
 
     // Safely check for useRuntimeConfig in global scope
-    const g = globalThis as any;
+    const g = globalThis as Record<string, unknown>;
     if (typeof g.useRuntimeConfig === "function") {
       try {
-        const config = g.useRuntimeConfig();
+        const config = (g.useRuntimeConfig as () => Record<string, string | undefined>)();
         url = config.upstashRedisUrl;
         token = config.upstashRedisToken;
-      } catch (e) {
+      } catch {
         // Fallback if useRuntimeConfig fails or doesn't have the expected fields
       }
     }
