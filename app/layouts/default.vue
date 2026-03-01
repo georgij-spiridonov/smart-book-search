@@ -142,8 +142,16 @@ defineShortcuts({
         </UNavigationMenu>
       </template>
 
-      <template #footer>
-        <!-- Footer slot reserved for future user menu -->
+      <template #footer="{ collapsed }">
+        <UButton
+          icon="i-lucide-github"
+          color="neutral"
+          variant="ghost"
+          :label="collapsed ? undefined : t('chat.sourceCode')"
+          to="https://github.com/georgij-spiridonov/smart-book-search"
+          target="_blank"
+          :block="!collapsed"
+        />
       </template>
     </UDashboardSidebar>
 

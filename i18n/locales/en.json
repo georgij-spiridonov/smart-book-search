@@ -23,7 +23,8 @@
     "lastMonth": "Last month",
     "placeholder": "Type a message...",
     "copy": "Copy",
-    "notFound": "Chat not found"
+    "notFound": "Chat not found",
+    "sourceCode": "Source code"
   },
   "error": {
     "backToHome": "Back to Home",
