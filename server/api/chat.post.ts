@@ -248,17 +248,29 @@ export default defineEventHandler(async (event) => {
           if (history.length === 0) {
             event.waitUntil(
               generateText({
-                model: "gemini-2.5-flash-lite", // or whatever model you use for internal stuff
+                model: CHAT_CONFIG.answerModel, // Use the configured model
                 system:
                   "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
                 prompt: query,
-              }).then(({ text: title }) => {
-                return db
-                  .update(schema.chats)
-                  .set({ title })
-                  .where(eq(schema.chats.id, currentChatId))
-                  .execute();
-              }),
+              })
+                .then(({ text: title }) => {
+                  log.info("chat-api", "Generated chat title", {
+                    title,
+                    chatId: currentChatId,
+                  });
+                  return db
+                    .update(schema.chats)
+                    .set({ title })
+                    .where(eq(schema.chats.id, currentChatId))
+                    .execute();
+                })
+                .catch((error) => {
+                  log.error("chat-api", "Title generation failed", {
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                    stack: error instanceof Error ? error.stack : undefined,
+                  });
+                }),
             );
           }
         } catch (error) {
