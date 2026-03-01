@@ -11,9 +11,13 @@ export default defineEventHandler(async (event) => {
 
   const { id } = getRouterParams(event);
 
+  // If admin, we search by ID only; otherwise we require ownership.
+  const whereClause = session.user?.isAdmin
+    ? eq(schema.chats.id, id as string)
+    : and(eq(schema.chats.id, id as string), eq(schema.chats.userId, userId));
+
   const chat = await db.query.chats.findFirst({
-    where: () =>
-      and(eq(schema.chats.id, id as string), eq(schema.chats.userId, userId)),
+    where: whereClause,
     with: {
       messages: {
         orderBy: () => asc(schema.messages.createdAt),

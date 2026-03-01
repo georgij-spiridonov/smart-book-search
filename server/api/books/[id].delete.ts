@@ -36,8 +36,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Ownership check: only the uploader can delete the book
-  if (book.userId !== userId) {
+  // Ownership check: only the uploader or an admin can delete the book
+  if (!session.user?.isAdmin && book.userId !== userId) {
     log.warn("delete-api", "Unauthorized deletion attempt", {
       bookId: id,
       attemptBy: userId,
@@ -86,9 +86,10 @@ export default defineEventHandler(async (event) => {
     // 3. Delete from Redis Store
     await deleteBook(id);
 
-    // Notify client about book deletion
-    if (userId) {
-      await publishEvent(userId, "book:updated", {
+    // Notify original owner about book deletion
+    const ownerId = book.userId;
+    if (ownerId) {
+      await publishEvent(ownerId, "book:updated", {
         bookId: id,
         status: "deleted",
       });

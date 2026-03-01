@@ -68,7 +68,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 404, statusMessage: "Chat not found" });
     }
 
-    if (existingChat.userId !== userId) {
+    if (!session.user?.isAdmin && existingChat.userId !== userId) {
       throw createError({ statusCode: 403, statusMessage: "Forbidden" });
     }
 

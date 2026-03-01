@@ -13,4 +13,8 @@ export default defineEventHandler(async (event) => {
 
     await setUserSession(event, { id: newId });
   }
+
+  // Populate event context for easier access in handlers.
+  // isAdmin is a status flag that enables elevated permissions (bypass ownership, see all chats).
+  event.context.isAdmin = session.user?.isAdmin === true;
 });

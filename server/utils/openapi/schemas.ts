@@ -252,6 +252,37 @@ export const JobStatusResponseSchema = z
   })
   .meta({ id: "JobStatusResponse" });
 
+// ─────────────────────────── Administration ───────────────────────────
+
+export const AdminLoginRequestSchema = z
+  .object({
+    password: z.string().meta({
+      description: "Administrator password configured on the server.",
+      example: "admin-secret-password",
+    }),
+  })
+  .meta({ id: "AdminLoginRequest" });
+
+export const AdminLoginResponseSchema = z
+  .object({
+    status: z.literal("success"),
+    message: z.string().meta({
+      description: "Confirmation message.",
+      example: "Admin access granted",
+    }),
+  })
+  .meta({ id: "AdminLoginResponse" });
+
+export const AdminLogoutResponseSchema = z
+  .object({
+    status: z.literal("success"),
+    message: z.string().meta({
+      description: "Confirmation message.",
+      example: "Logged out",
+    }),
+  })
+  .meta({ id: "AdminLogoutResponse" });
+
 // ─────────────────────────── Error response ───────────────────────────
 
 export const createErrorSchema = (

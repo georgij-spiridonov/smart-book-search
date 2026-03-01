@@ -74,5 +74,17 @@
     "edit": "Edit",
     "save": "Save",
     "updateSuccess": "Book metadata updated successfully"
+  },
+  "admin": {
+    "title": "Administrator Access",
+    "description": "Log in to enable elevated permissions for managing content across the platform.",
+    "password": "Password",
+    "login": "Enable Access",
+    "logout": "Disable Access",
+    "accessGranted": "Access Granted",
+    "accessRevoked": "Access Revoked",
+    "redirecting": "Enabling administrator mode...",
+    "redirectingHome": "Redirecting to home...",
+    "loginError": "Login failed"
   }
 }

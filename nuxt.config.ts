@@ -70,5 +70,6 @@ export default defineNuxtConfig({
     upstashRedisToken: process.env.KV_REST_API_TOKEN,
     inngestEventKey: process.env.INNGEST_EVENT_KEY,
     inngestSigningKey: process.env.INNGEST_SIGNING_KEY,
+    adminPassword: process.env.ADMIN_PASSWORD,
   },
 });

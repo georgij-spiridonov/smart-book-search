@@ -71,8 +71,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Ownership check: only the uploader can vectorize the book
-  if (book.userId !== userId) {
+  // Ownership check: only the uploader or an admin can vectorize the book
+  if (!session.user?.isAdmin && book.userId !== userId) {
     log.warn("vectorize-api", "Unauthorized vectorization attempt", {
       bookId,
       attemptBy: userId,
@@ -89,11 +89,16 @@ export default defineEventHandler(async (event) => {
     bookName,
     resume: !!resume,
     userId,
+    isAdmin: session.user?.isAdmin,
   });
 
   // Create job tracking entry
   const jobId = generateJobId();
-  await createJob(jobId, bookId, bookName, userId);
+  // If admin is doing it, the job should still be associated with the owner
+  // or should it be the admin? The user said "сохраняя при этом доступ и изначальных владельцев".
+  // Let's use the book's owner ID for the job so they see progress.
+  const targetUserId = book.userId;
+  await createJob(jobId, bookId, bookName, targetUserId);
 
   // Trigger background processing via Inngest
   await inngest.send({
@@ -101,7 +106,7 @@ export default defineEventHandler(async (event) => {
     data: {
       jobId,
       bookId,
-      userId,
+      userId: targetUserId,
       blobUrl,
       bookName,
       author: typeof author === "string" ? author.trim() : undefined,

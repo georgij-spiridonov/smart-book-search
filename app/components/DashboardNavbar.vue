@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import * as locales from "@nuxt/ui/locale";
 
-const { locale: i18nLocale, locales: i18nLocales, setLocale } = useI18n();
+const { locale: i18nLocale, locales: i18nLocales, setLocale, t } = useI18n();
+const { user } = useUserSession();
+
+const isAdmin = computed(() => user.value?.isAdmin === true);
 
 const currentLocale = computed({
   get: () => i18nLocale.value,
@@ -27,6 +30,19 @@ const availableLocales = computed(() => {
 
     <template #right>
       <slot name="right-aligned" />
+
+      <UButton
+        v-if="isAdmin"
+        variant="subtle"
+        color="primary"
+        size="sm"
+        class="pointer-events-auto mr-2 hidden sm:flex"
+        icon="i-heroicons-shield-check"
+        to="/admin"
+      >
+        {{ t('admin.title') }}
+      </UButton>
+
       <ULocaleSelect v-model="currentLocale" :locales="availableLocales" />
       <UColorModeButton />
 

@@ -43,8 +43,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Ownership check: only the uploader can edit the book
-  if (book.userId !== userId) {
+  // Ownership check: only the uploader or an admin can edit the book
+  if (!session.user?.isAdmin && book.userId !== userId) {
     log.warn("update-book-api", "Unauthorized update attempt", {
       bookId: id,
       attemptBy: userId,
@@ -63,9 +63,10 @@ export default defineEventHandler(async (event) => {
       coverUrl,
     });
 
-    // Notify client about book update
-    if (userId) {
-      await publishEvent(userId, "book:updated", {
+    // Notify original owner about book update
+    const ownerId = book.userId;
+    if (ownerId) {
+      await publishEvent(ownerId, "book:updated", {
         bookId: id,
         status: "updated",
         title,

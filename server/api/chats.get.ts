@@ -11,8 +11,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
   }
 
+  // Admins see everything, regular users only see their own
+  const whereClause = session.user?.isAdmin 
+    ? undefined 
+    : eq(schema.chats.userId, userId);
+
   return await db.query.chats.findMany({
-    where: () => eq(schema.chats.userId, userId),
+    where: whereClause,
     orderBy: () => desc(schema.chats.createdAt),
   });
 });
