@@ -1,12 +1,13 @@
 <script setup lang="ts">
 const { t } = useI18n();
+const route = useRoute();
 
 const input = ref("");
 const loading = ref(false);
 
 const { data: booksData } = await useFetch("/api/books");
 const books = computed(() => booksData.value?.books || []);
-const selectedBook = ref();
+const selectedBook = ref(books.value.find((b) => b.id === route.query.bookId));
 
 async function createChat(prompt: string) {
   input.value = prompt;
