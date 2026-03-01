@@ -17,17 +17,35 @@ const route = useRoute();
 const toast = useToast();
 const { copy: clipboardCopy } = useClipboard();
 
-const { data } = await useFetch(`/api/chats/${route.params.id}`, {
-  cache: "force-cache",
-});
+const { data, refresh } = await useFetch(
+  () => `/api/chats/${route.params.id}`,
+  {
+    key: `chat-${route.params.id}`,
+  },
+);
+
 if (!data.value) {
   throw createError({ statusCode: 404, statusMessage: t("chat.notFound") });
 }
 
+definePageMeta({
+  key: (route) => route.params.id as string,
+});
+
 const { data: booksData } = await useFetch("/api/books");
 const books = computed(() => booksData.value?.books || []);
-const selectedBook = ref(
-  books.value.find((b) => data.value?.bookIds?.includes(b.id)),
+const selectedBook = ref<any>(null);
+
+// Sync selectedBook with chat data
+watch(
+  [books, data],
+  ([newBooks, newData]) => {
+    if (newData?.bookIds && newBooks.length) {
+      selectedBook.value =
+        newBooks.find((b: any) => newData.bookIds?.includes(b.id)) || null;
+    }
+  },
+  { immediate: true },
 );
 
 const input = ref("");
@@ -123,7 +141,7 @@ onMounted(() => {
                 v-for="(part, index) in message.parts"
                 :key="`${message.id}-${part.type}-${index}${'state' in part ? `-${(part as any).state}` : ''}`"
               >
-                <Reasoning
+                <AppReasoning
                   v-if="part.type === 'reasoning'"
                   :text="(part as any).text"
                   :is-streaming="(part as any).state !== 'done'"
