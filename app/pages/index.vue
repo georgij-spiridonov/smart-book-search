@@ -4,6 +4,10 @@ const { t } = useI18n();
 const input = ref("");
 const loading = ref(false);
 
+const { data: booksData } = await useFetch("/api/books");
+const books = computed(() => booksData.value?.books || []);
+const selectedBook = ref();
+
 async function createChat(prompt: string) {
   input.value = prompt;
   loading.value = true;
@@ -14,7 +18,7 @@ async function createChat(prompt: string) {
     method: "POST",
     body: {
       query: prompt,
-      bookIds: ["stub-book"],
+      bookIds: selectedBook.value ? [selectedBook.value.id] : [],
       chatId: undefined,
     },
   }).catch(() => null);
@@ -57,7 +61,23 @@ async function onSubmit() {
             @submit="onSubmit"
           >
             <template #footer>
-              <div class="flex items-center gap-1" />
+              <div class="flex items-center gap-1">
+                <USelectMenu
+                  v-model="selectedBook"
+                  :items="books"
+                  label-key="title"
+                  :placeholder="t('chat.selectBook')"
+                  :search-input="{ placeholder: t('chat.searchBooks') }"
+                  class="max-w-64"
+                  variant="ghost"
+                  size="sm"
+                  color="neutral"
+                >
+                  <template #leading>
+                    <UIcon name="i-lucide-book" class="size-4" />
+                  </template>
+                </USelectMenu>
+              </div>
 
               <UChatPromptSubmit color="neutral" size="sm" />
             </template>

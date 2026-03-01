@@ -24,12 +24,16 @@ if (!data.value) {
   throw createError({ statusCode: 404, statusMessage: t("chat.notFound") });
 }
 
+const { data: booksData } = await useFetch("/api/books");
+const books = computed(() => booksData.value?.books || []);
+const selectedBook = ref(books.value.find(b => data.value?.bookIds?.includes(b.id)));
+
 const input = ref("");
 
 const chat = new Chat({
   id: data.value.id,
   messages: data.value.messages as UIMessage[],
-  transport: createBookChatTransport(),
+  transport: createBookChatTransport(computed(() => selectedBook.value ? [selectedBook.value.id] : [])),
   onError(error) {
     const { message } =
       typeof error.message === "string" && error.message[0] === "{"
@@ -148,7 +152,23 @@ onMounted(() => {
             @submit="handleSubmit"
           >
             <template #footer>
-              <div class="flex items-center gap-1" />
+              <div class="flex items-center gap-1">
+                <USelectMenu
+                  v-model="selectedBook"
+                  :items="books"
+                  label-key="title"
+                  :placeholder="t('chat.selectBook')"
+                  :search-input="{ placeholder: t('chat.searchBooks') }"
+                  class="max-w-64"
+                  variant="ghost"
+                  size="sm"
+                  color="neutral"
+                >
+                  <template #leading>
+                    <UIcon name="i-lucide-book" class="size-4" />
+                  </template>
+                </USelectMenu>
+              </div>
 
               <UChatPromptSubmit
                 :status="chat.status"

@@ -203,6 +203,7 @@ export default defineEventHandler(async (event) => {
       id: currentChatId,
       title: "",
       userId: userId,
+      bookIds,
     });
   }
 

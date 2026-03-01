@@ -22,6 +22,8 @@
     "lastWeek": "Last week",
     "lastMonth": "Last month",
     "placeholder": "Type a message...",
+    "selectBook": "Select a book",
+    "searchBooks": "Search books...",
     "copy": "Copy",
     "notFound": "Chat not found",
     "sourceCode": "Source code"

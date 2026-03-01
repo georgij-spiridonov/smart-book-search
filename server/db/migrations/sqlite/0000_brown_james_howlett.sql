@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS `chats` (
 	`id` text PRIMARY KEY NOT NULL,
 	`title` text,
 	`user_id` text NOT NULL,
+	`book_ids` text NOT NULL,
 	`created_at` integer NOT NULL
 );
 --> statement-breakpoint

@@ -13,7 +13,10 @@
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run --reporter=verbose"
+    "test:unit": "vitest run --reporter=verbose",
+    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@ai-sdk/vue": "^3.0.105",

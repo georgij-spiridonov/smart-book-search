@@ -2,11 +2,6 @@ import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 
 /**
- * Stub bookIds for now — will be replaced with real book selection later.
- */
-const STUB_BOOK_IDS = ["stub-book"];
-
-/**
  * Custom ChatTransport that bridges AI SDK's Chat class format
  * with our /api/chat endpoint which expects {query, bookIds, chatId}.
  *
@@ -14,7 +9,7 @@ const STUB_BOOK_IDS = ["stub-book"];
  * parsing for free. We only customize the request body via
  * prepareSendMessagesRequest.
  */
-export function createBookChatTransport() {
+export function createBookChatTransport(bookIds: string[] | Ref<string[]>) {
   return new DefaultChatTransport<UIMessage>({
     api: "/api/chat",
     prepareSendMessagesRequest({ messages, id }) {
@@ -33,7 +28,7 @@ export function createBookChatTransport() {
       return {
         body: {
           query,
-          bookIds: STUB_BOOK_IDS,
+          bookIds: toValue(bookIds),
           chatId: id,
         },
       };

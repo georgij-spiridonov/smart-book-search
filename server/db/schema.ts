@@ -26,6 +26,7 @@ export const chats = sqliteTable(
       .$defaultFn(() => crypto.randomUUID()),
     title: text("title"),
     userId: text("user_id").notNull(),
+    bookIds: text("book_ids", { mode: "json" }).$type<string[]>(),
     ...timestamps,
   },
   (table) => [index("chats_user_id_idx").on(table.userId)],
