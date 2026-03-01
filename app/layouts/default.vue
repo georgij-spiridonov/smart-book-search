@@ -100,6 +100,10 @@ defineShortcuts({
 
       <template #default="{ collapsed }">
         <div class="flex flex-col gap-1.5">
+          <template v-if="collapsed">
+            <UDashboardSearchButton collapsed />
+          </template>
+
           <UButton
             v-bind="
               collapsed
@@ -111,10 +115,6 @@ defineShortcuts({
             to="/"
             @click="open = false"
           />
-
-          <template v-if="collapsed">
-            <UDashboardSearchButton collapsed />
-          </template>
         </div>
 
         <UNavigationMenu
