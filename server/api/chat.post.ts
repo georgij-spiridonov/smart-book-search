@@ -240,6 +240,7 @@ export default defineEventHandler(async (event) => {
           const result = streamAnswer(query, chunks, history);
           writer.merge(
             result.toUIMessageStream({
+              sendStart: false,
               sendReasoning: false,
             }),
           );
