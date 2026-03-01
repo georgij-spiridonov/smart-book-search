@@ -28,6 +28,13 @@ export default defineNuxtConfig({
         code: "ru",
         file: "ru.json",
         name: "Русский",
+        icon: "i-twemoji-flag-russia",
+      },
+      {
+        code: "en",
+        file: "en.json",
+        name: "English",
+        icon: "i-twemoji-flag-united-kingdom",
       },
     ],
     langDir: "locales",
