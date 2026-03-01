@@ -7,6 +7,7 @@ export default defineEventHandler(async (event) => {
   await setUserSession(event, {
     id: currentId,
     user: {
+      id: currentId || "",
       isAdmin: false
     }
   });

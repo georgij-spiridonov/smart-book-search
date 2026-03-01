@@ -299,7 +299,8 @@ describe("POST /api/chat", () => {
     expect(mockCreateUIMessageStream).toHaveBeenCalledOnce();
     expect(mockStreamAnswer).toHaveBeenCalledOnce();
     
-    const streamResult = mockStreamAnswer.mock.results[0].value;
+    const streamResult = mockStreamAnswer.mock.results[0]?.value;
+    expect(streamResult).toBeDefined();
     expect(streamResult.toUIMessageStream).toHaveBeenCalledWith(
       expect.objectContaining({
         sendStart: false,

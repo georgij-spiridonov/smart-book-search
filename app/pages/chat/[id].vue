@@ -39,7 +39,7 @@ interface Book {
 
 const { data: booksData } = await useFetch("/api/books");
 const books = computed(() => (booksData.value?.books || []) as Book[]);
-const selectedBook = ref<Book | null>(null);
+const selectedBook = ref<Book | undefined>(undefined);
 
 // Sync selectedBook with chat data
 watch(
@@ -47,7 +47,7 @@ watch(
   ([newBooks, newData]) => {
     if (newData?.bookIds && newBooks.length) {
       selectedBook.value =
-        newBooks.find((b) => newData.bookIds?.includes(b.id)) || null;
+        newBooks.find((b) => newData.bookIds?.includes(b.id)) || undefined;
     }
   },
   { immediate: true },

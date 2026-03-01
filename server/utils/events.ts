@@ -69,16 +69,15 @@ export async function* subscribeToEvents(userId: string, lastEventId = "$") {
   while (true) {
     try {
       // XREAD with blocking (wait for up to 20s)
-      const results = await redis.xread(
-        "BLOCK",
-        20000,
-        "STREAMS",
+      // Correct signature for @upstash/redis
+      const results = (await redis.xread(
         streamKey,
         currentId,
-      );
+        { blockMS: 20000 }
+      )) as [string, [string, Record<string, string>][]][] | null;
 
       if (results && results.length > 0) {
-        const [_, messages] = results[0];
+        const [_, messages] = results[0]!;
         for (const [id, fields] of messages) {
           currentId = id;
           if (fields && typeof fields.event === "string") {

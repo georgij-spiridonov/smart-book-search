@@ -171,7 +171,7 @@ defineShortcuts({
                   link: collapsed
                     ? 'w-10 h-10 flex items-center justify-center rounded-lg p-0'
                     : 'px-2.5 h-9 justify-center',
-                  icon: 'w-5 h-5 text-highlighted'
+                  linkLeadingIcon: 'w-5 h-5 text-highlighted'
                 }"
               />
             </div>
@@ -185,11 +185,11 @@ defineShortcuts({
               variant="solid"
               color="primary"
               to="/"
-              @click="open = false"
               class="transition-all duration-200 justify-center"
               :class="collapsed ? 'h-10 w-10 rounded-xl' : 'h-9'"
+              @click="open = false"
             >
-              <template #leading v-if="collapsed">
+              <template v-if="collapsed" #leading>
                 <UIcon name="i-lucide-square-pen" class="w-5 h-5" />
               </template>
             </UButton>
@@ -203,7 +203,7 @@ defineShortcuts({
               orientation="vertical"
               :ui="{
                 link: 'overflow-hidden px-2.5 h-10 flex items-center justify-center rounded-lg',
-                icon: 'w-5 h-5'
+                linkLeadingIcon: 'w-5 h-5'
               }"
             >
               <template #chat-trailing="{ item }">

@@ -1,35 +1,17 @@
 <script setup lang="ts">
+import type { Book } from "../../shared/types/book";
 import { useMediaQuery } from "@vueuse/core";
 import { formatBytes } from "~/utils/formatBytes";
 import { LazyModalBookDetails, LazyModalBookUpload } from "#components";
 
-interface BookRecord {
-  id: string;
-  userId: string;
-  title: string;
-  author: string;
-  coverUrl: string;
-  blobUrl: string;
-  filename: string;
-  fileSize: number;
-  uploadedAt: string;
-  vectorized: boolean;
-  job?: {
-    id: string;
-    status: "pending" | "processing" | "completed" | "failed";
-    progress: {
-      currentPage: number;
-      totalPages: number;
-      chunksProcessed: number;
-      totalChunks: number;
-    };
-  } | null;
-}
-
 const { t } = useI18n();
 const overlay = useOverlay();
 
-const { data: booksData, refresh } = await useFetch("/api/books", {
+const { data: booksData, refresh } = await useFetch<{
+  books: Book[];
+  currentUserId: string;
+  isAdmin: boolean;
+}>("/api/books", {
   key: "books",
 });
 const books = computed(() => booksData.value?.books || []);
@@ -96,7 +78,7 @@ function openUploadModal() {
   modal.open();
 }
 
-function openBookDetails(book: BookRecord) {
+function openBookDetails(book: Book) {
   const modal = overlay.create(LazyModalBookDetails, {
     props: {
       book,

@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import type { Book } from "../../shared/types/book";
+
 const { t } = useI18n();
 const route = useRoute();
 
 const input = ref("");
 const loading = ref(false);
 
-const { data: booksData } = await useFetch("/api/books", {
+const { data: booksData } = await useFetch<{ books: Book[] }>("/api/books", {
   key: "books",
 });
 const books = computed(() => booksData.value?.books || []);
