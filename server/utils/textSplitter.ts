@@ -7,11 +7,13 @@ export interface TextChunk {
   title?: string;
 }
 
-const DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", " ", ""];
-
 /**
  * Split an array of pages into smaller, overlapping chunks,
  * preserving the source page number and metadata in each chunk.
+ *
+ * Each PageText usually represents a chapter (EPUB) or a page (PDF).
+ * To avoid "splitting the meaning of a block", we process each page/chapter
+ * independently, so chunks never span across chapter boundaries.
  */
 export function splitPages(
   pages: PageText[],
@@ -39,7 +41,13 @@ export function splitPages(
 }
 
 /**
- * Split a single text string into chunks (used internally and by tests).
+ * Split a single text string into chunks based on sentences.
+ *
+ * Key features:
+ * 1. Always starts a chunk with the beginning of a sentence.
+ * 2. If a sentence is longer than chunkSize, it's taken whole as one chunk.
+ * 3. Preserves original line breaks, spaces, and punctuation.
+ * 4. Supports sentence-aware overlap.
  */
 export function splitText(
   text: string,
@@ -51,91 +59,74 @@ export function splitText(
   const chunkSize = options?.chunkSize ?? 800;
   const chunkOverlap = options?.chunkOverlap ?? 200;
 
-  const rawChunks = recursiveSplit(text, DEFAULT_SEPARATORS, chunkSize);
-  const merged = mergeWithOverlap(rawChunks, chunkSize, chunkOverlap);
+  if (!text.trim()) return [];
 
-  return merged
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0)
-    .map((t, i) => ({ text: t, chunkIndex: i }));
-}
+  // Use Intl.Segmenter for robust sentence splitting across different languages.
+  // Using 'undefined' as locale lets it use the environment default or best-guess.
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "sentence" });
+  const segments = segmenter.segment(text);
+  const sentences = Array.from(segments).map((s) => s.segment);
 
-function recursiveSplit(
-  text: string,
-  separators: string[],
-  chunkSize: number,
-): string[] {
-  if (text.length <= chunkSize) {
-    return [text];
-  }
+  const chunks: string[] = [];
+  let currentChunkSentences: string[] = [];
+  let currentChunkLength = 0;
 
-  const separator = separators[0];
-  const remainingSeparators = separators.slice(1);
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i]!;
 
-  if (!separator) {
-    const chunks: string[] = [];
-    for (let i = 0; i < text.length; i += chunkSize) {
-      chunks.push(text.slice(i, i + chunkSize));
+    // Case 1: The sentence itself is longer than the desired chunk size.
+    // Requirement: "Если предложение больше длины чанка - брать его целиком и переходить к следующему."
+    if (sentence.length >= chunkSize) {
+      // Flush current accumulated chunk if any
+      if (currentChunkSentences.length > 0) {
+        chunks.push(currentChunkSentences.join(""));
+        currentChunkSentences = [];
+        currentChunkLength = 0;
+      }
+      // Add the long sentence as its own standalone chunk
+      chunks.push(sentence);
+      continue;
     }
-    return chunks;
-  }
 
-  const parts = text.split(separator);
-  const results: string[] = [];
-  let current = "";
+    // Case 2: Adding this sentence would exceed the chunkSize.
+    if (currentChunkLength + sentence.length > chunkSize) {
+      // Finalize the current chunk
+      const finishedChunkText = currentChunkSentences.join("");
+      chunks.push(finishedChunkText);
 
-  for (const part of parts) {
-    const candidate = current ? current + separator + part : part;
+      // Implement sentence-aware overlap.
+      // We want to include previous sentences that fit within the chunkOverlap limit.
+      const overlapSentences: string[] = [];
+      let overlapLength = 0;
+      for (let j = currentChunkSentences.length - 1; j >= 0; j--) {
+        const prevS = currentChunkSentences[j]!;
+        // Ensure overlap doesn't exceed the limit and doesn't consume the whole next chunk
+        if (overlapLength + prevS.length <= chunkOverlap) {
+          overlapSentences.unshift(prevS);
+          overlapLength += prevS.length;
+        } else {
+          break;
+        }
+      }
 
-    if (candidate.length <= chunkSize) {
-      current = candidate;
+      // Start new chunk with the overlap and the current sentence
+      currentChunkSentences = [...overlapSentences, sentence];
+      currentChunkLength = overlapLength + sentence.length;
     } else {
-      if (current) {
-        results.push(current);
-      }
-      if (part.length > chunkSize && remainingSeparators.length > 0) {
-        results.push(...recursiveSplit(part, remainingSeparators, chunkSize));
-        current = "";
-      } else {
-        current = part;
-      }
+      // Case 3: Sentence fits within the current chunk
+      currentChunkSentences.push(sentence);
+      currentChunkLength += sentence.length;
     }
   }
 
-  if (current) {
-    results.push(current);
-  }
-
-  return results;
-}
-
-function mergeWithOverlap(
-  chunks: string[],
-  chunkSize: number,
-  chunkOverlap: number,
-): string[] {
-  if (chunks.length <= 1 || chunkOverlap === 0) {
-    return chunks;
-  }
-
-  const result: string[] = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const current = chunks[i]!;
-    if (i === 0) {
-      result.push(current);
-    } else {
-      const prevChunk = chunks[i - 1]!;
-      const overlapText = prevChunk.slice(-chunkOverlap);
-      const merged = overlapText + current;
-
-      if (merged.length > chunkSize * 1.5) {
-        result.push(current);
-      } else {
-        result.push(merged);
-      }
+  // Push the last remaining chunk
+  if (currentChunkSentences.length > 0) {
+    const lastChunkText = currentChunkSentences.join("");
+    // Avoid redundant chunks (e.g. if the last chunk is identical to overlap from previous)
+    if (chunks.length === 0 || chunks[chunks.length - 1] !== lastChunkText) {
+      chunks.push(lastChunkText);
     }
   }
 
-  return result;
+  return chunks.map((t, i) => ({ text: t, chunkIndex: i }));
 }
