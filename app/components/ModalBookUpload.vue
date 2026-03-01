@@ -37,6 +37,7 @@ async function uploadFile() {
   loading.value = true;
   const formData = new FormData();
   formData.append("file", currentFile);
+  if (title.value) formData.append("title", title.value);
   if (author.value) formData.append("author", author.value);
   if (coverUrl.value) formData.append("coverUrl", coverUrl.value);
 

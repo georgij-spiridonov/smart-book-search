@@ -11,6 +11,25 @@ import { updateJob } from "./jobStore";
 import { markBookVectorized } from "./bookStore";
 import { log } from "./logger";
 
+async function fetchBlobWithRetries(
+  url: string,
+  maxRetries = 10,
+  delayMs = 2000,
+): Promise<Response> {
+  let response = await fetch(url);
+  let retries = 0;
+  while (!response.ok && response.status === 404 && retries < maxRetries) {
+    log.warn("inngest", "Blob not found on GET, retrying...", {
+      url,
+      attempt: retries + 1,
+    });
+    await new Promise((r) => setTimeout(r, delayMs));
+    response = await fetch(url);
+    retries++;
+  }
+  return response;
+}
+
 // Create Inngest client
 // In development:
 //   - isDev: true → routes events to local Dev Server (localhost:8288) instead of Inngest Cloud
@@ -90,7 +109,7 @@ export const vectorizeBook = inngest.createFunction(
         "fetch-and-hash",
         async () => {
           log.info("inngest", "Fetching blob for hash check", { blobUrl });
-          const response = await fetch(blobUrl);
+          const response = await fetchBlobWithRetries(blobUrl);
           if (!response.ok) {
             log.error("inngest", "Failed to download file from Blob", {
               statusText: response.statusText,
@@ -135,7 +154,12 @@ export const vectorizeBook = inngest.createFunction(
       // We re-fetch here to avoid passing large buffers through Inngest state
       const pages = await step.run("extract-text", async () => {
         log.info("inngest", "Extracting text from document", { fileHash });
-        const response = await fetch(blobUrl);
+        const response = await fetchBlobWithRetries(blobUrl);
+        if (!response.ok) {
+          throw new Error(
+            `Failed to download file from Blob: ${response.statusText}`,
+          );
+        }
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const extractedPages = await extractText(buffer, filename);

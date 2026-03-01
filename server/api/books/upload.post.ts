@@ -38,8 +38,14 @@ export default defineEventHandler(async (event) => {
     }
 
     // Extract optional metadata fields from multipart form
+    const titleField = formData.find((field) => field.name === "title");
     const authorField = formData.find((field) => field.name === "author");
     const coverUrlField = formData.find((field) => field.name === "coverUrl");
+
+    let title = titleField?.data?.toString("utf-8")?.trim();
+    if (!title) {
+      title = fileField.filename.replace(/\.[^/.]+$/, "");
+    }
     const author = authorField?.data?.toString("utf-8")?.trim() || "Unknown";
     const coverUrl = coverUrlField?.data?.toString("utf-8")?.trim() || "";
 
@@ -81,7 +87,7 @@ export default defineEventHandler(async (event) => {
         existingUrl,
       });
       // Still register in book store if not already there
-      const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
+      const bookTitle = title;
       const bookId = slugifyBookId(bookTitle);
       const existingBook = await getBook(bookId);
       if (!existingBook) {
@@ -127,7 +133,7 @@ export default defineEventHandler(async (event) => {
     await markFileAsUploaded(hash, blob.url);
 
     // Register book in the persistent KV store
-    const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
+    const bookTitle = title;
     const bookId = slugifyBookId(bookTitle);
     await addBook({
       id: bookId,
