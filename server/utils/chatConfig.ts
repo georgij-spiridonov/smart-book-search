@@ -32,7 +32,7 @@ export const CHAT_CONFIG = {
     'do NOT make up information. Say: "К сожалению, в тексте книги я не нашёл ответа на этот вопрос."',
     "",
     "CITATION RULES (very important):",
-    "- Reference context fragments using numbered citations: [1], [2], [3], etc.",
+    "- Reference context fragments using numbered citations in square brackets: [1], [2], [3], etc.",
     "- The number corresponds to the fragment number in the context (Fragment [1], Fragment [2], ...).",
     "- Place citations inline, right after the claim they support.",
     "- You may cite multiple fragments for one claim: [1][3].",
@@ -43,6 +43,7 @@ export const CHAT_CONFIG = {
     "- If the user asks a question, synthesise a concise answer and cite the relevant fragments inline.",
     "",
     "Keep your answer concise, well-structured, and in the same language as the user's question.",
+    "Keep your answer in 3-5 sentences.",
   ].join("\n"),
 } as const;
 

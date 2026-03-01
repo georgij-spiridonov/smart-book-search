@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { LazyModalCitationView } from "#components";
+
 interface Chunk {
   index: number;
   text: string;
@@ -13,7 +15,20 @@ defineProps<{
 }>();
 
 const { t } = useI18n();
+const overlay = useOverlay();
 const open = ref(false);
+
+function openCitation(chunk: Chunk) {
+  const modal = overlay.create(LazyModalCitationView, {
+    props: {
+      text: chunk.text,
+      chapterTitle: chunk.chapterTitle,
+      pageNumber: chunk.pageNumber,
+      onClose: () => modal.close(),
+    },
+  });
+  modal.open();
+}
 </script>
 
 <template>
@@ -39,7 +54,8 @@ const open = ref(false);
           <div
             v-for="(chunk, index) in chunks"
             :key="index"
-            class="p-3 rounded-lg ring ring-default bg-elevated/25 transition-colors hover:bg-elevated/50"
+            class="p-3 rounded-lg ring ring-default bg-elevated/25 transition-colors hover:bg-elevated/50 cursor-pointer"
+            @click="openCitation(chunk)"
           >
             <div class="text-sm font-semibold text-highlighted line-clamp-1">
               {{ chunk.chapterTitle || t('chat.chapterUntitled') }}
