@@ -43,18 +43,49 @@ export const vectorizeBook = inngest.createFunction(
       pineconeIndex,
     } = event.data;
 
-    log.info("inngest", "Starting vectorize-book step function", {
-      jobId,
-      bookId,
-      resume,
-    });
-
     try {
       await step.run("update-job-status", async () => {
+        log.info("inngest", "Starting vectorize-book step function", {
+          jobId,
+          bookId,
+          resume,
+        });
         await updateJob(jobId, { status: "processing" });
       });
 
-      // 1. Fetch and hash check
+      // 1. Wait for blob availability
+      await step.run("wait-for-blob", async () => {
+        const maxRetries = 50;
+        let retries = 0;
+
+        while (retries < maxRetries) {
+          log.info("inngest", "Checking blob availability", {
+            blobUrl,
+            attempt: retries + 1,
+          });
+          try {
+            const response = await fetch(blobUrl, { method: "HEAD" });
+            if (response.ok) {
+              log.info("inngest", "Blob is available", { blobUrl });
+              return true;
+            }
+          } catch {
+            // ignore network errors during check
+          }
+
+          log.info("inngest", "Blob not yet available, waiting...", {
+            blobUrl,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          retries++;
+        }
+
+        throw new Error(
+          "Blob did not become available within the expected time limit.",
+        );
+      });
+
+      // 2. Fetch and hash check
       const { fileHash, filename } = await step.run(
         "fetch-and-hash",
         async () => {
@@ -168,7 +199,10 @@ export const vectorizeBook = inngest.createFunction(
               localOffset += pageChunks.length;
 
               const newChunks = pageChunks.filter(
-                (c) => !existingIds.has(`${bookId}-chunk-${c.chunkIndex}`),
+                (c) =>
+                  !existingIds.has(
+                    `${Buffer.from(bookId).toString("base64url")}-chunk-${c.chunkIndex}`,
+                  ),
               );
               batchSkipped += pageChunks.length - newChunks.length;
 
@@ -181,7 +215,7 @@ export const vectorizeBook = inngest.createFunction(
                   },
                 );
                 const records = newChunks.map((chunk) => ({
-                  id: `${bookId}-chunk-${chunk.chunkIndex}`,
+                  id: `${Buffer.from(bookId).toString("base64url")}-chunk-${chunk.chunkIndex}`,
                   text: chunk.text.slice(0, 1000),
                   bookId,
                   bookName,
@@ -283,7 +317,9 @@ async function getExistingChunkIds(
   bookId: string,
   chunks: TextChunk[],
 ): Promise<Set<string>> {
-  const candidateIds = chunks.map((c) => `${bookId}-chunk-${c.chunkIndex}`);
+  const candidateIds = chunks.map(
+    (c) => `${Buffer.from(bookId).toString("base64url")}-chunk-${c.chunkIndex}`,
+  );
   const existing = new Set<string>();
   for (let i = 0; i < candidateIds.length; i += 1000) {
     const batch = candidateIds.slice(i, i + 1000);

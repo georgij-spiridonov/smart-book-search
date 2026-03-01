@@ -11,7 +11,7 @@ const currentLocale = computed({
 });
 
 const availableLocales = computed(() => {
-  return i18nLocales.value.map((l) => (locales as any)[l.code]);
+  return i18nLocales.value.map((l) => locales[l.code as keyof typeof locales]);
 });
 </script>
 

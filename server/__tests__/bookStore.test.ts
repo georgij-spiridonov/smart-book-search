@@ -152,7 +152,8 @@ describe("bookStore", () => {
     });
 
     it("handles empty string", () => {
-      expect(slugifyBookId("")).toBe("");
+      const slug = slugifyBookId("");
+      expect(slug.length).toBe(36); // UUID length
     });
 
     it("collapses multiple special characters", () => {

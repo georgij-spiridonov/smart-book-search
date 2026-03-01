@@ -14,7 +14,7 @@ async function createChat(prompt: string) {
 
   const chatId = crypto.randomUUID();
 
-  const chat = await $fetch("/api/chat", {
+  await $fetch("/api/chat", {
     method: "POST",
     body: {
       query: prompt,

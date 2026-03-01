@@ -114,6 +114,8 @@ export default defineEventHandler(async (event) => {
     const blob = await put(`books/${fileField.filename}`, fileField.data, {
       access: "public",
       token: config.blobToken,
+      addRandomSuffix: false,
+      allowOverwrite: true,
     });
 
     log.info("upload-api", "File uploaded to Vercel Blob successfully", {

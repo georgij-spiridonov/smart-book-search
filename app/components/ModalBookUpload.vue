@@ -15,14 +15,24 @@ const isMobile = useMediaQuery("(max-width: 640px)");
 
 // Auto-fill title from filename if nothing is typed yet
 watch(file, (newFile) => {
-  if (newFile && !title.value) {
-    title.value = newFile.name.replace(/\.[^/.]+$/, "");
+  const actualFile =
+    Array.isArray(newFile) || newFile instanceof FileList
+      ? newFile[0]
+      : newFile;
+  if (actualFile && !title.value) {
+    title.value = actualFile.name.replace(/\.[^/.]+$/, "");
   }
 });
 
 async function uploadFile() {
   if (!file.value) return;
-  const currentFile = file.value;
+  // Handle both single File and Array/FileList cases correctly
+  const currentFile =
+    Array.isArray(file.value) || file.value instanceof FileList
+      ? file.value[0]
+      : file.value;
+
+  if (!currentFile) return;
 
   loading.value = true;
   const formData = new FormData();
@@ -61,10 +71,11 @@ async function uploadFile() {
     });
 
     emit("close");
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const error = err as { message?: string };
     toast.add({
       title: t("library.error"),
-      description: err.message || "Upload failed",
+      description: error.message || "Upload failed",
       color: "error",
       icon: "i-lucide-alert-circle",
     });
@@ -77,7 +88,7 @@ async function uploadFile() {
 <template>
   <UModal :title="t('library.uploadNew')" :fullscreen="isMobile">
     <template #body>
-      <form @submit.prevent="uploadFile" class="flex flex-col gap-4">
+      <form class="flex flex-col gap-4" @submit.prevent="uploadFile">
         <UFormField :label="t('library.file')" required>
           <UFileUpload
             v-model="file"
@@ -124,6 +135,7 @@ async function uploadFile() {
     <template #footer>
       <div class="flex justify-end gap-2 w-full">
         <UButton
+          type="button"
           color="neutral"
           variant="ghost"
           :label="t('library.close')"
@@ -131,6 +143,7 @@ async function uploadFile() {
           @click="emit('close')"
         />
         <UButton
+          type="button"
           :label="t('library.uploadButton')"
           icon="i-lucide-upload"
           :loading="loading"

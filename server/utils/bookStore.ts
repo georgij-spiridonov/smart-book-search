@@ -223,8 +223,10 @@ export async function getBookByBlobUrl(
  * Generate a URL-friendly slug from a book title.
  */
 export function slugifyBookId(title: string): string {
-  return title
+  const slug = title
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^a-z0-9\u0400-\u04FF]+/gi, "-") // Allow English and Cyrillic
     .replace(/^-|-$/g, "");
+
+  return slug || crypto.randomUUID();
 }

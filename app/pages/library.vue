@@ -38,6 +38,10 @@ function openBookDetails(book: BookRecord) {
     props: {
       book,
       onClose: () => modal.close(),
+      onDeleted: () => {
+        modal.close();
+        refresh();
+      },
     },
   });
   modal.open();
@@ -129,7 +133,7 @@ function openBookDetails(book: BookRecord) {
                     :src="book.coverUrl"
                     :alt="book.title"
                     class="w-full h-full object-cover"
-                  />
+                  >
                   <UIcon
                     v-else
                     name="i-lucide-book"

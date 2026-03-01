@@ -22,7 +22,31 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  deleted: [bookId: string];
 }>();
+
+const toast = useToast();
+const isDeleting = ref(false);
+
+async function deleteBook() {
+  if (!window.confirm(t("library.deleteConfirm"))) return;
+
+  isDeleting.value = true;
+  try {
+    await $fetch(`/api/books/${props.book.id}`, { method: "DELETE" });
+    toast.add({ title: t("library.deleteSuccess"), color: "success" });
+    emit("deleted", props.book.id);
+  } catch (err: unknown) {
+    const error = err as { data?: { message?: string }; message?: string };
+    toast.add({
+      title: t("library.error"),
+      description: error.data?.message || error.message,
+      color: "error",
+    });
+  } finally {
+    isDeleting.value = false;
+  }
+}
 
 const uploadDate = computed(() => {
   return new Intl.DateTimeFormat(undefined, {
@@ -49,7 +73,7 @@ function startChat() {
     :title="book.title"
     :description="book.author"
     :ui="{
-      footer: 'flex justify-end gap-2',
+      footer: 'flex justify-between items-center w-full gap-2',
     }"
     :fullscreen="isMobile"
   >
@@ -63,7 +87,7 @@ function startChat() {
             :src="book.coverUrl"
             :alt="book.title"
             class="w-full h-full object-cover"
-          />
+          >
         </div>
 
         <div class="grid grid-cols-2 gap-4 text-sm mt-2">
@@ -94,16 +118,26 @@ function startChat() {
 
     <template #footer>
       <UButton
-        color="neutral"
-        variant="ghost"
-        :label="t('library.close')"
-        @click="emit('close')"
+        color="error"
+        variant="soft"
+        icon="i-lucide-trash"
+        :label="t('library.deleteBook')"
+        :loading="isDeleting"
+        @click="deleteBook"
       />
-      <UButton
-        :label="t('library.startChat')"
-        icon="i-lucide-message-circle"
-        @click="startChat"
-      />
+      <div class="flex gap-2">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          :label="t('library.close')"
+          @click="emit('close')"
+        />
+        <UButton
+          :label="t('library.startChat')"
+          icon="i-lucide-message-circle"
+          @click="startChat"
+        />
+      </div>
     </template>
   </UModal>
 </template>

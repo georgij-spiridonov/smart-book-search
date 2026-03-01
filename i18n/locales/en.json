@@ -63,6 +63,9 @@
     "uploadSuccess": "Book uploaded successfully",
     "vectorizing": "Vectorizing...",
     "vectorizeSuccess": "Book processed successfully",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "deleteBook": "Delete Book",
+    "deleteConfirm": "Are you sure you want to completely delete this book? This action cannot be undone.",
+    "deleteSuccess": "Book deleted successfully"
   }
 }
