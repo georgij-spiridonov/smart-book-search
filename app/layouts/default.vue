@@ -135,35 +135,21 @@ defineShortcuts({
       class="border-r-0 py-4"
     >
       <template #header="{ collapsed }">
-        <NuxtLink to="/" class="flex items-center gap-2.5" :class="{ 'justify-center w-full': collapsed }">
+        <NuxtLink
+          to="/"
+          class="flex items-center gap-2.5"
+          :class="collapsed ? 'justify-center w-full' : 'px-6.5'"
+        >
           <AppLogo class="shrink-0 transition-all duration-200" :class="collapsed ? 'h-10 w-10' : 'h-8 w-8'" />
           <span v-if="!collapsed" class="text-xl font-bold text-highlighted">{{
             t("chat.title")
           }}</span>
         </NuxtLink>
-
-        <div v-if="!collapsed" class="flex items-center gap-1.5 ms-auto">
-          <UDashboardSearchButton collapsed />
-        </div>
       </template>
 
       <template #default="{ collapsed }">
         <div class="flex flex-col gap-6" :class="{ 'items-center': collapsed }">
           <div class="flex flex-col gap-2 w-full" :class="collapsed ? 'items-center' : 'px-4'">
-            <template v-if="collapsed">
-              <UDashboardSearchButton
-                collapsed
-                class="w-10 h-10 justify-center transition-all duration-200"
-                :ui="{
-                  input: 'hidden',
-                  button: {
-                    base: 'w-10 h-10 p-0 flex items-center justify-center',
-                    icon: { base: 'w-5 h-5' }
-                  }
-                }"
-              />
-            </template>
-
             <div class="w-full" :class="{ 'flex justify-center': collapsed }">
               <UNavigationMenu
                 :items="navigationItems"
@@ -241,28 +227,6 @@ defineShortcuts({
         />
       </template>
     </UDashboardSidebar>
-
-    <UDashboardSearch
-      :placeholder="t('chat.searchChats')"
-      :groups="[
-        {
-          id: 'links',
-          items: [
-            {
-              label: t('chat.newChat'),
-              to: '/',
-              icon: 'i-lucide-square-pen',
-            },
-            {
-              label: t('library.title'),
-              to: '/library',
-              icon: 'i-lucide-library',
-            },
-          ],
-        },
-        ...groups,
-      ]"
-    />
 
     <div
       class="flex-1 flex m-4 lg:ml-0 rounded-lg ring ring-default bg-default/75 shadow min-w-0"
