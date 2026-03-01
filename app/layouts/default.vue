@@ -197,10 +197,9 @@ defineShortcuts({
 
           <UDivider v-if="!collapsed" class="px-4" />
 
-          <div class="w-full flex-1 overflow-y-auto" :class="collapsed ? 'px-1.5' : 'px-2'">
+          <div v-if="!collapsed" class="w-full flex-1 overflow-y-auto px-2">
             <UNavigationMenu
               :items="items"
-              :collapsed="collapsed"
               orientation="vertical"
               :ui="{
                 link: 'overflow-hidden px-2.5 h-10 flex items-center justify-center rounded-lg',
