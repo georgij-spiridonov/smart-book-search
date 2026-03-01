@@ -53,6 +53,7 @@
     "zod-openapi": "^5.4.6"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.95",
     "@nuxt/eslint": "^1.15.2",
     "@types/node": "^25.3.2",
     "@vitest/coverage-v8": "^4.0.18",

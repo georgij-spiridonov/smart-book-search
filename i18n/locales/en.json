@@ -1,4 +1,8 @@
 {
+  "seo": {
+    "title": "Smart Book Search",
+    "description": "Smart book search with AI assistant. Ask questions and get answers based on book text."
+  },
   "chat": {
     "title": "Book Search",
     "welcome": "How can I help you?",
@@ -17,6 +21,8 @@
     "yesterday": "Yesterday",
     "lastWeek": "Last week",
     "lastMonth": "Last month",
-    "placeholder": "Type a message..."
+    "placeholder": "Type a message...",
+    "copy": "Copy",
+    "notFound": "Chat not found"
   }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Analytics } from "@vercel/analytics/nuxt";
 
+const { t, locale } = useI18n();
 const colorMode = useColorMode();
 
 const color = computed(() =>
@@ -15,13 +16,12 @@ useHead({
   ],
   link: [{ rel: "icon", href: "/favicon.ico" }],
   htmlAttrs: {
-    lang: "ru",
+    lang: locale,
   },
 });
 
-const title = "Smart Book Search";
-const description =
-  "Умный поиск по книгам с AI-ассистентом. Задавайте вопросы и получайте ответы на основе текста книг.";
+const title = computed(() => t("seo.title"));
+const description = computed(() => t("seo.description"));
 
 useSeoMeta({
   title,

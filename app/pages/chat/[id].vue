@@ -21,7 +21,7 @@ const { data } = await useFetch(`/api/chats/${route.params.id}`, {
   cache: "force-cache",
 });
 if (!data.value) {
-  throw createError({ statusCode: 404, statusMessage: "Chat not found" });
+  throw createError({ statusCode: 404, statusMessage: t("chat.notFound") });
 }
 
 const input = ref("");
@@ -95,7 +95,7 @@ onMounted(() => {
                 ? {
                     actions: [
                       {
-                        label: 'Copy',
+                        label: t('chat.copy'),
                         icon: copied ? 'i-lucide-copy-check' : 'i-lucide-copy',
                         onClick: copy,
                       },
