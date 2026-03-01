@@ -31,7 +31,7 @@ const availableLocales = computed(() => {
       <UButton
         color="neutral"
         variant="ghost"
-        icon="i-lucide-plus"
+        icon="i-lucide-square-pen"
         to="/"
         class="lg:hidden"
       />

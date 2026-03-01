@@ -107,7 +107,7 @@ defineShortcuts({
           <UButton
             v-bind="
               collapsed
-                ? { icon: 'i-lucide-plus' }
+                ? { icon: 'i-lucide-square-pen' }
                 : { label: t('chat.newChat') }
             "
             variant="soft"
