@@ -22,9 +22,11 @@ const availableLocales = computed(() => {
   >
     <template #left>
       <UDashboardSidebarCollapse />
+      <slot name="left-aligned" />
     </template>
 
     <template #right>
+      <slot name="right-aligned" />
       <ULocaleSelect v-model="currentLocale" :locales="availableLocales" />
       <UColorModeButton />
 
@@ -33,6 +35,13 @@ const availableLocales = computed(() => {
         variant="ghost"
         icon="i-lucide-square-pen"
         to="/"
+        class="lg:hidden"
+      />
+      <UButton
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-library"
+        to="/library"
         class="lg:hidden"
       />
     </template>

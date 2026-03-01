@@ -37,5 +37,32 @@
     "internalServerError": "Ошибка сервера",
     "unexpected": "Произошла непредвиденная ошибка",
     "internalServerErrorDetail": "На нашей стороне что-то пошло не так."
+  },
+  "library": {
+    "title": "Библиотека",
+    "description": "Управление книгами и документами",
+    "uploadBook": "Загрузить книгу",
+    "uploadNew": "Загрузить новую книгу",
+    "startChat": "Начать чат",
+    "close": "Закрыть",
+    "author": "Автор",
+    "size": "Размер",
+    "uploaded": "Загружена",
+    "status": "Статус",
+    "processed": "Обработана",
+    "pending": "В ожидании",
+    "uploading": "Загрузка...",
+    "error": "Ошибка",
+    "selectFile": "Выберите файл для загрузки",
+    "dropzoneLabel": "Перетащите сюда PDF, TXT или EPUB",
+    "dropzoneDescription": "Поддерживаемые форматы: .pdf, .txt, .epub",
+    "file": "Файл",
+    "coverUrl": "URL обложки (необязательно)",
+    "uploadTitle": "Название",
+    "uploadButton": "Загрузить",
+    "uploadSuccess": "Книга успешно загружена",
+    "vectorizing": "Векторизация...",
+    "vectorizeSuccess": "Книга успешно обработана",
+    "unknown": "Неизвестен"
   }
 }

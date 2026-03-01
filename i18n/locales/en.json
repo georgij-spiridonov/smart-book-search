@@ -37,5 +37,32 @@
     "internalServerError": "Internal Server Error",
     "unexpected": "An unexpected error occurred",
     "internalServerErrorDetail": "Something went wrong on our end."
+  },
+  "library": {
+    "title": "Library",
+    "description": "Manage your books and documents",
+    "uploadBook": "Upload Book",
+    "uploadNew": "Upload new book",
+    "startChat": "Start Chat",
+    "close": "Close",
+    "author": "Author",
+    "size": "Size",
+    "uploaded": "Uploaded",
+    "status": "Status",
+    "processed": "Processed",
+    "pending": "Pending",
+    "uploading": "Uploading...",
+    "error": "Error",
+    "selectFile": "Select a file to upload",
+    "dropzoneLabel": "Drop your PDF, TXT or EPUB here",
+    "dropzoneDescription": "Supported formats: .pdf, .txt, .epub",
+    "file": "File",
+    "coverUrl": "Cover URL",
+    "uploadTitle": "Title",
+    "uploadButton": "Upload",
+    "uploadSuccess": "Book uploaded successfully",
+    "vectorizing": "Vectorizing...",
+    "vectorizeSuccess": "Book processed successfully",
+    "unknown": "Unknown"
   }
 }

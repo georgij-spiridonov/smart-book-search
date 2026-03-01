@@ -115,6 +115,17 @@ defineShortcuts({
             to="/"
             @click="open = false"
           />
+          <UButton
+            v-bind="
+              collapsed
+                ? { icon: 'i-lucide-library' }
+                : { label: t('library.title') }
+            "
+            variant="soft"
+            block
+            to="/library"
+            @click="open = false"
+          />
         </div>
 
         <UNavigationMenu
@@ -165,6 +176,11 @@ defineShortcuts({
               label: t('chat.newChat'),
               to: '/',
               icon: 'i-lucide-square-pen',
+            },
+            {
+              label: t('library.title'),
+              to: '/library',
+              icon: 'i-lucide-library',
             },
           ],
         },
