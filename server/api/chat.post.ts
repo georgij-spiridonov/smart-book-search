@@ -245,7 +245,7 @@ export default defineEventHandler(async (event) => {
           );
 
           // Generate a title for the chat if it's new
-          if (!chatId) {
+          if (history.length === 0) {
             event.waitUntil(
               generateText({
                 model: "gemini-2.5-flash-lite", // or whatever model you use for internal stuff

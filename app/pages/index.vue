@@ -13,22 +13,19 @@ async function createChat(prompt: string) {
   input.value = prompt;
   loading.value = true;
 
-  const chatId = crypto.randomUUID();
-
-  await $fetch("/api/chat", {
+  const chat = await $fetch("/api/chats", {
     method: "POST",
     body: {
-      query: prompt,
       bookIds: selectedBook.value ? [selectedBook.value.id] : [],
-      chatId: undefined,
     },
   }).catch(() => null);
 
-  // Even if the streaming request fails,
-  // we navigate to the chat page — the chat was created server-side
-  // before the LLM call, so it should exist.
-  refreshNuxtData("chats");
-  navigateTo(`/chat/${chatId}`);
+  if (chat) {
+    refreshNuxtData("chats");
+    navigateTo(`/chat/${chat.id}?prompt=${encodeURIComponent(prompt)}`);
+  } else {
+    loading.value = false;
+  }
 }
 
 async function onSubmit() {

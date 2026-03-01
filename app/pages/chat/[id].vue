@@ -75,7 +75,11 @@ function copy(_e: MouseEvent, message: UIMessage) {
 }
 
 onMounted(() => {
-  if (data.value?.messages.length === 1) {
+  if (route.query.prompt) {
+    chat.sendMessage({ text: route.query.prompt as string });
+    const router = useRouter();
+    router.replace({ query: {} });
+  } else if (data.value?.messages.length === 1) {
     chat.regenerate();
   }
 });
