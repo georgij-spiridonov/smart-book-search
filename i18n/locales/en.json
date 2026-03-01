@@ -24,5 +24,13 @@
     "placeholder": "Type a message...",
     "copy": "Copy",
     "notFound": "Chat not found"
+  },
+  "error": {
+    "backToHome": "Back to Home",
+    "notFound": "Page Not Found",
+    "notFoundDetail": "The page you are looking for doesn't exist or has been moved.",
+    "internalServerError": "Internal Server Error",
+    "unexpected": "An unexpected error occurred",
+    "internalServerErrorDetail": "Something went wrong on our end."
   }
 }
