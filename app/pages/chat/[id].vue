@@ -1,18 +1,12 @@
 <script setup lang="ts">
-import type { DefineComponent } from "vue";
 import { Chat } from "@ai-sdk/vue";
 import type { UIMessage } from "ai";
 import { useClipboard } from "@vueuse/core";
 import { getTextFromMessage } from "@nuxt/ui/utils/ai";
 import { createBookChatTransport } from "~/utils/BookChatTransport";
-import ProseStreamPre from "../../components/prose/PreStream.vue";
 import type { Book } from "../../../shared/types/book";
 
 const { t } = useI18n();
-
-const customComponents = {
-  pre: ProseStreamPre as unknown as DefineComponent,
-};
 
 const currentRoute = useRoute();
 const toastNotification = useToast();
@@ -193,7 +187,6 @@ onMounted(() => {
                   v-if="part.type === 'text' && message.role === 'assistant'"
                   :value="(part as any).text"
                   :cache-key="`${message.id}-${index}`"
-                  :components="customComponents"
                   :parser-options="{ highlight: false }"
                   class="*:first:mt-0 *:last:mb-0"
                 />

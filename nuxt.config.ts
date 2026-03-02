@@ -45,9 +45,6 @@ export default defineNuxtConfig({
     headings: {
       anchorLinks: false,
     },
-    highlight: {
-      shikiEngine: "javascript",
-    },
   },
   experimental: {
     viewTransition: true,

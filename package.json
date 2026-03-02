@@ -48,8 +48,6 @@
     "nuxt-auth-utils": "^0.5.29",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.624",
-    "shiki": "^4.0.0",
-    "shiki-stream": "^0.1.4",
     "striptags": "^3.2.0",
     "vue": "^3.5.28",
     "vue-router": "^4.6.4",
