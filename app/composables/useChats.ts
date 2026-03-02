@@ -1,6 +1,9 @@
-import { isToday, isYesterday, subMonths } from "date-fns";
+import { isToday, isYesterday, subDays, subMonths } from "date-fns";
 
-export interface UIChat {
+/**
+ * Интерфейс для элемента чата в пользовательском интерфейсе.
+ */
+export interface ChatListItem {
   id: string;
   label: string;
   icon: string;
@@ -8,20 +11,40 @@ export interface UIChat {
   createdAt: string;
 }
 
-export function useChats(chats: Ref<UIChat[] | undefined>) {
+/**
+ * Группа чатов, разделенная по временным периодам.
+ */
+interface ChatGroup {
+  id: string;
+  label: string;
+  items: ChatListItem[];
+}
+
+/**
+ * Композабл для группировки списка чатов по дате создания.
+ * 
+ * @param chats - Реактивный список чатов для группировки.
+ * @returns Вычисляемое свойство со сгруппированными чатами.
+ */
+export function useChats(chats: Ref<ChatListItem[] | undefined>) {
   const { t } = useI18n();
 
-  const groups = computed(() => {
-    const today: UIChat[] = [];
-    const yesterday: UIChat[] = [];
-    const lastWeek: UIChat[] = [];
-    const lastMonth: UIChat[] = [];
-    const older: Record<string, UIChat[]> = {};
+  const groups = computed<ChatGroup[]>(() => {
+    const list = chats.value;
+    if (!list?.length) return [];
 
-    const oneWeekAgo = subMonths(new Date(), 0.25); // ~7 days ago
-    const oneMonthAgo = subMonths(new Date(), 1);
+    const today: ChatListItem[] = [];
+    const yesterday: ChatListItem[] = [];
+    const lastWeek: ChatListItem[] = [];
+    const lastMonth: ChatListItem[] = [];
+    const older: Record<string, ChatListItem[]> = {};
 
-    chats.value?.forEach((chat) => {
+    const now = new Date();
+    const oneWeekAgo = subDays(now, 7);
+    const oneMonthAgo = subMonths(now, 1);
+
+    // Распределяем чаты по категориям за один проход
+    for (const chat of list) {
       const chatDate = new Date(chat.createdAt);
 
       if (isToday(chatDate)) {
@@ -43,63 +66,59 @@ export function useChats(chats: Ref<UIChat[] | undefined>) {
         }
         older[monthYear].push(chat);
       }
-    });
+    }
 
-    const sortedMonthYears = Object.keys(older).sort((a, b) => {
-      const dateA = new Date(a);
-      const dateB = new Date(b);
-      return dateB.getTime() - dateA.getTime();
-    });
+    const groupedChats: ChatGroup[] = [];
 
-    const formattedGroups = [] as Array<{
-      id: string;
-      label: string;
-      items: UIChat[];
-    }>;
-
-    if (today.length) {
-      formattedGroups.push({
+    if (today.length > 0) {
+      groupedChats.push({
         id: "today",
         label: t("chat.groupToday"),
         items: today,
       });
     }
 
-    if (yesterday.length) {
-      formattedGroups.push({
+    if (yesterday.length > 0) {
+      groupedChats.push({
         id: "yesterday",
         label: t("chat.groupYesterday"),
         items: yesterday,
       });
     }
 
-    if (lastWeek.length) {
-      formattedGroups.push({
+    if (lastWeek.length > 0) {
+      groupedChats.push({
         id: "last-week",
         label: t("chat.groupLastWeek"),
         items: lastWeek,
       });
     }
 
-    if (lastMonth.length) {
-      formattedGroups.push({
+    if (lastMonth.length > 0) {
+      groupedChats.push({
         id: "last-month",
         label: t("chat.groupLastMonth"),
         items: lastMonth,
       });
     }
 
-    sortedMonthYears.forEach((monthYear) => {
-      if (older[monthYear]?.length) {
-        formattedGroups.push({
-          id: monthYear,
-          label: monthYear,
-          items: older[monthYear],
-        });
-      }
+    // Добавляем более старые группы, отсортированные по дате (от новых к старым)
+    const sortedMonthYears = Object.keys(older).sort((a, b) => {
+      return new Date(b).getTime() - new Date(a).getTime();
     });
 
-    return formattedGroups;
+    for (const monthYear of sortedMonthYears) {
+      const items = older[monthYear];
+      if (items) {
+        groupedChats.push({
+          id: monthYear,
+          label: monthYear,
+          items,
+        });
+      }
+    }
+
+    return groupedChats;
   });
 
   return {

@@ -2,33 +2,57 @@ import { createHighlighter } from "shiki";
 import type { HighlighterGeneric } from "shiki";
 import { createJavaScriptRegexEngine } from "shiki/engine-javascript.mjs";
 
+/**
+ * Глобальный экземпляр хайлайтера и его обещание для реализации паттерна Одиночка (Singleton).
+ * Используем HighlighterGeneric<any, any> для максимальной совместимости с shiki-stream.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let highlighter: HighlighterGeneric<any, any> | null = null;
+let globalHighlighter: HighlighterGeneric<any, any> | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let promise: Promise<HighlighterGeneric<any, any>> | null = null;
+let highlighterPromise: Promise<HighlighterGeneric<any, any>> | null = null;
 
-export const useHighlighter = async () => {
-  if (!promise) {
-    promise = createHighlighter({
-      langs: [
-        "vue",
-        "js",
-        "ts",
-        "css",
-        "html",
-        "json",
-        "yaml",
-        "markdown",
-        "bash",
-        "python",
-      ],
-      themes: ["material-theme-palenight", "material-theme-lighter"],
+/**
+ * Список поддерживаемых языков для подсветки кода.
+ */
+const SUPPORTED_LANGUAGES = [
+  "vue",
+  "js",
+  "ts",
+  "css",
+  "html",
+  "json",
+  "yaml",
+  "markdown",
+  "bash",
+  "python",
+];
+
+/**
+ * Темы оформления кода.
+ */
+const HIGHLIGHT_THEMES = ["material-theme-palenight", "material-theme-lighter"];
+
+/**
+ * Композабл для получения асинхронного экземпляра Shiki Highlighter.
+ * Реализует отложенную инициализацию и повторное использование одного и того же экземпляра.
+ * 
+ * @returns Обещание с экземпляром Highlighter.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const useHighlighter = async (): Promise<HighlighterGeneric<any, any>> => {
+  // Если инициализация еще не начиналась, запускаем её
+  if (!highlighterPromise) {
+    highlighterPromise = createHighlighter({
+      langs: SUPPORTED_LANGUAGES,
+      themes: HIGHLIGHT_THEMES,
       engine: createJavaScriptRegexEngine(),
     });
   }
-  if (!highlighter) {
-    highlighter = await promise;
+
+  // Ожидаем завершения инициализации, если она не завершена
+  if (!globalHighlighter) {
+    globalHighlighter = await highlighterPromise;
   }
 
-  return highlighter;
+  return globalHighlighter;
 };

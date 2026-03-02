@@ -1,52 +1,72 @@
+/**
+ * Типы данных для событий, получаемых через SSE.
+ */
+interface BaseEventPayload {
+  id: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Композабл для управления Server-Sent Events (SSE).
+ * Подписывается на обновления чатов, книг и фоновых задач.
+ */
 export function useEvents() {
   const eventSource = ref<EventSource | null>(null);
 
   onMounted(() => {
-    // Connect to the SSE endpoint
+    // Подключаемся к эндпоинту событий
     const es = new EventSource("/api/events");
     eventSource.value = es;
 
-    es.addEventListener("chat:updated", (event) => {
+    // Обработка обновления чата
+    es.addEventListener("chat:updated", (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data);
-        console.log("[SSE] Chat updated event received:", payload);
-        // Refresh the chats list globally
-        refreshNuxtData("chats").then(() => {
-          console.log("[SSE] chats data refreshed after update");
+        const payload: BaseEventPayload = JSON.parse(event.data);
+        console.info("[SSE] Chat update received:", payload.id);
+        
+        // Глобальное обновление данных чатов
+        refreshNuxtData("chats").catch((error) => {
+          console.error("[SSE] Failed to refresh chats data:", error);
         });
-      } catch (e) {
-        console.error("Failed to parse chat update event", e);
+      } catch (error) {
+        console.error("[SSE] Error parsing chat update payload:", error);
       }
     });
 
-    es.addEventListener("book:updated", (event) => {
+    // Обработка обновления книги
+    es.addEventListener("book:updated", (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data);
-        // Refresh the books list globally
+        const payload: BaseEventPayload = JSON.parse(event.data);
+        console.info("[SSE] Book update received:", payload.id);
+        
+        // Обновляем список книг для отображения актуального статуса
         refreshNuxtData("books");
-        console.log("Book updated:", payload);
-      } catch (e) {
-        console.error("Failed to parse book update event", e);
+      } catch (error) {
+        console.error("[SSE] Error parsing book update payload:", error);
       }
     });
 
-    es.addEventListener("job:updated", (event) => {
+    // Обработка обновления статуса фоновой задачи
+    es.addEventListener("job:updated", (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data);
-        // Refresh the books list to show progress
+        const payload: BaseEventPayload = JSON.parse(event.data);
+        console.info("[SSE] Job progress updated:", payload.id);
+        
+        // Обновляем список книг для отображения прогресса векторизации
         refreshNuxtData("books");
-        console.log("Job updated:", payload);
-      } catch (e) {
-        console.error("Failed to parse job update event", e);
+      } catch (error) {
+        console.error("[SSE] Error parsing job update payload:", error);
       }
     });
 
+    // Обработка ошибок соединения
     es.onerror = (error) => {
-      console.error("EventSource failed:", error);
-      // EventSource will automatically retry connecting
+      console.error("[SSE] Connection error:", error);
+      // EventSource автоматически попытается переподключиться
     };
   });
 
+  // Закрываем соединение при уничтожении компонента
   onUnmounted(() => {
     if (eventSource.value) {
       eventSource.value.close();
