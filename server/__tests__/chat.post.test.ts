@@ -26,8 +26,10 @@ const { mockedGetUserSession, mockedReadBody } = vi.hoisted(() => {
 // Mocks for Local Utils
 // =======================
 const mockSearchBookKnowledge = vi.fn();
+const mockGenerateSearchQueries = vi.fn();
 vi.mock("../utils/retrieval", () => ({
   searchBookKnowledge: (...args: any[]) => mockSearchBookKnowledge(...args),
+  generateSearchQueries: (...args: any[]) => mockGenerateSearchQueries(...args),
 }));
 
 const mockStreamAnswer = vi.fn();
@@ -216,27 +218,32 @@ describe("POST /api/chat", () => {
     mockGetBook.mockResolvedValueOnce({
       id: "book-1",
       vectorized: true,
+      title: "Book 1",
     });
 
+    // Mock search queries generation
+    mockGenerateSearchQueries.mockResolvedValueOnce(["query1"]);
     // But search returns empty chunks array
     mockSearchBookKnowledge.mockResolvedValueOnce([]);
 
-    mockCreateUIMessageStream.mockImplementationOnce((config) => {
+    mockCreateUIMessageStream.mockImplementationOnce(async (config) => {
       const writer = { write: vi.fn(), merge: vi.fn() };
-      config.execute({ writer });
+      await config.execute({ writer });
       return "mock-stream-no-context";
     });
 
-    mockCreateUIMessageStreamResponse.mockImplementationOnce((config) => {
-      return `MockResponse-${config.stream}`;
+    mockCreateUIMessageStreamResponse.mockImplementationOnce(async (config) => {
+      const streamVal = await config.stream;
+      return `MockResponse-${streamVal}`;
     });
 
     const result = await chatPostHandler({} as any);
 
+    expect(mockGenerateSearchQueries).toHaveBeenCalledOnce();
     expect(mockSearchBookKnowledge).toHaveBeenCalledOnce();
     expect(mockCreateUIMessageStream).toHaveBeenCalledOnce();
     expect(mockCreateUIMessageStreamResponse).toHaveBeenCalledOnce();
-    expect(mockStreamAnswer).not.toHaveBeenCalled();
+    expect(mockStreamAnswer).toHaveBeenCalledOnce();
     expect(result).toBe("MockResponse-mock-stream-no-context");
   });
 
@@ -254,8 +261,11 @@ describe("POST /api/chat", () => {
     mockGetBook.mockResolvedValueOnce({
       id: "book-1",
       vectorized: true,
+      title: "Book 1",
     });
 
+    // Mock search queries generation
+    mockGenerateSearchQueries.mockResolvedValueOnce(["query1"]);
     // Search yields context
     const chunks = [{ text: "AI is cool.", score: 0.9, bookId: "book-1" }];
     mockSearchBookKnowledge.mockResolvedValueOnce(chunks);
@@ -269,7 +279,7 @@ describe("POST /api/chat", () => {
 
     mockCreateUIMessageStream.mockImplementationOnce(async (config: any) => {
       const writer = { write: vi.fn(), merge: vi.fn() };
-      config.execute({ writer });
+      await config.execute({ writer });
       if (config.onFinish) {
         await config.onFinish({
           messages: [
@@ -293,11 +303,22 @@ describe("POST /api/chat", () => {
 
     const result = await chatPostHandler(event as any);
 
+    expect(mockGenerateSearchQueries).toHaveBeenCalledOnce();
     expect(mockSearchBookKnowledge).toHaveBeenCalledOnce();
     expect(mockInsert).toHaveBeenCalledTimes(3); // insert new chat, insert 'user' msg, insert 'assistant' msg
     expect(mockInsertValues).toHaveBeenCalledTimes(3);
     expect(mockCreateUIMessageStream).toHaveBeenCalledOnce();
     expect(mockStreamAnswer).toHaveBeenCalledOnce();
+    
+    const streamResult = mockStreamAnswer.mock.results[0]?.value;
+    expect(streamResult).toBeDefined();
+    expect(streamResult.toUIMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sendStart: false,
+        sendReasoning: false,
+      }),
+    );
+
     expect(mockCreateUIMessageStreamResponse).toHaveBeenCalledOnce();
 
     expect(event.waitUntil).toHaveBeenCalledOnce();

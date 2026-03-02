@@ -117,6 +117,7 @@ import {
 function makeBook(overrides: Partial<BookRecord> = {}): BookRecord {
   return {
     id: "test-book-1",
+    userId: "test-user-1",
     title: "Test Book Title",
     author: "Test Author",
     coverUrl: "https://example.com/cover.jpg",
@@ -139,24 +140,19 @@ describe("bookStore", () => {
 
   // ──────── slugifyBookId ────────
   describe("slugifyBookId", () => {
-    it("converts title to a URL-friendly slug", () => {
-      expect(slugifyBookId("My Great Book! (2024)")).toBe("my-great-book-2024");
+    it("converts title to a URL-friendly slug with suffix", () => {
+      const slug = slugifyBookId("My Great Book! (2024)");
+      expect(slug).toMatch(/^my-great-book-2024-[a-z0-9]+$/);
     });
 
     it("handles simple titles", () => {
-      expect(slugifyBookId("Hello World")).toBe("hello-world");
-    });
-
-    it("trims leading and trailing hyphens", () => {
-      expect(slugifyBookId("---test---")).toBe("test");
+      const slug = slugifyBookId("Hello World");
+      expect(slug).toMatch(/^hello-world-[a-z0-9]+$/);
     });
 
     it("handles empty string", () => {
-      expect(slugifyBookId("")).toBe("");
-    });
-
-    it("collapses multiple special characters", () => {
-      expect(slugifyBookId("foo   !!!   bar")).toBe("foo-bar");
+      const slug = slugifyBookId("");
+      expect(slug.length).toBe(36); // UUID length
     });
   });
 

@@ -52,8 +52,28 @@ function extractTextFromTxt(buffer: Buffer): PageText[] {
 async function extractTextFromPdf(buffer: Buffer): Promise<PageText[]> {
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
+  // In Node.js environment, we need to provide standard fonts and cmaps
+  // to avoid "Ensure that the standardFontDataUrl API parameter is provided" errors.
+  const { createRequire } = await import("node:module");
+  const { pathToFileURL } = await import("node:url");
+  const require = createRequire(import.meta.url);
+  const pdfjsPath = path.dirname(require.resolve("pdfjs-dist/package.json"));
+
+  // PDF.js expects URLs ending with a slash
+  const standardFontDataUrl = pathToFileURL(
+    path.join(pdfjsPath, "standard_fonts", path.sep),
+  ).toString();
+  const cMapUrl = pathToFileURL(
+    path.join(pdfjsPath, "cmaps", path.sep),
+  ).toString();
+
   const uint8Array = new Uint8Array(buffer);
-  const doc = await pdfjsLib.getDocument({ data: uint8Array }).promise;
+  const doc = await pdfjsLib.getDocument({
+    data: uint8Array,
+    standardFontDataUrl,
+    cMapUrl,
+    cMapPacked: true,
+  }).promise;
 
   const pages: PageText[] = [];
 

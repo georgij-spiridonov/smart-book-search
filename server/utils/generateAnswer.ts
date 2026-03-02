@@ -97,6 +97,7 @@ export async function generateAnswer(
     model: CHAT_CONFIG.answerModel,
     system: CHAT_CONFIG.answerSystemPrompt,
     messages,
+    temperature: 0.9,
   });
 
   const answer = {
@@ -145,5 +146,6 @@ export function streamAnswer(
     model: CHAT_CONFIG.answerModel,
     system: CHAT_CONFIG.answerSystemPrompt,
     messages,
+    temperature: 0.9,
   });
 }

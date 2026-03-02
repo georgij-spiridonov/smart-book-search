@@ -18,6 +18,16 @@ export default defineEventHandler(async (event) => {
   try {
     const config = useRuntimeConfig();
 
+    const session = await getUserSession(event);
+    const userId = session.user?.id || session.id;
+
+    if (!userId) {
+      throw createError({
+        statusCode: 401,
+        statusMessage: "Unauthorized: Session not found",
+      });
+    }
+
     const formData = await readMultipartFormData(event);
     if (!formData || formData.length === 0) {
       log.warn("upload-api", "Upload request rejected: no form data");
@@ -38,8 +48,14 @@ export default defineEventHandler(async (event) => {
     }
 
     // Extract optional metadata fields from multipart form
+    const titleField = formData.find((field) => field.name === "title");
     const authorField = formData.find((field) => field.name === "author");
     const coverUrlField = formData.find((field) => field.name === "coverUrl");
+
+    let title = titleField?.data?.toString("utf-8")?.trim();
+    if (!title) {
+      title = fileField.filename.replace(/\.[^/.]+$/, "");
+    }
     const author = authorField?.data?.toString("utf-8")?.trim() || "Unknown";
     const coverUrl = coverUrlField?.data?.toString("utf-8")?.trim() || "";
 
@@ -50,6 +66,7 @@ export default defineEventHandler(async (event) => {
       filename: fileField.filename,
       sizeBytes: fileField.data.length,
       extension: ext,
+      userId,
     });
 
     if (!ext || !allowedExtensions.includes(ext)) {
@@ -81,12 +98,13 @@ export default defineEventHandler(async (event) => {
         existingUrl,
       });
       // Still register in book store if not already there
-      const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
+      const bookTitle = title;
       const bookId = slugifyBookId(bookTitle);
       const existingBook = await getBook(bookId);
       if (!existingBook) {
         await addBook({
           id: bookId,
+          userId,
           title: bookTitle,
           author,
           coverUrl,
@@ -114,6 +132,8 @@ export default defineEventHandler(async (event) => {
     const blob = await put(`books/${fileField.filename}`, fileField.data, {
       access: "public",
       token: config.blobToken,
+      addRandomSuffix: false,
+      allowOverwrite: true,
     });
 
     log.info("upload-api", "File uploaded to Vercel Blob successfully", {
@@ -125,10 +145,11 @@ export default defineEventHandler(async (event) => {
     await markFileAsUploaded(hash, blob.url);
 
     // Register book in the persistent KV store
-    const bookTitle = fileField.filename.replace(/\.[^/.]+$/, "");
+    const bookTitle = title;
     const bookId = slugifyBookId(bookTitle);
     await addBook({
       id: bookId,
+      userId,
       title: bookTitle,
       author,
       coverUrl,

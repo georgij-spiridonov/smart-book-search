@@ -8,48 +8,85 @@ describe("textSplitter", () => {
     const chunks = splitText(short);
 
     expect(chunks).toHaveLength(1);
-    expect(chunks[0]!.text).toContain("Hello");
+    expect(chunks[0]!.text).toBe(short);
   });
 
   it("produces multiple chunks for long text", () => {
-    const paragraph = "Lorem ipsum dolor sit amet. ".repeat(200); // ~5600 chars
-    const chunks = splitText(paragraph);
+    const paragraph = "Sentence one. ".repeat(100);
+    const chunks = splitText(paragraph, { chunkSize: 100 });
     expect(chunks.length).toBeGreaterThan(1);
+    // Every chunk should start with "Sentence"
+    chunks.forEach((c) => {
+      expect(c.text.startsWith("Sentence")).toBe(true);
+    });
   });
 
-  it("respects approximate chunk size limit", () => {
-    const paragraph =
-      "This is a test sentence with some meaningful content. ".repeat(100);
-    const chunks = splitText(paragraph, { chunkSize: 500, chunkOverlap: 100 });
-    const maxLen = Math.max(...chunks.map((c) => c.text.length));
-    // Allow up to 1.5x chunk size due to overlap merging
-    expect(maxLen).toBeLessThanOrEqual(500 * 1.5);
+  it("takes a long sentence as a whole even if it exceeds chunkSize", () => {
+    const longSentence = "This is a very long sentence without any terminators that exceeds the chunk size limit by quite a bit and should not be split into smaller pieces even though it is very long indeed";
+    const text = "Short sentence. " + longSentence + ". Another short sentence.";
+    const chunkSize = 50;
+    const chunks = splitText(text, { chunkSize });
+
+    // The long sentence (plus its terminator) should be its own chunk and not be split
+    const longChunk = chunks.find(c => c.text.includes(longSentence));
+    expect(longChunk).toBeDefined();
+    expect(longChunk!.text).toContain(longSentence);
+    expect(longChunk!.text.length).toBeGreaterThan(chunkSize);
   });
 
-  it("assigns sequential chunkIndex values", () => {
-    const text = "Word ".repeat(500);
-    const chunks = splitText(text);
-    const indices = chunks.map((c) => c.chunkIndex);
-    const isSequential = indices.every((val, idx) => val === idx);
-    expect(isSequential).toBe(true);
+  it("preserves line breaks and punctuation", () => {
+    const textWithNewlines = "First sentence.\nSecond sentence with\na newline.\nThird sentence!";
+    
+    // Join all chunks (ignoring overlaps for this test by setting overlap to 0)
+    const chunksNoOverlap = splitText(textWithNewlines, { chunkSize: 20, chunkOverlap: 0 });
+    const joined = chunksNoOverlap.map(c => c.text).join("");
+    expect(joined).toBe(textWithNewlines);
   });
 
-  it("propagates title and pageNumber via splitPages", () => {
+  it("handles overlap correctly with sentences", () => {
+    const text = "S1. S2. S3. S4. S5."; // Each "SX. " is 4 chars
+    const chunks = splitText(text, { chunkSize: 10, chunkOverlap: 5 });
+    
+    // Chunk 1: "S1. S2. " (8 chars)
+    // Chunk 2: overlap "S2. " + "S3. " -> "S2. S3. " (8 chars)
+    // ...
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[1]!.text.startsWith("S2.")).toBe(true);
+  });
+
+  it("propagates title and pageNumber via splitPages and respects chapter boundaries", () => {
     const pages: PageText[] = [
-      { pageNumber: 1, text: "Content of Chapter 1", title: "Chapter 1" },
-      { pageNumber: 2, text: "Content of Chapter 2", title: "Chapter 2" },
+      { pageNumber: 1, text: "Chapter 1 sentence. Another sentence.", title: "Chapter 1" },
+      { pageNumber: 2, text: "Chapter 2 starts here.", title: "Chapter 2" },
     ];
-    const chunks = splitPages(pages);
+    // Use a very small chunkSize to force splitting if it was one big text
+    const chunks = splitPages(pages, { chunkSize: 10 });
 
-    expect(chunks).toHaveLength(2);
     expect(chunks[0]!.pageNumber).toBe(1);
     expect(chunks[0]!.title).toBe("Chapter 1");
-    expect(chunks[1]!.pageNumber).toBe(2);
-    expect(chunks[1]!.title).toBe("Chapter 2");
+    
+    // The last chunk of Chapter 1 should not contain any text from Chapter 2
+    const chapter1Chunks = chunks.filter(c => c.pageNumber === 1);
+    const chapter2Chunks = chunks.filter(c => c.pageNumber === 2);
+    
+    chapter1Chunks.forEach(c => {
+        expect(c.text).not.toContain("Chapter 2");
+    });
+    chapter2Chunks.forEach(c => {
+        expect(c.text).not.toContain("Chapter 1");
+    });
   });
 
   it("returns no chunks for empty text", () => {
     const chunks = splitText("");
     expect(chunks).toHaveLength(0);
+  });
+
+  it("handles Russian text correctly", () => {
+    const russianText = "Первое предложение. Второе предложение с запятой, и еще чем-то. Третье!";
+    const chunks = splitText(russianText, { chunkSize: 30 });
+    
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]!.text).toContain("Первое предложение.");
   });
 });

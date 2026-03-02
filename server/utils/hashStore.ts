@@ -42,3 +42,23 @@ export async function markFileAsVectorized(hash: string): Promise<void> {
   await redis.sadd(VECTORIZED_SET_KEY, hash);
   log.info("hash-store", "Marked file as vectorized by hash", { hash });
 }
+
+export async function deleteHashesByBlobUrl(blobUrl: string): Promise<void> {
+  const redis = getRedisClient();
+
+  // As Upstash Redis HSCAN isn't always fully exposed via simplistic typed clients without cursors,
+  // extracting all fields for a single lookup if hash keys are relatively small in number
+  // (which is typical for smart-book-search scope) is practical.
+  const allBlobs = await redis.hgetall(BLOBS_HASH_KEY);
+  if (!allBlobs) return;
+
+  const targetHashes = Object.entries(allBlobs)
+    .filter(([_, url]) => url === blobUrl)
+    .map(([hash, _]) => hash);
+
+  for (const hash of targetHashes) {
+    await redis.hdel(BLOBS_HASH_KEY, hash);
+    await redis.srem(VECTORIZED_SET_KEY, hash);
+    log.info("hash-store", "Deleted file hash mappings", { hash, blobUrl });
+  }
+}

@@ -107,6 +107,36 @@ export const UploadResponseSchema = z
 
 // ─────────────────────────── POST /api/books/vectorize ───────────────────────────
 
+export const UpdateBookRequestSchema = z
+  .object({
+    title: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({
+        description: "New title for the book.",
+        example: "Война и мир (новое издание)",
+      }),
+    author: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({
+        description: "New author for the book.",
+        example: "Лев Николаевич Толстой",
+      }),
+    coverUrl: z
+      .string()
+      .url()
+      .or(z.literal(""))
+      .optional()
+      .meta({
+        description: "New cover image URL for the book.",
+        example: "https://example.com/cover.jpg",
+      }),
+  })
+  .meta({ id: "UpdateBookRequest" });
+
 export const VectorizeRequestSchema = z
   .object({
     blobUrl: z.string().url().meta({
@@ -221,6 +251,37 @@ export const JobStatusResponseSchema = z
       .meta({ description: "Last update timestamp (ISO 8601)." }),
   })
   .meta({ id: "JobStatusResponse" });
+
+// ─────────────────────────── Administration ───────────────────────────
+
+export const AdminLoginRequestSchema = z
+  .object({
+    password: z.string().meta({
+      description: "Administrator password configured on the server.",
+      example: "admin-secret-password",
+    }),
+  })
+  .meta({ id: "AdminLoginRequest" });
+
+export const AdminLoginResponseSchema = z
+  .object({
+    status: z.literal("success"),
+    message: z.string().meta({
+      description: "Confirmation message.",
+      example: "Admin access granted",
+    }),
+  })
+  .meta({ id: "AdminLoginResponse" });
+
+export const AdminLogoutResponseSchema = z
+  .object({
+    status: z.literal("success"),
+    message: z.string().meta({
+      description: "Confirmation message.",
+      example: "Logged out",
+    }),
+  })
+  .meta({ id: "AdminLogoutResponse" });
 
 // ─────────────────────────── Error response ───────────────────────────
 

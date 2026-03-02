@@ -13,9 +13,52 @@ export default defineNuxtConfig({
       enabled: true,
     },
   },
-  modules: ["@nuxt/eslint", "@nuxthub/core", "nuxt-auth-utils"],
+  modules: [
+    "@nuxt/ui",
+    "@nuxt/eslint",
+    "@nuxthub/core",
+    "nuxt-auth-utils",
+    "@nuxtjs/i18n",
+    "@nuxtjs/mdc",
+  ],
+  css: ["~/assets/css/main.css"],
+  i18n: {
+    locales: [
+      {
+        code: "ru",
+        file: "ru.json",
+        name: "Русский",
+        icon: "i-twemoji-flag-russia",
+      },
+      {
+        code: "en",
+        file: "en.json",
+        name: "English",
+        icon: "i-twemoji-flag-united-kingdom",
+      },
+    ],
+    langDir: "locales",
+    defaultLocale: "ru",
+    strategy: "no_prefix",
+  },
+  mdc: {
+    headings: {
+      anchorLinks: false,
+    },
+    highlight: {
+      shikiEngine: "javascript",
+    },
+  },
+  experimental: {
+    viewTransition: true,
+  },
   hub: {
     db: "sqlite",
+  },
+  vite: {
+    optimizeDeps: {
+      include: ["striptags"],
+    },
   },
   runtimeConfig: {
     blobToken: process.env.BOOKS_BLOB_READ_WRITE_TOKEN,
@@ -27,5 +70,6 @@ export default defineNuxtConfig({
     upstashRedisToken: process.env.KV_REST_API_TOKEN,
     inngestEventKey: process.env.INNGEST_EVENT_KEY,
     inngestSigningKey: process.env.INNGEST_SIGNING_KEY,
+    adminPassword: process.env.ADMIN_PASSWORD,
   },
 });

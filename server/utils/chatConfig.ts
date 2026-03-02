@@ -9,40 +9,50 @@ import "zod-openapi";
  */
 
 export const CHAT_CONFIG = {
-  /** Primary model for answer generation (capable, high-quality). */
-  answerModel: "gemini-2.5-flash-lite", // Временно, для экономии на тестах
+  /** Primary model for answer generation. */
+  answerModel: "gemini-2.5-flash-lite",
 
-  /** Maximum number of chunks to retrieve from the vector store. */
-  retrievalLimit: 5,
+  /** Model for query generation. */
+  queryModel: "gemini-2.5-flash-lite",
+
+
+  /** Maximum number of chunks to retrieve from the vector store per query. */
+  retrievalLimit: 10,
 
   /** Maximum number of previous messages to include as conversation context. */
   maxHistoryMessages: 10,
 
   /**
+   * System prompt for the query generation model.
+   */
+  querySystemPrompt: [
+    "You are an expert search query generator for a book knowledge base.",
+    "Your goal is to generate 3-5 distinct search queries that will help find the most relevant information in the book(s) to answer the user's question.",
+    "Consider the book title and author if provided.",
+    "The queries should be in the same language as the user's question.",
+    "Output ONLY a JSON array of strings. No markdown, no explanations.",
+    'Example: ["How does Natasha change?", "Natasha Rostova character development", "Natasha in the epilogue"]',
+  ].join("\n"),
+
+  /**
    * System prompt for the answer model.
-   *
-   * The model adapts its response style to the query automatically:
-   *   - Fragment/quote searches → returns the exact text with source info.
-   *   - Questions → synthesises a concise answer with inline citations.
    */
   answerSystemPrompt: [
     "You are a knowledgeable assistant that answers questions about books.",
     "You MUST answer based ONLY on the provided context fragments.",
-    "If the answer is not contained in the context, say so honestly —",
-    'do NOT make up information. Say: "К сожалению, в тексте книги я не нашёл ответа на этот вопрос."',
-    "",
-    "CITATION RULES (very important):",
-    "- Reference context fragments using numbered citations: [1], [2], [3], etc.",
-    "- The number corresponds to the fragment number in the context (Fragment [1], Fragment [2], ...).",
-    "- Place citations inline, right after the claim they support.",
-    "- You may cite multiple fragments for one claim: [1][3].",
-    "- Every factual claim MUST have at least one citation.",
+    "Strictly avoid using any external knowledge about the book, its plot, or characters.",
+    "Before providing the final answer, think step-by-step about the information available in the context.",
+    "Analyze character relationships and plot points carefully as they are described in the fragments.",
+    "If the context doesn't contain a specific fact, relationship, or answer, say so honestly —",
+    "do NOT make up information or assume relationships that are not explicitly stated.",
+    'If the answer is missing, say: "К сожалению, в тексте книги я не нашёл ответа на этот вопрос."',
     "",
     "Adapt your response to the user's intent:",
-    "- If the user is looking for a specific quote or text fragment, return the exact passage(s) with citations.",
-    "- If the user asks a question, synthesise a concise answer and cite the relevant fragments inline.",
+    "- If the user is looking for a specific quote or text fragment, return the exact passage(s).",
+    "- If the user asks a question, synthesise a natural, concise answer in your own words based on the context.",
     "",
     "Keep your answer concise, well-structured, and in the same language as the user's question.",
+    "Keep your answer in 3-5 sentences.",
   ].join("\n"),
 } as const;
 
@@ -92,6 +102,19 @@ export interface RetrievedChunk {
   score: number;
   bookId: string;
 }
+
+/** Schema for a single step in the `data-step` SSE event. */
+export const DataStepSchema = z
+  .object({
+    text: z.string().meta({ description: "Description of the step." }),
+    state: z
+      .enum(["active", "done"])
+      .meta({ description: "Current state of the step." }),
+  })
+  .meta({
+    id: "DataStep",
+    description: "A reasoning step sent during the retrieval pipeline.",
+  });
 
 // ─── SSE response schemas (for OpenAPI documentation) ───
 

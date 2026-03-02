@@ -16,7 +16,9 @@ export interface JobProgress {
 
 export interface JobState {
   id: string;
+  bookId: string;
   bookName: string;
+  userId: string;
   status: "pending" | "processing" | "completed" | "failed";
   progress: JobProgress;
   result?: {
@@ -31,22 +33,32 @@ export interface JobState {
 }
 
 const JOB_KEY_PREFIX = "smart-book-search:jobs:";
+const USER_JOBS_PREFIX = "smart-book-search:user-jobs:";
 const MAX_JOB_AGE_SECONDS = 60 * 60; // 1 hour
 
 function getJobKey(id: string): string {
   return `${JOB_KEY_PREFIX}${id}`;
 }
 
+function getUserJobsKey(userId: string): string {
+  return `${USER_JOBS_PREFIX}${userId}`;
+}
+
 export async function createJob(
   id: string,
+  bookId: string,
   bookName: string,
+  userId: string,
 ): Promise<JobState> {
   const redis = getRedisClient();
   const key = getJobKey(id);
+  const userJobsKey = getUserJobsKey(userId);
 
   const job: JobState = {
     id,
+    bookId,
     bookName,
+    userId,
     status: "pending",
     progress: {
       currentPage: 0,
@@ -59,11 +71,15 @@ export async function createJob(
   };
 
   // Store fields in Redis Hash
-  await redis.hset(key, {
+  const pipeline = redis.pipeline();
+  pipeline.hset(key, {
     ...job,
     progress: JSON.stringify(job.progress),
   });
-  await redis.expire(key, MAX_JOB_AGE_SECONDS);
+  pipeline.expire(key, MAX_JOB_AGE_SECONDS);
+  pipeline.sadd(userJobsKey, id);
+  pipeline.expire(userJobsKey, MAX_JOB_AGE_SECONDS);
+  await pipeline.exec();
 
   log.info("job-store", "Created new vectorization job", {
     jobId: id,
@@ -71,6 +87,45 @@ export async function createJob(
   });
 
   return job;
+}
+
+export async function getUserJobs(userId: string): Promise<JobState[]> {
+  const redis = getRedisClient();
+  const userJobsKey = getUserJobsKey(userId);
+  const jobIds = await redis.smembers<string[]>(userJobsKey);
+
+  if (!jobIds || jobIds.length === 0) {
+    return [];
+  }
+
+  const jobs: JobState[] = [];
+  const pipeline = redis.pipeline();
+  for (const id of jobIds) {
+    pipeline.hgetall(getJobKey(id));
+  }
+
+  const results = await pipeline.exec<(Record<string, unknown> | null)[]>();
+
+  for (let i = 0; i < results.length; i++) {
+    const data = results[i];
+    if (data && Object.keys(data).length > 0) {
+      const job = data as unknown as JobState;
+      if (typeof data.progress === "string") {
+        job.progress = JSON.parse(data.progress);
+      }
+      if (typeof data.result === "string") {
+        job.result = JSON.parse(data.result);
+      }
+      job.createdAt = Number(job.createdAt);
+      job.updatedAt = Number(job.updatedAt);
+      jobs.push(job);
+    } else {
+      // Clean up orphaned job IDs from user set
+      await redis.srem(userJobsKey, jobIds[i]);
+    }
+  }
+
+  return jobs;
 }
 
 export async function getJob(id: string): Promise<JobState | undefined> {

@@ -31,6 +31,9 @@ import {
   VectorizeRequestSchema,
   VectorizeResponseSchema,
   Error401Schema,
+  AdminLoginRequestSchema,
+  AdminLoginResponseSchema,
+  AdminLogoutResponseSchema,
   ChatItemSchema,
   MessageItemSchema,
   GetChatsResponseSchema,
@@ -54,6 +57,10 @@ export const openApiDocument = createDocument({
       "1. **Загрузка** → `POST /api/books/upload`",
       "2. **Индексация** → `POST /api/books/vectorize` → поллинг `GET /api/books/jobs/{id}`",
       "3. **Чат** → `POST /api/chat` (SSE-стрим с метаданными и ответом LLM)",
+      "",
+      "### Административный доступ",
+      "Некоторые эндпоинты поддерживают повышенные привилегии при наличии флага `isAdmin` в сессии.",
+      "Администраторы могут видеть все чаты и управлять любыми книгами, независимо от их владельца.",
     ].join("\n"),
   },
   servers: [
@@ -74,9 +81,68 @@ export const openApiDocument = createDocument({
     { name: "Jobs", description: "Отслеживание фоновых задач индексации." },
     { name: "Chat", description: "Чат с книгами (RAG-пайплайн)." },
     { name: "Chat History", description: "Управление историей чатов." },
+    {
+      name: "Administration",
+      description: "Управление правами администратора (повышенные привилегии).",
+    },
   ],
 
   paths: {
+    // ───────────────── POST /api/admin/login ─────────────────
+    "/api/admin/login": {
+      post: {
+        operationId: "adminLogin",
+        summary: "Авторизация администратора",
+        description:
+          "Проверяет пароль и устанавливает флаг `isAdmin` в сессии пользователя. Это дает право на просмотр всех чатов и управление любыми книгами.",
+        tags: ["Administration"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: AdminLoginRequestSchema },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Доступ успешно предоставлен.",
+            content: {
+              "application/json": { schema: AdminLoginResponseSchema },
+            },
+          },
+          "401": {
+            description: "Неверный пароль.",
+            content: {
+              "application/json": { schema: Error401Schema },
+            },
+          },
+          "500": {
+            description: "Пароль администратора не настроен на сервере.",
+            content: {
+              "application/json": { schema: Error500Schema },
+            },
+          },
+        },
+      },
+    },
+
+    // ───────────────── POST /api/admin/logout ─────────────────
+    "/api/admin/logout": {
+      post: {
+        operationId: "adminLogout",
+        summary: "Выход администратора",
+        description: "Завершает сессию и сбрасывает права администратора.",
+        tags: ["Administration"],
+        responses: {
+          "200": {
+            description: "Успешный выход.",
+            content: {
+              "application/json": { schema: AdminLogoutResponseSchema },
+            },
+          },
+        },
+      },
+    },
+
     // ───────────────── GET /api/books ─────────────────
     "/api/books": {
       get: {
@@ -181,6 +247,7 @@ export const openApiDocument = createDocument({
           "Ставит книгу в очередь на фоновую обработку.",
           "Текст разбивается на чанки и загружается в Pinecone, где происходит автоматическая генерация эмбеддингов (Integrated Embedding).",
           "Возвращает `jobId` для поллинга статуса через `GET /api/books/jobs/{id}`.",
+          "**Доступ:** Только владелец книги или администратор.",
         ].join(" "),
         tags: ["Books"],
         requestBody: {
@@ -271,7 +338,7 @@ export const openApiDocument = createDocument({
         operationId: "getChats",
         summary: "Получить список чатов пользователя",
         description:
-          "Возвращает список всех чатов текущего пользователя, отсортированных по дате создания (новые первыми). Требует авторизации (cookie сессии).",
+          "Возвращает список всех чатов текущего пользователя. **Администраторы видят чаты всех пользователей.** Требует авторизации (cookie сессии).",
         tags: ["Chat History"],
         responses: {
           "200": {
@@ -296,7 +363,7 @@ export const openApiDocument = createDocument({
         operationId: "getChatById",
         summary: "Получить чат по ID",
         description:
-          "Возвращает чат и список его сообщений. Требует авторизации.",
+          "Возвращает чат и список его сообщений. **Администраторы могут получить любой чат по ID.** Требует авторизации.",
         tags: ["Chat History"],
         requestParams: {
           path: z.object({
@@ -330,7 +397,7 @@ export const openApiDocument = createDocument({
       delete: {
         operationId: "deleteChat",
         summary: "Удалить чат по ID",
-        description: "Удаляет чат и все его сообщения. Требует авторизации.",
+        description: "Удаляет чат и все его сообщения. **Администраторы могут удалить любой чат.** Требует авторизации.",
         tags: ["Chat History"],
         requestParams: {
           path: z.object({
@@ -448,6 +515,9 @@ export const openApiDocument = createDocument({
   components: {
     schemas: {
       BookItem: BookItemSchema,
+      AdminLoginRequest: AdminLoginRequestSchema,
+      AdminLoginResponse: AdminLoginResponseSchema,
+      AdminLogoutResponse: AdminLogoutResponseSchema,
       Error400: Error400Schema,
       Error401: Error401Schema,
       Error404: Error404Schema,

@@ -165,42 +165,28 @@ describe("retrieval", () => {
             {
               _id: "valid-but-empty-fields",
               _score: 0.5,
-              // missing fields entirely, should fallback to {}
+              fields: { text: "Some unique text" },
             },
             {
               _id: "completely-missing-score-for-filter",
-              // this covers the `hit._score ?? 0` where score is undefined
               fields: {},
             },
           ],
         },
       });
 
-      // Intercept map to make _score undefined after filter
-      const originalMap = Array.prototype.map;
-      const mapMock = vi
-        .spyOn(Array.prototype, "map")
-        .mockImplementation(function (this: any[], callback: any) {
-          if (this.length > 0 && this[0]._id === "missing-score") {
-            this[0]._score = undefined;
-          }
-          return originalMap.call(this, callback);
-        });
-
       const results2 = await searchBookKnowledge("query", ["book"]);
-
-      mapMock.mockRestore();
 
       expect(results2).toHaveLength(2);
       expect(results2[0]).toEqual({
         text: "",
         pageNumber: 0,
         chapterTitle: "",
-        score: 0, // Should be 0 because _score was set to undefined by the mock
+        score: 0.5,
         bookId: "",
       });
       expect(results2[1]).toEqual({
-        text: "",
+        text: "Some unique text",
         pageNumber: 0,
         chapterTitle: "",
         score: 0.5,

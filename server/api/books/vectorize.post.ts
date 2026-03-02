@@ -1,6 +1,6 @@
 import { inngest } from "../../utils/inngest";
 import { generateJobId, createJob } from "../../utils/jobStore";
-import { getBookByBlobUrl } from "../../utils/bookStore";
+import { getBook, getBookByBlobUrl } from "../../utils/bookStore";
 import { log } from "../../utils/logger";
 import { VectorizeRequestSchema } from "../../utils/openapi/schemas";
 
@@ -19,6 +19,12 @@ import { VectorizeRequestSchema } from "../../utils/openapi/schemas";
  */
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig();
+  const session = await getUserSession(event);
+  const userId = session.user?.id || session.id;
+
+  if (!userId) {
+    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+  }
 
   // --- Validate input with Zod (single source of truth with OpenAPI docs) ---
   const body = await readBody(event);
@@ -48,16 +54,33 @@ export default defineEventHandler(async (event) => {
 
   // Resolve bookId if not provided
   let bookId = providedBookId;
-  if (!bookId) {
-    const book = await getBookByBlobUrl(blobUrl);
+  let book = null;
+
+  if (bookId) {
+    book = await getBook(bookId);
+  } else {
+    book = await getBookByBlobUrl(blobUrl);
     bookId = book?.id;
   }
 
-  if (!bookId) {
-    log.error("vectorize-api", "Book not found for blobUrl", { blobUrl });
+  if (!book || !bookId) {
+    log.error("vectorize-api", "Book not found", { bookId, blobUrl });
     throw createError({
       statusCode: 404,
-      statusMessage: "Book not found in store for the provided blobUrl.",
+      statusMessage: "Book not found in store.",
+    });
+  }
+
+  // Ownership check: only the uploader or an admin can vectorize the book
+  if (!session.user?.isAdmin && book.userId !== userId) {
+    log.warn("vectorize-api", "Unauthorized vectorization attempt", {
+      bookId,
+      attemptBy: userId,
+      ownedBy: book.userId,
+    });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Forbidden: You can only vectorize books you uploaded.",
     });
   }
 
@@ -65,11 +88,17 @@ export default defineEventHandler(async (event) => {
     bookId,
     bookName,
     resume: !!resume,
+    userId,
+    isAdmin: session.user?.isAdmin,
   });
 
   // Create job tracking entry
   const jobId = generateJobId();
-  await createJob(jobId, bookName);
+  // If admin is doing it, the job should still be associated with the owner
+  // or should it be the admin? The user said "сохраняя при этом доступ и изначальных владельцев".
+  // Let's use the book's owner ID for the job so they see progress.
+  const targetUserId = book.userId;
+  await createJob(jobId, bookId, bookName, targetUserId);
 
   // Trigger background processing via Inngest
   await inngest.send({
@@ -77,6 +106,7 @@ export default defineEventHandler(async (event) => {
     data: {
       jobId,
       bookId,
+      userId: targetUserId,
       blobUrl,
       bookName,
       author: typeof author === "string" ? author.trim() : undefined,
