@@ -55,7 +55,7 @@ const chatUserInput = ref("");
 
 const chatSession = new Chat({
   id: currentChatData.value.id,
-  messages: currentChatData.value.messages as UIMessage[],
+  messages: (currentChatData.value.messages || []) as unknown as UIMessage[],
   transport: createBookChatTransport(
     computed(() => (selectedBookForChat.value ? [selectedBookForChat.value.id] : [])),
   ),
