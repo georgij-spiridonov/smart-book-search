@@ -85,8 +85,8 @@ async function deleteBook(): Promise<void> {
   // Создаем и открываем модальное окно подтверждения
   const confirmModal = overlay.create(LazyModalConfirm, {
     props: {
-      title: t("library.deleteBookConfirm"),
-      description: t("library.deleteBookConfirmDetail") || t("library.deleteBookConfirm"),
+      title: t("library.deleteBookTitle"),
+      description: t("library.deleteBookConfirm"),
     },
   });
   
