@@ -1,0 +1,48 @@
+{
+  "name": "Smart Book Search",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Vue.volar",
+        "nuxt.nuxt-vscode-extension",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "antfu.iconify",
+        "eamodio.gitlens",
+        "redhat.vscode-yaml",
+        "streetsidesoftware.code-spell-checker"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "tailwindCSS.experimental.classRegex": [
+          ["ui:\\s*{[\\s\\S]*?class:\\s*['\"`]([^'\"`]*?)['\"`]", "['\"`]([^'\"`]*?)['\"`]"]
+        ],
+        "volar.autoCompleteRefs": true
+      }
+    }
+  },
+  "forwardPorts": [3000, 8288, 4983],
+  "portsAttributes": {
+    "3000": {
+      "label": "Nuxt Dev Server",
+      "onAutoForward": "notify"
+    },
+    "8288": {
+      "label": "Inngest Dev Server",
+      "onAutoForward": "silent"
+    },
+    "4983": {
+      "label": "Drizzle Studio",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "npm install && npx nuxt prepare",
+  "remoteUser": "node"
+}
