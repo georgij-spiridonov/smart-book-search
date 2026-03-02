@@ -48,7 +48,7 @@ vi.mock("../utils/events", () => ({
 }));
 
 vi.mock("../utils/logger", () => ({
-  log: {
+  logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),

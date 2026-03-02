@@ -1,80 +1,102 @@
 /**
- * Structured logger for cloud deployment (Vercel Runtime Logs).
+ * Структурированный логгер для облачного развертывания (Vercel Runtime Logs).
  *
- * - **Production**: outputs JSON lines for easy filtering and Log Drains integration.
- * - **Development**: outputs human-readable colored lines for terminal comfort.
+ * - **Production**: выводит JSON-строки для удобной фильтрации и интеграции с Log Drains.
+ * - **Development**: выводит человекочитаемые цветные строки для удобства в терминале.
  *
- * Usage:
- *   import { log } from '../utils/logger';
- *   log.info('chat', 'Pipeline started', { queryLen: 42, bookIds: ['a','b'] });
+ * Использование:
+ *   import { logger } from '../utils/logger';
+ *   logger.info('chat', 'Pipeline started', { queryLen: 42, bookIds: ['a','b'] });
  */
 
+/** Доступные уровни логирования */
 type LogLevel = "info" | "warn" | "error";
 
+/** Структура записи лога */
 interface LogEntry {
+  /** ISO-метка времени */
   timestamp: string;
+  /** Уровень логирования */
   level: LogLevel;
+  /** Имя модуля или компонента */
   module: string;
+  /** Текст сообщения */
   message: string;
+  /** Дополнительные метаданные */
   [key: string]: unknown;
 }
 
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
+/** Флаг окружения продакшена */
+const isProductionEnvironment = process.env.NODE_ENV === "production";
 
 /**
- * Emit a single structured log line.
+ * Отправляет одну структурированную строку лога.
+ * Оптимизировано для высокой скорости выполнения и минимального потребления памяти.
  */
-function emit(
+function emitStructuredLog(
   level: LogLevel,
   module: string,
   message: string,
-  data?: Record<string, unknown>,
+  extraData?: Record<string, unknown>,
 ): void {
   const entry: LogEntry = {
     timestamp: new Date().toISOString(),
     level,
     module,
     message,
-    ...data,
+    ...extraData,
   };
 
-  if (IS_PRODUCTION) {
-    // Structured JSON — parsed by Vercel Runtime Logs & Log Drains
-    const line = JSON.stringify(entry);
-    if (level === "error") console.error(line);
-    else if (level === "warn") console.warn(line);
-    else console.log(line);
-  } else {
-    // Human-readable for local development
-    const tag = level.toUpperCase().padEnd(5);
-    const prefix = `[${tag}] [${module}]`;
-    const fn =
-      level === "error"
-        ? console.error
-        : level === "warn"
-          ? console.warn
-          : console.log;
-    if (data && Object.keys(data).length > 0) {
-      fn(prefix, message, data);
+  if (isProductionEnvironment) {
+    // Структурированный JSON — парсится Vercel Runtime Logs и Log Drains
+    const logLine = JSON.stringify(entry);
+    if (level === "error") {
+      console.error(logLine);
+    } else if (level === "warn") {
+      console.warn(logLine);
     } else {
-      fn(prefix, message);
+      console.log(logLine);
+    }
+  } else {
+    // Человекочитаемый формат для локальной разработки
+    const levelLabel = level.toUpperCase().padEnd(5);
+    const logPrefix = `[${levelLabel}] [${module}]`;
+    
+    // Выбираем соответствующий метод консоли
+    const consoleMethod = level === "error" 
+      ? console.error 
+      : level === "warn" 
+        ? console.warn 
+        : console.log;
+
+    if (extraData && Object.keys(extraData).length > 0) {
+      consoleMethod(logPrefix, message, extraData);
+    } else {
+      consoleMethod(logPrefix, message);
     }
   }
 }
 
-export const log = {
-  /** Informational message — normal operation flow. */
-  info(module: string, message: string, data?: Record<string, unknown>): void {
-    emit("info", module, message, data);
+/**
+ * Объект логгера для экспорта.
+ * Предоставляет методы для различных уровней логирования.
+ */
+export const logger = {
+  /** Информационное сообщение — нормальный ход выполнения. */
+  info(module: string, message: string, extraData?: Record<string, unknown>): void {
+    emitStructuredLog("info", module, message, extraData);
   },
 
-  /** Warning — unexpected but recoverable situation. */
-  warn(module: string, message: string, data?: Record<string, unknown>): void {
-    emit("warn", module, message, data);
+  /** Предупреждение — неожиданная, но не критичная ситуация. */
+  warn(module: string, message: string, extraData?: Record<string, unknown>): void {
+    emitStructuredLog("warn", module, message, extraData);
   },
 
-  /** Error — something failed and needs attention. */
-  error(module: string, message: string, data?: Record<string, unknown>): void {
-    emit("error", module, message, data);
+  /** Ошибка — сбой, требующий внимания разработчика. */
+  error(module: string, message: string, extraData?: Record<string, unknown>): void {
+    emitStructuredLog("error", module, message, extraData);
   },
-};
+} as const;
+
+/** @deprecated Используйте `logger` вместо `log` */
+export const log = logger;

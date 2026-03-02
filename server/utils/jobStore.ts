@@ -1,60 +1,85 @@
 /**
- * Redis-backed job state store for async vectorization jobs.
- *
- * Tracks job progress so clients can poll GET /api/books/jobs/:id.
+ * Хранилище состояния задач в Redis для асинхронной векторизации.
+ * 
+ * Отслеживает прогресс выполнения задач, позволяя клиентам
+ * опрашивать состояние через эндпоинт GET /api/books/jobs/:id.
  */
 
 import { getRedisClient } from "./redis";
-import { log } from "./logger";
+import { logger } from "./logger";
 
+/** Прогресс выполнения задачи векторизации */
 export interface JobProgress {
+  /** Номер текущей обрабатываемой страницы */
   currentPage: number;
+  /** Общее количество страниц в книге */
   totalPages: number;
+  /** Количество успешно обработанных фрагментов текста */
   chunksProcessed: number;
+  /** Общее количество фрагментов текста */
   totalChunks: number;
 }
 
+/** Состояние задачи векторизации */
 export interface JobState {
+  /** Уникальный идентификатор задачи */
   id: string;
+  /** ID книги в базе данных */
   bookId: string;
+  /** Название книги */
   bookName: string;
+  /** ID пользователя, запустившего задачу */
   userId: string;
+  /** Текущий статус задачи */
   status: "pending" | "processing" | "completed" | "failed";
+  /** Текущий прогресс выполнения */
   progress: JobProgress;
+  /** Результат выполнения (доступен после завершения) */
   result?: {
     totalPages: number;
     totalChunks: number;
     skipped: number;
     newVectors: number;
   };
+  /** Сообщение об ошибке (если статус "failed") */
   error?: string;
+  /** Время создания (timestamp) */
   createdAt: number;
+  /** Время последнего обновления (timestamp) */
   updatedAt: number;
 }
 
-const JOB_KEY_PREFIX = "smart-book-search:jobs:";
-const USER_JOBS_PREFIX = "smart-book-search:user-jobs:";
-const MAX_JOB_AGE_SECONDS = 60 * 60; // 1 hour
+/** Префикс для ключей деталей задачи в Redis */
+const REDIS_KEY_JOB_DETAILS = "smart-book-search:jobs:";
+/** Префикс для набора ID задач пользователя в Redis */
+const REDIS_KEY_USER_JOB_IDS = "smart-book-search:user-jobs:";
+/** Максимальный срок хранения задачи — 1 час (3600 секунд) */
+const JOB_RETENTION_SECONDS = 60 * 60;
 
-function getJobKey(id: string): string {
-  return `${JOB_KEY_PREFIX}${id}`;
+/** Формирует ключ для деталей конкретной задачи */
+function formatJobDetailsKey(id: string): string {
+  return `${REDIS_KEY_JOB_DETAILS}${id}`;
 }
 
-function getUserJobsKey(userId: string): string {
-  return `${USER_JOBS_PREFIX}${userId}`;
+/** Формирует ключ для списка задач конкретного пользователя */
+function formatUserJobsKey(userId: string): string {
+  return `${REDIS_KEY_USER_JOB_IDS}${userId}`;
 }
 
+/**
+ * Создает новую задачу векторизации и сохраняет её в Redis.
+ */
 export async function createJob(
   id: string,
   bookId: string,
   bookName: string,
   userId: string,
 ): Promise<JobState> {
-  const redis = getRedisClient();
-  const key = getJobKey(id);
-  const userJobsKey = getUserJobsKey(userId);
+  const redisClient = getRedisClient();
+  const jobKey = formatJobDetailsKey(id);
+  const userJobsKey = formatUserJobsKey(userId);
 
-  const job: JobState = {
+  const initialJobState: JobState = {
     id,
     bookId,
     bookName,
@@ -70,123 +95,152 @@ export async function createJob(
     updatedAt: Date.now(),
   };
 
-  // Store fields in Redis Hash
-  const pipeline = redis.pipeline();
-  pipeline.hset(key, {
-    ...job,
-    progress: JSON.stringify(job.progress),
+  // Используем конвейер (pipeline) для атомарности и скорости
+  const redisPipeline = redisClient.pipeline();
+  
+  // Сохраняем поля задачи (сложные объекты сериализуем в JSON)
+  redisPipeline.hset(jobKey, {
+    ...initialJobState,
+    progress: JSON.stringify(initialJobState.progress),
   });
-  pipeline.expire(key, MAX_JOB_AGE_SECONDS);
-  pipeline.sadd(userJobsKey, id);
-  pipeline.expire(userJobsKey, MAX_JOB_AGE_SECONDS);
-  await pipeline.exec();
+  
+  // Устанавливаем TTL для автоматической очистки
+  redisPipeline.expire(jobKey, JOB_RETENTION_SECONDS);
+  
+  // Добавляем ID задачи в список задач пользователя
+  redisPipeline.sadd(userJobsKey, id);
+  redisPipeline.expire(userJobsKey, JOB_RETENTION_SECONDS);
+  
+  await redisPipeline.exec();
 
-  log.info("job-store", "Created new vectorization job", {
+  logger.info("job-store", "Created new vectorization job", {
     jobId: id,
     bookName,
   });
 
-  return job;
+  return initialJobState;
 }
 
+/**
+ * Возвращает список всех задач указанного пользователя.
+ */
 export async function getUserJobs(userId: string): Promise<JobState[]> {
-  const redis = getRedisClient();
-  const userJobsKey = getUserJobsKey(userId);
-  const jobIds = await redis.smembers<string[]>(userJobsKey);
+  const redisClient = getRedisClient();
+  const userJobsKey = formatUserJobsKey(userId);
+  const jobIds = await redisClient.smembers<string[]>(userJobsKey);
 
   if (!jobIds || jobIds.length === 0) {
     return [];
   }
 
-  const jobs: JobState[] = [];
-  const pipeline = redis.pipeline();
+  const foundJobs: JobState[] = [];
+  const redisPipeline = redisClient.pipeline();
+  
   for (const id of jobIds) {
-    pipeline.hgetall(getJobKey(id));
+    redisPipeline.hgetall(formatJobDetailsKey(id));
   }
 
-  const results = await pipeline.exec<(Record<string, unknown> | null)[]>();
+  const pipelineResults = await redisPipeline.exec<(Record<string, unknown> | null)[]>();
 
-  for (let i = 0; i < results.length; i++) {
-    const data = results[i];
-    if (data && Object.keys(data).length > 0) {
-      const job = data as unknown as JobState;
-      if (typeof data.progress === "string") {
-        job.progress = JSON.parse(data.progress);
+  for (let i = 0; i < pipelineResults.length; i++) {
+    const rawData = pipelineResults[i];
+    
+    if (rawData && Object.keys(rawData).length > 0) {
+      const jobState = rawData as unknown as JobState;
+      
+      // Парсим JSON-поля, если они представлены строками
+      if (typeof rawData.progress === "string") {
+        jobState.progress = JSON.parse(rawData.progress);
       }
-      if (typeof data.result === "string") {
-        job.result = JSON.parse(data.result);
+      if (typeof rawData.result === "string") {
+        jobState.result = JSON.parse(rawData.result);
       }
-      job.createdAt = Number(job.createdAt);
-      job.updatedAt = Number(job.updatedAt);
-      jobs.push(job);
+      
+      // Гарантируем числовой тип для временных меток
+      jobState.createdAt = Number(jobState.createdAt);
+      jobState.updatedAt = Number(jobState.updatedAt);
+      
+      foundJobs.push(jobState);
     } else {
-      // Clean up orphaned job IDs from user set
-      await redis.srem(userJobsKey, jobIds[i]);
+      // Удаляем "битые" ID из списка пользователя, если сама задача уже удалена/истекла
+      await redisClient.srem(userJobsKey, jobIds[i]);
     }
   }
 
-  return jobs;
+  return foundJobs;
 }
 
+/**
+ * Возвращает детальную информацию о конкретной задаче по её ID.
+ */
 export async function getJob(id: string): Promise<JobState | undefined> {
-  const redis = getRedisClient();
-  const key = getJobKey(id);
-  const data = await redis.hgetall(key);
+  const redisClient = getRedisClient();
+  const jobKey = formatJobDetailsKey(id);
+  const rawData = await redisClient.hgetall(jobKey);
 
-  if (!data || Object.keys(data).length === 0) {
+  if (!rawData || Object.keys(rawData).length === 0) {
     return undefined;
   }
 
-  // Cast and parse JSON fields
-  const job = data as unknown as JobState;
-  if (typeof data.progress === "string") {
-    job.progress = JSON.parse(data.progress);
+  const jobState = rawData as unknown as JobState;
+  
+  if (typeof rawData.progress === "string") {
+    jobState.progress = JSON.parse(rawData.progress);
   }
-  if (typeof data.result === "string") {
-    job.result = JSON.parse(data.result);
+  if (typeof rawData.result === "string") {
+    jobState.result = JSON.parse(rawData.result);
   }
 
-  // Ensure numeric fields are numbers (Redis hgetall might return strings depending on client)
-  job.createdAt = Number(job.createdAt);
-  job.updatedAt = Number(job.updatedAt);
+  jobState.createdAt = Number(jobState.createdAt);
+  jobState.updatedAt = Number(jobState.updatedAt);
 
-  return job;
+  return jobState;
 }
 
+/**
+ * Обновляет состояние существующей задачи в Redis.
+ */
 export async function updateJob(
   id: string,
-  update: Partial<JobState>,
+  updateData: Partial<JobState>,
 ): Promise<void> {
-  const redis = getRedisClient();
-  const key = getJobKey(id);
+  const redisClient = getRedisClient();
+  const jobKey = formatJobDetailsKey(id);
 
-  const hsetUpdate: Record<string, string | number> = {};
+  const fieldsToSet: Record<string, string | number> = {};
 
-  // Copy primitives and stringify objects
-  for (const [field, value] of Object.entries(update)) {
-    if (value === undefined) continue;
+  // Формируем объект для hset, сериализуя сложные структуры
+  for (const [field, value] of Object.entries(updateData)) {
+    if (value === undefined) {
+      continue;
+    }
 
     if (field === "progress" || field === "result") {
-      hsetUpdate[field] = JSON.stringify(value);
+      fieldsToSet[field] = JSON.stringify(value);
     } else if (typeof value === "string" || typeof value === "number") {
-      hsetUpdate[field] = value;
+      fieldsToSet[field] = value;
     }
   }
 
-  hsetUpdate.updatedAt = Date.now();
+  fieldsToSet.updatedAt = Date.now();
 
-  await redis.hset(key, hsetUpdate);
-  // Refresh TTL on update
-  await redis.expire(key, MAX_JOB_AGE_SECONDS);
+  await redisClient.hset(jobKey, fieldsToSet);
+  // Обновляем время жизни ключа при каждом изменении
+  await redisClient.expire(jobKey, JOB_RETENTION_SECONDS);
 
-  if (update.status) {
-    log.info("job-store", "Updated vectorization job status", {
+  if (updateData.status) {
+    logger.info("job-store", "Updated vectorization job status", {
       jobId: id,
-      status: update.status,
+      status: updateData.status,
     });
   }
 }
 
+/**
+ * Генерирует уникальный ID для новой задачи.
+ */
 export function generateJobId(): string {
-  return `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).slice(2, 8);
+  return `job-${timestamp}-${randomSuffix}`;
 }

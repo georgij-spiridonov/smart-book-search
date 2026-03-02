@@ -6,7 +6,7 @@ import {
 import { searchBookKnowledge, generateSearchQueries } from "../utils/retrieval";
 import { streamAnswer } from "../utils/generateAnswer";
 import { CHAT_CONFIG, ChatRequestSchema } from "../utils/chatConfig";
-import { log } from "../utils/logger";
+import { logger } from "../utils/logger";
 import { getBook } from "../utils/bookStore";
 import { db, schema } from "hub:db";
 import { eq, asc } from "drizzle-orm";
@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
   if (!validationResult.success) {
     const errorMessage =
       validationResult.error.issues[0]?.message || "Неверное тело запроса";
-    log.error("chat-api", "Chat request validation failed", {
+    logger.error("chat-api", "Chat request validation failed", {
       error: errorMessage,
       issues: validationResult.error.issues,
     });
@@ -91,7 +91,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  log.info("chat-api", "Processing chat query", {
+  logger.info("chat-api", "Processing chat query", {
     queryLength: userQuery.length,
     bookCount: bookIds?.length || 0,
     historyLength: chatHistory.length,
@@ -103,7 +103,7 @@ export default defineEventHandler(async (event) => {
   const missingBookIndex = requestedBooks.findIndex((book) => book === null);
   if (missingBookIndex !== -1) {
     const missingBookId = bookIds[missingBookIndex];
-    log.warn("chat-api", "Requested book not found", { missingBookId });
+    logger.warn("chat-api", "Requested book not found", { missingBookId });
     throw createError({
       statusCode: 404,
       message: `Книга с ID '${missingBookId}' не найдена.`,
@@ -116,14 +116,14 @@ export default defineEventHandler(async (event) => {
     .map((book) => book!.id);
 
   if (unvectorizedBookIds.length > 0) {
-    log.warn("chat-api", "Some requested books are not vectorized", {
+    logger.warn("chat-api", "Some requested books are not vectorized", {
       unvectorizedBookIds,
     });
   }
 
   // Если ВСЕ запрошенные книги не векторизованы, возвращаемся досрочно — нет данных для поиска
   if (unvectorizedBookIds.length === bookIds.length) {
-    log.info(
+    logger.info(
       "chat-api",
       "All requested books are un-vectorized, skipping pipeline",
       { bookIds },
@@ -281,7 +281,7 @@ export default defineEventHandler(async (event) => {
                 prompt: userQuery,
               })
                 .then(async ({ text: generatedTitle }) => {
-                  log.info("chat-api", "Generated chat title", {
+                  logger.info("chat-api", "Generated chat title", {
                     generatedTitle,
                     chatId: resolvedChatId,
                   });
@@ -297,7 +297,7 @@ export default defineEventHandler(async (event) => {
                   });
                 })
                 .catch((error) => {
-                  log.error("chat-api", "Title generation failed", {
+                  logger.error("chat-api", "Title generation failed", {
                     error: error instanceof Error ? error.message : String(error),
                   });
                 }),
@@ -306,7 +306,7 @@ export default defineEventHandler(async (event) => {
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : "Неизвестная ошибка в конвейере";
-          log.error("chat-api", "Pipeline failed", { error: errorMessage });
+          logger.error("chat-api", "Pipeline failed", { error: errorMessage });
 
           writer.write({
             type: "data-step",
@@ -337,7 +337,7 @@ export default defineEventHandler(async (event) => {
         }
       },
       onError(error) {
-        log.error("chat-api", "Stream-level error", {
+        logger.error("chat-api", "Stream-level error", {
           error: error instanceof Error ? error.message : String(error),
         });
         return "Произошла ошибка при генерации ответа. Попробуйте ещё раз.";

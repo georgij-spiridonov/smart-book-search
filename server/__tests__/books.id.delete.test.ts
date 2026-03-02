@@ -84,7 +84,7 @@ vi.mock("../utils/events", () => ({
 }));
 
 vi.mock("../utils/logger", () => ({
-  log: {
+  logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
@@ -286,5 +286,26 @@ describe("Удаление книги: DELETE /api/books/[id]", () => {
     await expect(deleteBookHandler(dummyEvent)).rejects.toThrowError(
       "Отказано в доступе: Вы можете удалять только загруженные вами книги.",
     );
+  });
+
+  it("должен корректно работать для анонимных пользователей (использовать session.id)", async () => {
+    const mockBookData = {
+      id: "anon-book-id",
+      userId: "anon-session-123",
+      title: "Анонимная книга",
+      blobUrl: "",
+    };
+
+    mockedGetRouterParam.mockReturnValueOnce("anon-book-id");
+    mockGetBookFromStore.mockResolvedValueOnce(mockBookData);
+    
+    // Имитируем анонимную сессию (нет user.id, но есть session.id)
+    mockGetUserSession.mockResolvedValueOnce({ 
+      id: "anon-session-123"
+    } as any);
+
+    const result = await deleteBookHandler(dummyEvent);
+    expect(result.status).toBe("success");
+    expect(mockDeleteBookFromStore).toHaveBeenCalledWith("anon-book-id");
   });
 });

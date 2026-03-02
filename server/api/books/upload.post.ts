@@ -6,7 +6,7 @@ import {
   markFileAsUploaded,
 } from "../../utils/hashStore";
 import { addBook, getBook, slugifyBookId } from "../../utils/bookStore";
-import { log } from "../../utils/logger";
+import { logger } from "../../utils/logger";
 
 /**
  * POST /api/books/upload
@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
 
     const multipartFormData = await readMultipartFormData(event);
     if (!multipartFormData || multipartFormData.length === 0) {
-      log.warn("upload-api", "Upload request rejected: no form data");
+      logger.warn("upload-api", "Upload request rejected: no form data");
       throw createError({
         statusCode: 400,
         message: "Файл не предоставлен. Отправьте поле 'file' в формате multipart form data.",
@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
 
     const uploadedFileField = multipartFormData.find((field) => field.name === "file");
     if (!uploadedFileField || !uploadedFileField.filename || !uploadedFileField.data) {
-      log.warn("upload-api", "Upload request rejected: missing file field");
+      logger.warn("upload-api", "Upload request rejected: missing file field");
       throw createError({
         statusCode: 400,
         message: "Отсутствует поле 'file' с правильным именем файла.",
@@ -61,7 +61,7 @@ export default defineEventHandler(async (event) => {
     const allowedFileExtensions = ["pdf", "txt", "epub"];
     const fileExtension = uploadedFileField.filename.split(".").pop()?.toLowerCase();
 
-    log.info("upload-api", "Processing file upload", {
+    logger.info("upload-api", "Processing file upload", {
       filename: uploadedFileField.filename,
       sizeBytes: uploadedFileField.data.length,
       extension: fileExtension,
@@ -69,7 +69,7 @@ export default defineEventHandler(async (event) => {
     });
 
     if (!fileExtension || !allowedFileExtensions.includes(fileExtension)) {
-      log.warn("upload-api", "Upload rejected: unsupported extension", { fileExtension });
+      logger.warn("upload-api", "Upload rejected: unsupported extension", { fileExtension });
       throw createError({
         statusCode: 400,
         message: `Неподдерживаемый тип файла: .${fileExtension}. Разрешены: ${allowedFileExtensions.join(", ")}`,
@@ -79,7 +79,7 @@ export default defineEventHandler(async (event) => {
     // Проверяем фактическое содержимое файла через магические байты
     const fileValidationResult = validateFileType(uploadedFileField.data, fileExtension);
     if (!fileValidationResult.valid) {
-      log.warn("upload-api", "Upload rejected: magic byte validation failed", {
+      logger.warn("upload-api", "Upload rejected: magic byte validation failed", {
         reason: fileValidationResult.message,
       });
       throw createError({
@@ -93,7 +93,7 @@ export default defineEventHandler(async (event) => {
     const existingBlobUrl = await getExistingBlobUrl(fileContentHash);
     
     if (existingBlobUrl) {
-      log.info("upload-api", "File duplicate detected, skipping blob upload", {
+      logger.info("upload-api", "File duplicate detected, skipping blob upload", {
         hash: fileContentHash,
         existingUrl: existingBlobUrl,
       });
@@ -137,7 +137,7 @@ export default defineEventHandler(async (event) => {
       allowOverwrite: true,
     });
 
-    log.info("upload-api", "File uploaded to Vercel Blob successfully", {
+    logger.info("upload-api", "File uploaded to Vercel Blob successfully", {
       blobUrl: uploadedBlobInfo.url,
       pathname: uploadedBlobInfo.pathname,
     });
@@ -174,7 +174,7 @@ export default defineEventHandler(async (event) => {
     if (uploadError && typeof uploadError === "object" && "statusCode" in uploadError)
       throw uploadError;
 
-    log.error("upload-api", "Unhandled error during array upload", {
+    logger.error("upload-api", "Unhandled error during array upload", {
       error: uploadError instanceof Error ? uploadError.message : String(uploadError),
       stack: uploadError instanceof Error ? uploadError.stack : undefined,
     });

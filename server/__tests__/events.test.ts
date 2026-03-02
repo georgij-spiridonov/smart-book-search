@@ -14,11 +14,17 @@ vi.mock("../utils/redis", () => ({
 }));
 
 vi.mock("../utils/logger", () => ({
-  log: {
+  logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
   },
+  // Для обратной совместимости, если где-то еще используется импорт log
+  log: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  }
 }));
 
 import { publishEvent, subscribeToEvents, type AppEvent } from "../utils/events";
@@ -58,11 +64,11 @@ describe("Система событий (events)", () => {
     it("должна логировать ошибку при сбое Redis", async () => {
       mockRedis.xadd.mockRejectedValueOnce(new Error("Redis connection lost"));
       
-      const { log } = await import("../utils/logger");
+      const { logger } = await import("../utils/logger");
       
       await publishEvent("user-1", "book:updated", {});
       
-      expect(log.error).toHaveBeenCalledWith("events", "Failed to publish event", expect.objectContaining({
+      expect(logger.error).toHaveBeenCalledWith("events", "Failed to publish event", expect.objectContaining({
         error: "Redis connection lost"
       }));
     });
@@ -108,14 +114,14 @@ describe("Система событий (events)", () => {
       ]);
       mockRedis.xread.mockResolvedValueOnce(null); // Для завершения итерации в тесте
       
-      const { log } = await import("../utils/logger");
+      const { logger } = await import("../utils/logger");
       
       const subscription = subscribeToEvents("user-1");
       
       // Первая итерация - ошибка парсинга
       await subscription.next();
       
-      expect(log.error).toHaveBeenCalledWith("events", "Failed to parse event from stream", { id: "124-0" });
+      expect(logger.error).toHaveBeenCalledWith("events", "Failed to parse event from stream", { id: "124-0" });
     });
 
     it("должен обрабатывать ошибки Redis и продолжать работу после паузы", async () => {
@@ -132,8 +138,8 @@ describe("Система событий (events)", () => {
       const result = await nextPromise;
       expect(result.value).toEqual({ id: null, event: null });
       
-      const { log } = await import("../utils/logger");
-      expect(log.error).toHaveBeenCalledWith("events", "Error reading from stream", expect.objectContaining({
+      const { logger } = await import("../utils/logger");
+      expect(logger.error).toHaveBeenCalledWith("events", "Error reading from stream", expect.objectContaining({
         error: "XREAD failed"
       }));
       

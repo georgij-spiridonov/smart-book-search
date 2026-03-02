@@ -1,22 +1,20 @@
 /**
- * Centralized Zod schemas with OpenAPI metadata.
- *
- * These schemas are the SINGLE SOURCE OF TRUTH for both:
- *   1. Runtime request/response validation
- *   2. OpenAPI 3.1 documentation generation (via zod-openapi)
- *
- * Every `.meta()` call enriches the generated OpenAPI spec with
- * descriptions, examples, and component IDs — keeping docs always
- * in sync with the actual code.
+ * Централизованные схемы Zod с метаданными OpenAPI.
+ * 
+ * Эти схемы являются ЕДИНЫМ ИСТОЧНИКОМ ИСТИНЫ для:
+ *   1. Валидации запросов и ответов во время выполнения (Runtime)
+ *   2. Генерации документации OpenAPI 3.1 (через zod-openapi)
+ * 
+ * Каждый вызов `.meta()` обогащает генерируемую спецификацию OpenAPI
+ * описаниями, примерами и идентификаторами компонентов.
  */
 
 import { z } from "zod";
 
-// ─────────────────────────── Shared primitives ───────────────────────────
+// ─────────────────────────── Общие примитивы ───────────────────────────
 
 export const BookIdSchema = z.string().meta({
-  description:
-    "URL-friendly slug identifier of the book, derived from the filename.",
+  description: "Уникальный идентификатор книги (slug), пригодный для использования в URL.",
   example: "war-and-peace",
 });
 
@@ -26,43 +24,40 @@ export const BookItemSchema = z
   .object({
     id: BookIdSchema,
     title: z.string().meta({
-      description: "Book title (derived from filename).",
-      example: "war-and-peace",
+      description: "Название книги.",
+      example: "Война и мир",
     }),
     author: z.string().meta({
-      description:
-        'Author name. Defaults to "Unknown" if not provided at upload.',
+      description: 'Имя автора. По умолчанию "Unknown", если не указано при загрузке.',
       example: "Л.Н. Толстой",
     }),
     coverUrl: z.string().meta({
-      description:
-        "URL of the book cover image (empty string if not provided).",
+      description: "URL изображения обложки книги (пустая строка, если отсутствует).",
       example: "",
     }),
     blobUrl: z.string().url().meta({
-      description: "Public URL of the file in Vercel Blob storage.",
-      example:
-        "https://abc.public.blob.vercel-storage.com/books/war-and-peace.txt",
+      description: "Публичный URL файла в хранилище Vercel Blob.",
+      example: "https://abc.public.blob.vercel-storage.com/books/war-and-peace.txt",
     }),
     filename: z.string().meta({
-      description: "Original filename as uploaded.",
+      description: "Оригинальное имя загруженного файла.",
       example: "war-and-peace.txt",
     }),
     fileSize: z
       .number()
       .int()
-      .meta({ description: "File size in bytes.", example: 3200000 }),
+      .meta({ description: "Размер файла в байтах.", example: 3200000 }),
     uploadedAt: z.string().datetime().meta({
-      description: "Upload timestamp in ISO 8601 format.",
+      description: "Метка времени загрузки в формате ISO 8601.",
       example: "2026-02-27T10:00:00.000Z",
     }),
     vectorized: z.boolean().meta({
-      description: "Whether the book has been indexed and is ready for search.",
+      description: "Флаг, указывающий, была ли книга проиндексирована и готова ли она к поиску.",
     }),
   })
   .meta({
     id: "BookItem",
-    description: "Metadata of a single book in the system.",
+    description: "Метаданные отдельной книги в системе.",
   });
 
 export const GetBooksResponseSchema = z
@@ -71,7 +66,7 @@ export const GetBooksResponseSchema = z
     count: z
       .number()
       .int()
-      .meta({ description: "Total number of books.", example: 2 }),
+      .meta({ description: "Общее количество найденных книг.", example: 2 }),
     books: z.array(BookItemSchema),
   })
   .meta({ id: "GetBooksResponse" });
@@ -82,30 +77,30 @@ export const UploadResponseSchema = z
   .object({
     status: z.literal("success"),
     message: z.string().meta({
-      description: "Human-readable result message.",
-      example: 'File "war-and-peace.txt" uploaded successfully.',
+      description: "Текстовое сообщение о результате операции.",
+      example: 'Файл "war-and-peace.txt" успешно загружен.',
     }),
     blob: z.object({
       url: z
         .string()
         .url()
-        .meta({ description: "Public URL of the uploaded file." }),
+        .meta({ description: "Публичный URL загруженного файла." }),
       pathname: z.string().meta({
-        description: "Path within Blob storage.",
+        description: "Путь к файлу внутри Blob-хранилища.",
         example: "books/war-and-peace.txt",
       }),
       contentType: z
         .string()
-        .meta({ description: "MIME type of the file.", example: "text/plain" }),
+        .meta({ description: "MIME-тип файла.", example: "text/plain" }),
       size: z
         .number()
         .int()
-        .meta({ description: "File size in bytes.", example: 3200000 }),
+        .meta({ description: "Размер файла в байтах.", example: 3200000 }),
     }),
   })
   .meta({ id: "UploadResponse" });
 
-// ─────────────────────────── POST /api/books/vectorize ───────────────────────────
+// ─────────────────────────── PATCH /api/books/:id ───────────────────────────
 
 export const UpdateBookRequestSchema = z
   .object({
@@ -114,7 +109,7 @@ export const UpdateBookRequestSchema = z
       .min(1)
       .optional()
       .meta({
-        description: "New title for the book.",
+        description: "Новое название книги.",
         example: "Война и мир (новое издание)",
       }),
     author: z
@@ -122,7 +117,7 @@ export const UpdateBookRequestSchema = z
       .min(1)
       .optional()
       .meta({
-        description: "New author for the book.",
+        description: "Новое имя автора.",
         example: "Лев Николаевич Толстой",
       }),
     coverUrl: z
@@ -131,36 +126,34 @@ export const UpdateBookRequestSchema = z
       .or(z.literal(""))
       .optional()
       .meta({
-        description: "New cover image URL for the book.",
+        description: "Новый URL обложки книги.",
         example: "https://example.com/cover.jpg",
       }),
   })
   .meta({ id: "UpdateBookRequest" });
 
+// ─────────────────────────── POST /api/books/vectorize ───────────────────────────
+
 export const VectorizeRequestSchema = z
   .object({
     blobUrl: z.string().url().meta({
-      description:
-        "URL of the file in Vercel Blob (returned by the upload endpoint).",
-      example:
-        "https://abc.public.blob.vercel-storage.com/books/war-and-peace.txt",
+      description: "URL файла в Vercel Blob (полученный после загрузки).",
+      example: "https://abc.public.blob.vercel-storage.com/books/war-and-peace.txt",
     }),
     bookName: z.string().min(1).meta({
-      description: "Human-readable book title.",
+      description: "Название книги.",
       example: "Война и мир",
     }),
     bookId: z.string().optional().meta({
-      description:
-        "Book ID in the store. If omitted, resolved automatically from blobUrl.",
+      description: "ID книги в базе. Если не указан, будет определен автоматически по blobUrl.",
       example: "war-and-peace",
     }),
     author: z.string().optional().meta({
-      description: "Author name (passed into chunk metadata).",
+      description: "Имя автора (передается в метаданные фрагментов).",
       example: "Л.Н. Толстой",
     }),
     resume: z.boolean().optional().meta({
-      description:
-        "If true, skip chunks that were already vectorized (for resuming interrupted jobs).",
+      description: "Если true, пропускать уже векторизованные фрагменты (для возобновления прерванных задач).",
     }),
   })
   .meta({ id: "VectorizeRequest" });
@@ -169,15 +162,15 @@ export const VectorizeResponseSchema = z
   .object({
     status: z.literal("accepted"),
     jobId: z.string().meta({
-      description: "Unique job identifier for polling.",
+      description: "Уникальный идентификатор задачи для отслеживания прогресса.",
       example: "job-1709035200000-a1b2c3",
     }),
     message: z.string().meta({
-      description: "Human-readable confirmation.",
-      example: 'Vectorization job queued for "Война и мир".',
+      description: "Текстовое подтверждение постановки в очередь.",
+      example: 'Задача векторизации для книги "Война и мир" добавлена в очередь.',
     }),
     statusUrl: z.string().meta({
-      description: "Relative URL for polling job status.",
+      description: "Относительный URL для опроса статуса задачи.",
       example: "/api/books/jobs/job-1709035200000-a1b2c3",
     }),
   })
@@ -190,19 +183,19 @@ export const JobProgressSchema = z
     currentPage: z
       .number()
       .int()
-      .meta({ description: "Page currently being processed.", example: 42 }),
+      .meta({ description: "Текущая обрабатываемая страница.", example: 42 }),
     totalPages: z
       .number()
       .int()
-      .meta({ description: "Total pages in the book.", example: 1200 }),
+      .meta({ description: "Общее количество страниц в книге.", example: 1200 }),
     chunksProcessed: z.number().int().meta({
-      description: "Number of text chunks processed so far.",
+      description: "Количество обработанных текстовых фрагментов.",
       example: 150,
     }),
     totalChunks: z
       .number()
       .int()
-      .meta({ description: "Total expected chunks.", example: 500 }),
+      .meta({ description: "Общее ожидаемое количество фрагментов.", example: 500 }),
   })
   .meta({ id: "JobProgress" });
 
@@ -213,11 +206,11 @@ export const JobResultSchema = z
     skipped: z
       .number()
       .int()
-      .meta({ description: "Chunks skipped (when resume=true)." }),
+      .meta({ description: "Пропущено фрагментов (при resume=true)." }),
     newVectors: z
       .number()
       .int()
-      .meta({ description: "New vectors upserted into Pinecone." }),
+      .meta({ description: "Новых векторов добавлено в Pinecone." }),
   })
   .meta({ id: "JobResult" });
 
@@ -225,39 +218,39 @@ export const JobStatusResponseSchema = z
   .object({
     id: z
       .string()
-      .meta({ description: "Job ID.", example: "job-1709035200000-a1b2c3" }),
+      .meta({ description: "ID задачи.", example: "job-1709035200000-a1b2c3" }),
     bookName: z.string().meta({
-      description: "Name of the book being processed.",
+      description: "Название обрабатываемой книги.",
       example: "Война и мир",
     }),
     status: z.enum(["pending", "processing", "completed", "failed"]).meta({
-      description: "Current job status.",
+      description: "Текущий статус задачи.",
     }),
     progress: JobProgressSchema,
     result: JobResultSchema.optional().meta({
-      description: 'Present when status is "completed".',
+      description: 'Присутствует, если статус "completed".',
     }),
     error: z
       .string()
       .optional()
-      .meta({ description: 'Error message, present when status is "failed".' }),
+      .meta({ description: 'Сообщение об ошибке, присутствует при статусе "failed".' }),
     createdAt: z
       .string()
       .datetime()
-      .meta({ description: "Job creation timestamp (ISO 8601)." }),
+      .meta({ description: "Метка времени создания задачи (ISO 8601)." }),
     updatedAt: z
       .string()
       .datetime()
-      .meta({ description: "Last update timestamp (ISO 8601)." }),
+      .meta({ description: "Метка времени последнего обновления (ISO 8601)." }),
   })
   .meta({ id: "JobStatusResponse" });
 
-// ─────────────────────────── Administration ───────────────────────────
+// ─────────────────────────── Администратор ───────────────────────────
 
 export const AdminLoginRequestSchema = z
   .object({
     password: z.string().meta({
-      description: "Administrator password configured on the server.",
+      description: "Пароль администратора, настроенный на сервере.",
       example: "admin-secret-password",
     }),
   })
@@ -267,8 +260,8 @@ export const AdminLoginResponseSchema = z
   .object({
     status: z.literal("success"),
     message: z.string().meta({
-      description: "Confirmation message.",
-      example: "Admin access granted",
+      description: "Сообщение о подтверждении доступа.",
+      example: "Доступ администратора предоставлен",
     }),
   })
   .meta({ id: "AdminLoginResponse" });
@@ -277,36 +270,36 @@ export const AdminLogoutResponseSchema = z
   .object({
     status: z.literal("success"),
     message: z.string().meta({
-      description: "Confirmation message.",
-      example: "Logged out",
+      description: "Сообщение о выходе из системы.",
+      example: "Сессия завершена",
     }),
   })
   .meta({ id: "AdminLogoutResponse" });
 
-// ─────────────────────────── Error response ───────────────────────────
+// ─────────────────────────── Ошибки ───────────────────────────
 
 export const createErrorSchema = (
   statusCode: number,
   statusMessage: string,
-  description: string = "Standard Nuxt error response format.",
+  description: string = "Стандартный формат ответа об ошибке в Nuxt.",
 ) => {
   return z
     .object({
       statusCode: z
         .number()
         .int()
-        .meta({ description: "HTTP status code.", example: statusCode }),
+        .meta({ description: "HTTP код состояния.", example: statusCode }),
       statusMessage: z
         .string()
-        .meta({ description: "Short status text.", example: statusMessage }),
+        .meta({ description: "Короткое текстовое описание статуса.", example: statusMessage }),
       message: z
         .string()
         .optional()
-        .meta({ description: "Detailed error description." }),
+        .meta({ description: "Подробное описание ошибки." }),
       data: z
         .record(z.string(), z.unknown())
         .optional()
-        .meta({ description: "Additional error data." }),
+        .meta({ description: "Дополнительные данные об ошибке." }),
     })
     .meta({
       id: `ErrorResponse${statusCode}`,
@@ -314,20 +307,20 @@ export const createErrorSchema = (
     });
 };
 
-// Common error schemas
+// Распространенные схемы ошибок
 export const Error400Schema = createErrorSchema(400, "Bad Request");
 export const Error401Schema = createErrorSchema(401, "Unauthorized");
 export const Error404Schema = createErrorSchema(404, "Not Found");
 export const Error429Schema = createErrorSchema(429, "Too Many Requests");
 export const Error500Schema = createErrorSchema(500, "Internal Server Error");
 
-// ─────────────────────────── Chat Endpoints ───────────────────────────
+// ─────────────────────────── Чат ───────────────────────────
 
 export const TextPartSchema = z.object({
   type: z.literal("text"),
   text: z.string().meta({
-    description: "Text content of the message part.",
-    example: "Hello, how can I help you today?",
+    description: "Текстовое содержимое части сообщения.",
+    example: "Здравствуйте, чем я могу вам помочь?",
   }),
 });
 
@@ -337,45 +330,45 @@ export const MessagePartSchema = z
     z
       .object({ type: z.string() })
       .passthrough()
-      .meta({ description: "Generic message part for future-proofing." }),
+      .meta({ description: "Универсальная часть сообщения для будущих расширений." }),
   ])
   .meta({ id: "MessagePart" });
 
 export const ChatItemSchema = z
   .object({
     id: z.string().meta({
-      description: "Chat ID",
+      description: "ID чата",
       example: "123e4567-e89b-12d3-a456-426614174000",
     }),
     title: z.string().nullable().meta({
-      description: "Generated chat title based on the first message",
-      example: "Discussing War and Peace",
+      description: "Сгенерированный заголовок чата на основе первого сообщения.",
+      example: "Обсуждение романа Война и мир",
     }),
     userId: z
       .string()
-      .meta({ description: "User ID owner of this chat", example: "user_123" }),
+      .meta({ description: "ID владельца чата.", example: "user_123" }),
     createdAt: z
       .string()
       .datetime()
-      .meta({ description: "Creation timestamp" }),
+      .meta({ description: "Дата и время создания." }),
   })
   .meta({ id: "ChatItem" });
 
 export const MessageItemSchema = z
   .object({
-    id: z.string().meta({ description: "Message ID" }),
-    chatId: z.string().meta({ description: "Chat ID this message belongs to" }),
+    id: z.string().meta({ description: "ID сообщения" }),
+    chatId: z.string().meta({ description: "ID чата, к которому относится сообщение." }),
     role: z
       .enum(["user", "assistant", "system"])
-      .meta({ description: "Role of the message sender" }),
+      .meta({ description: "Роль отправителя сообщения." }),
     parts: z.array(MessagePartSchema).meta({
-      description: "Array of message parts (e.g. text blocks)",
-      example: [{ type: "text", text: "Hello" }],
+      description: "Массив частей сообщения (например, блоки текста).",
+      example: [{ type: "text", text: "Привет" }],
     }),
     createdAt: z
       .string()
       .datetime()
-      .meta({ description: "Creation timestamp" }),
+      .meta({ description: "Дата и время создания." }),
   })
   .meta({ id: "MessageItem" });
 
@@ -386,7 +379,7 @@ export const GetChatsResponseSchema = z
 export const GetChatByIdResponseSchema = ChatItemSchema.extend({
   messages: z
     .array(MessageItemSchema)
-    .meta({ description: "Messages in the chat ordered by creation time" }),
+    .meta({ description: "Список сообщений в чате, отсортированных по времени." }),
 }).meta({ id: "GetChatByIdResponse" });
 
 export const DeleteChatResponseSchema = z

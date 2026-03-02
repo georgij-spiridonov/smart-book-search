@@ -1,54 +1,67 @@
 import { getRedisClient } from "./redis";
-import { log } from "./logger";
+import { logger } from "./logger";
 
+/** Типы событий, которые могут происходить в приложении */
 export interface AppEvent {
+  /** Тип события */
   type:
     | "chat:updated"
     | "book:updated"
     | "job:updated";
+  /** ID пользователя, которому адресовано событие */
   userId: string;
+  /** Данные события */
   payload: Record<string, unknown>;
+  /** Метка времени возникновения события */
   timestamp: number;
 }
 
-const EVENTS_STREAM_PREFIX = "smart-book-search:events:";
+/** Префикс для ключей потоков событий в Redis */
+const REDIS_KEY_EVENTS_STREAM_PREFIX = "smart-book-search:events:";
+/** Срок жизни потока событий при бездействии (1 час) */
+const EVENTS_STREAM_TTL_SECONDS = 3600;
 
-function getStreamKey(userId: string): string {
-  return `${EVENTS_STREAM_PREFIX}${userId}`;
+/** Формирует ключ потока для конкретного пользователя */
+function formatEventStreamKey(userId: string): string {
+  return `${REDIS_KEY_EVENTS_STREAM_PREFIX}${userId}`;
 }
 
 /**
- * Publish an event to the user's event stream in Redis.
- * Uses Redis Streams (XADD) for cross-instance communication.
+ * Публикует событие в поток событий пользователя в Redis.
+ * Использует Redis Streams (XADD) для межсерверного взаимодействия.
+ * 
+ * @param {string} userId ID целевого пользователя.
+ * @param {AppEvent["type"]} eventType Тип события.
+ * @param {Record<string, unknown>} eventPayload Данные события.
  */
 export async function publishEvent(
   userId: string,
-  type: AppEvent["type"],
-  payload: Record<string, unknown>,
+  eventType: AppEvent["type"],
+  eventPayload: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const redis = getRedisClient();
-    const streamKey = getStreamKey(userId);
+    const redisClient = getRedisClient();
+    const streamKey = formatEventStreamKey(userId);
 
-    const event: AppEvent = {
-      type,
+    const newEvent: AppEvent = {
+      type: eventType,
       userId,
-      payload,
+      payload: eventPayload,
       timestamp: Date.now(),
     };
 
-    // Add to stream with max length to prevent infinite growth
-    await redis.xadd(streamKey, "*", {
-      event: JSON.stringify(event),
+    // Добавляем событие в поток (XADD)
+    await redisClient.xadd(streamKey, "*", {
+      event: JSON.stringify(newEvent),
     });
 
-    // Set expiration on the stream key so it doesn't linger forever if user is inactive
-    await redis.expire(streamKey, 3600); // 1 hour
+    // Устанавливаем срок жизни ключа, чтобы он не висел вечно при неактивности пользователя
+    await redisClient.expire(streamKey, EVENTS_STREAM_TTL_SECONDS);
 
-    log.info("events", "Published event", { type, userId });
+    logger.info("events", "Published event", { type: eventType, userId });
   } catch (error) {
-    log.error("events", "Failed to publish event", {
-      type,
+    logger.error("events", "Failed to publish event", {
+      type: eventType,
       userId,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -56,49 +69,61 @@ export async function publishEvent(
 }
 
 /**
- * Subscribe to the user's event stream.
- * This is a generator that yields events as they arrive.
- * Designed for use in SSE handlers.
+ * Подписывается на поток событий пользователя.
+ * Это асинхронный генератор, который выдает события по мере их поступления.
+ * Предназначен для использования в обработчиках Server-Sent Events (SSE).
+ * 
+ * @param {string} userId ID пользователя.
+ * @param {string} lastEventId ID последнего полученного события (по умолчанию "$" — только новые).
+ * @yields {{ id: string | null, event: AppEvent | null }} Объект с ID и данными события или null для heartbeat.
  */
 export async function* subscribeToEvents(userId: string, lastEventId = "$") {
-  const redis = getRedisClient();
-  const streamKey = getStreamKey(userId);
+  const redisClient = getRedisClient();
+  const streamKey = formatEventStreamKey(userId);
 
-  let currentId = lastEventId;
+  let currentIdPointer = lastEventId;
 
   while (true) {
     try {
-      // XREAD with blocking (wait for up to 20s)
-      // Correct signature for @upstash/redis
-      const results = (await redis.xread(
+      /**
+       * XREAD с блокировкой ожидания (ждем до 20 секунд).
+       * Это позволяет эффективно реализовать Long Polling / SSE без лишних запросов к БД.
+       */
+      const readResults = (await redisClient.xread(
         streamKey,
-        currentId,
+        currentIdPointer,
         { blockMS: 20000 }
       )) as [string, [string, Record<string, string>][]][] | null;
 
-      if (results && results.length > 0) {
-        const [_, messages] = results[0]!;
-        for (const [id, fields] of messages) {
-          currentId = id;
-          if (fields && typeof fields.event === "string") {
+      if (readResults && readResults.length > 0) {
+        const [_, messagesList] = readResults[0]!;
+        
+        for (const [messageId, messageFields] of messagesList) {
+          currentIdPointer = messageId;
+          
+          if (messageFields && typeof messageFields.event === "string") {
             try {
-              const event = JSON.parse(fields.event) as AppEvent;
-              yield { id, event };
+              const parsedEvent = JSON.parse(messageFields.event) as AppEvent;
+              yield { id: messageId, event: parsedEvent };
             } catch {
-              log.error("events", "Failed to parse event from stream", { id });
+              logger.error("events", "Failed to parse event from stream", { id: messageId });
             }
           }
         }
       } else {
-        // Timeout reached, yield heartbeat to keep connection alive
+        /**
+         * Таймаут достигнут — выдаем пустой результат (heartbeat).
+         * Это помогает поддерживать HTTP-соединение активным.
+         */
         yield { id: null, event: null };
       }
     } catch (error) {
-      log.error("events", "Error reading from stream", {
+      logger.error("events", "Error reading from stream", {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });
-      // Wait a bit before retrying on error
+      
+      // Небольшая пауза перед повторной попыткой в случае ошибки Redis
       await new Promise((resolve) => setTimeout(resolve, 5000));
       yield { id: null, event: null };
     }

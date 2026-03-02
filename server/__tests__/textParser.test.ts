@@ -30,15 +30,19 @@ vi.mock("html-to-text", () => ({
 }));
 
 // Имитация fs для работы с временными файлами EPUB
-const mockFsWriteFileSync = vi.fn();
-const mockFsUnlinkSync = vi.fn();
+const mockFsWriteFileSync = vi.fn((_path: string, _data: any) => {});
+const mockFsUnlinkSync = vi.fn((_path: string) => {});
+const mockFsExistsSync = vi.fn((_path: string) => true);
+
 vi.mock("fs", () => ({
   default: {
-    writeFileSync: (...args: any[]) => mockFsWriteFileSync(...args),
-    unlinkSync: (...args: any[]) => mockFsUnlinkSync(...args),
+    writeFileSync: (path: string, data: any) => mockFsWriteFileSync(path, data),
+    unlinkSync: (path: string) => mockFsUnlinkSync(path),
+    existsSync: (path: string) => mockFsExistsSync(path),
   },
-  writeFileSync: (...args: any[]) => mockFsWriteFileSync(...args),
-  unlinkSync: (...args: any[]) => mockFsUnlinkSync(...args),
+  writeFileSync: (path: string, data: any) => mockFsWriteFileSync(path, data),
+  unlinkSync: (path: string) => mockFsUnlinkSync(path),
+  existsSync: (path: string) => mockFsExistsSync(path),
 }));
 
 import { extractText } from "../utils/textParser";
@@ -277,6 +281,19 @@ describe("Извлечение текста (textParser)", () => {
       // Временный файл должен быть записан и затем удален
       expect(mockFsWriteFileSync).toHaveBeenCalledOnce();
       expect(mockFsUnlinkSync).toHaveBeenCalledOnce();
+    });
+
+    it("должен игнорировать ошибки при удалении временного файла", async () => {
+      mockEpubCreateAsync.mockResolvedValue({ flow: [] });
+      mockFsUnlinkSync.mockImplementationOnce(() => {
+        throw new Error("Disk read-only");
+      });
+
+      const epubBuffer = Buffer.from("fake-epub");
+      const extractedPages = await extractText(epubBuffer, "test.epub");
+
+      expect(extractedPages).toHaveLength(0);
+      expect(mockFsUnlinkSync).toHaveBeenCalled();
     });
 
     it("должен корректно обрабатывать EPUB с пустым списком flow", async () => {

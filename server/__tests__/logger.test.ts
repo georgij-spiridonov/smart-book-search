@@ -21,15 +21,15 @@ describe("Сервис логирования (logger)", () => {
 
   // ──────── Режим разработки (Development mode) ────────
   describe("Режим разработки (Development)", () => {
-    let loggerInstance: typeof import("../utils/logger").log;
+    let loggerInstance: typeof import("../utils/logger").logger;
 
     beforeEach(async () => {
       process.env.NODE_ENV = "development";
       const loggerModule = await import("../utils/logger");
-      loggerInstance = loggerModule.log;
+      loggerInstance = loggerModule.logger;
     });
 
-    it("log.info должен вызывать console.log с префиксом и сообщением", () => {
+    it("logger.info должен вызывать console.log с префиксом и сообщением", () => {
       const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       loggerInstance.info("test-module", "Информационное сообщение");
@@ -41,7 +41,7 @@ describe("Сервис логирования (logger)", () => {
       expect(spyArguments[1]).toBe("Информационное сообщение");
     });
 
-    it("log.warn должен вызывать console.warn с префиксом и сообщением", () => {
+    it("logger.warn должен вызывать console.warn с префиксом и сообщением", () => {
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       loggerInstance.warn("test-module", "Предупреждение");
@@ -53,7 +53,7 @@ describe("Сервис логирования (logger)", () => {
       expect(spyArguments[1]).toBe("Предупреждение");
     });
 
-    it("log.error должен вызывать console.error с префиксом и сообщением", () => {
+    it("logger.error должен вызывать console.error с префиксом и сообщением", () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       loggerInstance.error("test-module", "Ошибка");
@@ -65,7 +65,7 @@ describe("Сервис логирования (logger)", () => {
       expect(spyArguments[1]).toBe("Ошибка");
     });
 
-    it("log.info должен включать объект данных, если он предоставлен", () => {
+    it("logger.info должен включать объект данных, если он предоставлен", () => {
       const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const additionalData = { key: "value", count: 42 };
 
@@ -76,7 +76,7 @@ describe("Сервис логирования (logger)", () => {
       expect(spyArguments[2]).toEqual(additionalData);
     });
 
-    it("log.info должен опускать аргумент данных, если они отсутствуют", () => {
+    it("logger.info должен опускать аргумент данных, если они отсутствуют", () => {
       const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       loggerInstance.info("mod", "без данных");
@@ -89,15 +89,15 @@ describe("Сервис логирования (logger)", () => {
 
   // ──────── Режим продакшена (Production mode) ────────
   describe("Режим продакшена (Production)", () => {
-    let loggerInstance: typeof import("../utils/logger").log;
+    let loggerInstance: typeof import("../utils/logger").logger;
 
     beforeEach(async () => {
       process.env.NODE_ENV = "production";
       const loggerModule = await import("../utils/logger");
-      loggerInstance = loggerModule.log;
+      loggerInstance = loggerModule.logger;
     });
 
-    it("log.info должен выводить структурированный JSON в console.log", () => {
+    it("logger.info должен выводить структурированный JSON в console.log", () => {
       const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       loggerInstance.info("chat", "Запуск конвейера", { queryLen: 42 });
@@ -113,7 +113,7 @@ describe("Сервис логирования (logger)", () => {
       expect(parsedOutput.timestamp).toBeDefined();
     });
 
-    it("log.warn должен выводить структурированный JSON в console.warn", () => {
+    it("logger.warn должен выводить структурированный JSON в console.warn", () => {
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       loggerInstance.warn("upload", "Файл слишком велик");
@@ -124,7 +124,7 @@ describe("Сервис логирования (logger)", () => {
       expect(parsedOutput.module).toBe("upload");
     });
 
-    it("log.error должен выводить структурированный JSON в console.error", () => {
+    it("logger.error должен выводить структурированный JSON в console.error", () => {
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       loggerInstance.error("api", "Внутренняя ошибка сервера", { status: 500 });

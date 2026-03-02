@@ -4,7 +4,7 @@ import {
   getChatLimiter,
   getStrictLimiter,
 } from "../utils/rateLimiter";
-import { log } from "../utils/logger";
+import { logger } from "../utils/logger";
 
 /**
  * Промежуточное ПО (Middleware) для ограничения частоты запросов к API.
@@ -68,7 +68,7 @@ export default defineEventHandler(async (event) => {
     if (!success) {
       const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
 
-      log.warn("rate-limit", "Rate limit exceeded", {
+      logger.warn("rate-limit", "Rate limit exceeded", {
         ip: clientIpAddress,
         path: requestPath,
         identifier: rateLimitIdentifier,
@@ -93,7 +93,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // В случае сбоя Redis (напр. таймаут), разрешаем запрос (fail open)
-    log.error("rate-limit", "Redis error during rate limiting, failing open", {
+    logger.error("rate-limit", "Redis error during rate limiting, failing open", {
       message: err instanceof Error ? err.message : String(err),
     });
   }

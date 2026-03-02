@@ -1,81 +1,96 @@
 /**
- * Magic-bytes file type validation.
- * Checks the actual binary header of a file buffer instead of trusting extensions.
+ * Валидация типов файлов на основе "магических байтов" (Magic Bytes).
+ * Проверяет реальный бинарный заголовок буфера файла, не полагаясь только на расширение.
  */
 
+/** Поддерживаемые типы файлов для обработки */
 export type DetectedFileType = "pdf" | "epub" | "txt" | "unknown";
 
+/** Результат проверки файла */
 interface ValidationResult {
+  /** Флаг успешной проверки (содержимое соответствует расширению) */
   valid: boolean;
+  /** Обнаруженный тип файла */
   detectedType: DetectedFileType;
+  /** Сообщение с результатом (на русском языке для пользователя) */
   message: string;
 }
 
-// Magic byte signatures
-const PDF_MAGIC = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
-const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // PK\x03\x04
+/** Сигнатуры магических байтов */
+const MAGIC_BYTES_PDF = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
+const MAGIC_BYTES_ZIP = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // PK\x03\x04
 
 /**
- * Validate that a file buffer matches its declared extension
- * by inspecting magic bytes.
+ * Проверяет, соответствует ли содержимое буфера файла его заявленному расширению.
+ * 
+ * @param {Buffer} fileBuffer Бинарное содержимое файла.
+ * @param {string} declaredExtension Заявленное расширение (например, "pdf" или ".epub").
+ * @returns {ValidationResult} Объект с результатом валидации.
  */
 export function validateFileType(
-  buffer: Buffer,
+  fileBuffer: Buffer,
   declaredExtension: string,
 ): ValidationResult {
-  const detected = detectFileType(buffer);
-  const ext = declaredExtension.toLowerCase().replace(/^\./, "");
+  const detectedType = detectFileType(fileBuffer);
+  const normalizedExtension = declaredExtension.toLowerCase().replace(/^\./, "");
 
-  if (detected === "unknown") {
+  if (detectedType === "unknown") {
     return {
       valid: false,
-      detectedType: detected,
-      message: `Unable to detect file type from content. Declared: .${ext}`,
+      detectedType,
+      message: `Не удалось определить тип файла по его содержимому. Заявлено: .${normalizedExtension}`,
     };
   }
 
-  if (detected !== ext) {
+  if (detectedType !== normalizedExtension) {
     return {
       valid: false,
-      detectedType: detected,
-      message: `File content mismatch: declared .${ext} but content is ${detected}`,
+      detectedType,
+      message: `Несоответствие содержимого расширению: заявлено .${normalizedExtension}, но обнаружено ${detectedType}`,
     };
   }
 
   return {
     valid: true,
-    detectedType: detected,
-    message: `File type verified: .${ext}`,
+    detectedType,
+    message: `Тип файла успешно подтвержден: .${normalizedExtension}`,
   };
 }
 
 /**
- * Detect file type from buffer content using magic bytes.
+ * Определяет тип файла по сигнатурам в начале буфера.
+ * 
+ * @param {Buffer} fileBuffer Бинарное содержимое файла.
+ * @returns {DetectedFileType} Обнаруженный тип файла.
  */
-export function detectFileType(buffer: Buffer): DetectedFileType {
-  if (buffer.length < 4) {
+export function detectFileType(fileBuffer: Buffer): DetectedFileType {
+  // Минимальная длина заголовка для проверки
+  if (fileBuffer.length < 4) {
     return "unknown";
   }
 
-  // PDF: starts with %PDF-
-  if (buffer.subarray(0, 5).equals(PDF_MAGIC)) {
+  // Проверка на PDF: начинается с %PDF-
+  if (fileBuffer.subarray(0, 5).equals(MAGIC_BYTES_PDF)) {
     return "pdf";
   }
 
-  // ZIP (EPUB is a ZIP with mimetype file): starts with PK\x03\x04
-  if (buffer.subarray(0, 4).equals(ZIP_MAGIC)) {
-    // Further check: EPUB ZIPs contain "application/epub+zip" at offset 30+
-    // The mimetype file is typically the first entry and uncompressed
-    const mimetypeStr = buffer.subarray(30, 58).toString("ascii");
-    if (mimetypeStr.includes("application/epub+zip")) {
+  // Проверка на ZIP (EPUB — это ZIP-архив с файлом mimetype): начинается с PK\x03\x04
+  if (fileBuffer.subarray(0, 4).equals(MAGIC_BYTES_ZIP)) {
+    /** 
+     * Дополнительная проверка для EPUB:
+     * EPUB-архивы содержат строку "application/epub+zip" обычно начиная с 30-го байта.
+     * Файл mimetype обычно является первым и идет без сжатия.
+     */
+    const mimetypeIdentifier = fileBuffer.subarray(30, 58).toString("ascii");
+    if (mimetypeIdentifier.includes("application/epub+zip")) {
       return "epub";
     }
-    // It's a ZIP but not EPUB
+    // Это ZIP, но не EPUB
     return "unknown";
   }
 
-  // TXT: no binary bytes in the first 512 bytes (simple heuristic)
-  if (isLikelyText(buffer)) {
+  // Проверка на TXT: эвристика — отсутствие бинарных байтов в первых 512 байтах
+  if (isLikelyTextContent(fileBuffer)) {
     return "txt";
   }
 
@@ -83,29 +98,33 @@ export function detectFileType(buffer: Buffer): DetectedFileType {
 }
 
 /**
- * Check if a buffer is likely text by scanning for binary (non-text) bytes.
- * Allows common whitespace and printable characters.
+ * Проверяет, является ли содержимое текстовым, сканируя буфер на наличие бинарных символов.
+ * Допускает стандартные пробелы и печатные символы ASCII/UTF-8.
+ * 
+ * @param {Buffer} buffer Буфер для проверки.
+ * @returns {boolean} true, если содержимое похоже на текст.
  */
-function isLikelyText(buffer: Buffer): boolean {
-  const checkLength = Math.min(buffer.length, 512);
-  let binaryCount = 0;
+function isLikelyTextContent(buffer: Buffer): boolean {
+  const bytesToCheck = Math.min(buffer.length, 512);
+  let nonTextByteCount = 0;
 
-  for (let i = 0; i < checkLength; i++) {
-    const byte = buffer[i]!;
-    // Allow: tab(9), newline(10), carriage-return(13), printable ASCII(32-126)
-    // Allow: UTF-8 continuation bytes (128-255)
-    const isText =
-      byte === 9 ||
-      byte === 10 ||
-      byte === 13 ||
-      (byte >= 32 && byte <= 126) ||
-      byte >= 128;
+  for (let i = 0; i < bytesToCheck; i++) {
+    const currentByte = buffer[i]!;
+    
+    // Допустимые символы: Tab(9), LF(10), CR(13), печатные ASCII(32-126)
+    // А также байты продолжения UTF-8 (128-255)
+    const isTextByte =
+      currentByte === 9 ||
+      currentByte === 10 ||
+      currentByte === 13 ||
+      (currentByte >= 32 && currentByte <= 126) ||
+      currentByte >= 128;
 
-    if (!isText) {
-      binaryCount++;
+    if (!isTextByte) {
+      nonTextByteCount++;
     }
   }
 
-  // Allow a tiny fraction of non-text bytes (e.g. BOM)
-  return binaryCount <= 2;
+  // Допускаем небольшое количество "нетекстовых" байтов (например, BOM)
+  return nonTextByteCount <= 2;
 }

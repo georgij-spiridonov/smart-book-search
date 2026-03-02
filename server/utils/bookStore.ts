@@ -1,41 +1,54 @@
 import { getRedisClient } from "./redis";
-import { log } from "./logger";
+import { logger } from "./logger";
 
 /**
- * Book metadata store backed by Upstash Redis.
- *
- * Each book is stored as a Redis hash at key `books:{id}`.
- * A Redis set `books:index` keeps track of all book IDs for listing.
- *
- * This is production-ready: data persists across deployments
- * and serverless cold starts.
+ * Хранилище метаданных книг на базе Upstash Redis.
+ * 
+ * Каждая книга хранится как Redis Hash по ключу `books:{id}`.
+ * Redis Set `books:index` хранит список всех ID книг для листинга.
+ * Redis Hash `books:blob-index` используется для быстрого поиска ID по URL файла.
  */
 
+/** Запись о книге в базе данных */
 export interface BookRecord {
+  /** Уникальный идентификатор книги (slug) */
   id: string;
+  /** ID пользователя, загрузившего книгу */
   userId: string;
+  /** Название книги */
   title: string;
+  /** Автор книги */
   author: string;
+  /** URL обложки */
   coverUrl: string;
+  /** URL файла в облачном хранилище (Vercel Blob) */
   blobUrl: string;
+  /** Оригинальное имя файла */
   filename: string;
+  /** Размер файла в байтах */
   fileSize: number;
+  /** Время загрузки (timestamp) */
   uploadedAt: number;
+  /** Флаг, указывающий, была ли книга векторизована для поиска */
   vectorized: boolean;
 }
 
-const BOOKS_INDEX_KEY = "smart-book-search:books:index";
-const BOOK_KEY_PREFIX = "smart-book-search:books:";
-const BLOB_INDEX_KEY = "smart-book-search:books:blob-index";
+/** Ключ индекса всех ID книг */
+const REDIS_KEY_BOOKS_INDEX = "smart-book-search:books:index";
+/** Префикс для ключей деталей конкретной книги */
+const REDIS_KEY_BOOK_DETAILS_PREFIX = "smart-book-search:books:";
+/** Ключ обратного индекса (Blob URL -> Book ID) */
+const REDIS_KEY_BLOB_TO_ID_INDEX = "smart-book-search:books:blob-index";
 
-function bookKey(id: string): string {
-  return `${BOOK_KEY_PREFIX}${id}`;
+/** Формирует ключ Redis для конкретной книги */
+function formatBookDetailsKey(id: string): string {
+  return `${REDIS_KEY_BOOK_DETAILS_PREFIX}${id}`;
 }
 
 /**
- * Serialize a BookRecord into a flat string-valued object for Redis HSET.
+ * Сериализует объект BookRecord для сохранения в Redis HSET.
  */
-function serialize(
+function serializeBookRecord(
   record: BookRecord,
 ): Record<string, string | number | boolean> {
   return {
@@ -53,184 +66,193 @@ function serialize(
 }
 
 /**
- * Deserialize a Redis hash response back into a BookRecord.
+ * Десериализует ответ из Redis Hash обратно в объект BookRecord.
  */
-function deserialize(data: Record<string, unknown>): BookRecord {
+function deserializeBookRecord(rawData: Record<string, unknown>): BookRecord {
   return {
-    id: String(data.id ?? ""),
-    userId: String(data.userId ?? "legacy"),
-    title: String(data.title ?? ""),
-    author: String(data.author ?? "Unknown"),
-    coverUrl: String(data.coverUrl ?? ""),
-    blobUrl: String(data.blobUrl ?? ""),
-    filename: String(data.filename ?? ""),
-    fileSize: Number(data.fileSize ?? 0),
-    uploadedAt: Number(data.uploadedAt ?? 0),
-    vectorized: String(data.vectorized) === "1" || data.vectorized === true,
+    id: String(rawData.id ?? ""),
+    userId: String(rawData.userId ?? "legacy"),
+    title: String(rawData.title ?? ""),
+    author: String(rawData.author ?? "Unknown"),
+    coverUrl: String(rawData.coverUrl ?? ""),
+    blobUrl: String(rawData.blobUrl ?? ""),
+    filename: String(rawData.filename ?? ""),
+    fileSize: Number(rawData.fileSize ?? 0),
+    uploadedAt: Number(rawData.uploadedAt ?? 0),
+    vectorized: String(rawData.vectorized) === "1" || rawData.vectorized === true,
   };
 }
 
 /**
- * Add a new book record to the store.
+ * Добавляет новую запись о книге в хранилище.
  */
 export async function addBook(record: BookRecord): Promise<void> {
-  const redis = getRedisClient();
-  const key = bookKey(record.id);
+  const redisClient = getRedisClient();
+  const bookKey = formatBookDetailsKey(record.id);
 
-  // Use pipeline for atomic-like consistency
-  const pipeline = redis.pipeline();
-  pipeline.hset(key, serialize(record));
-  pipeline.sadd(BOOKS_INDEX_KEY, record.id);
-  // Add reverse index for O(1) lookups by blobUrl
-  pipeline.hset(BLOB_INDEX_KEY, { [record.blobUrl]: record.id });
-  await pipeline.exec();
+  // Используем конвейер для обеспечения целостности индексов
+  const redisPipeline = redisClient.pipeline();
+  
+  redisPipeline.hset(bookKey, serializeBookRecord(record));
+  redisPipeline.sadd(REDIS_KEY_BOOKS_INDEX, record.id);
+  
+  // Добавляем запись в обратный индекс для поиска O(1) по URL
+  redisPipeline.hset(REDIS_KEY_BLOB_TO_ID_INDEX, { [record.blobUrl]: record.id });
+  
+  await redisPipeline.exec();
 
-  log.info("book-store", "Added new book record", { bookId: record.id });
+  logger.info("book-store", "Added new book record", { bookId: record.id });
 }
 
 /**
- * Get a single book record by ID. Returns null if not found.
+ * Получает информацию о книге по её ID. Возвращает null, если книга не найдена.
  */
 export async function getBook(id: string): Promise<BookRecord | null> {
-  const redis = getRedisClient();
-  const data = await redis.hgetall<Record<string, unknown>>(bookKey(id));
+  const redisClient = getRedisClient();
+  const rawData = await redisClient.hgetall<Record<string, unknown>>(formatBookDetailsKey(id));
 
-  if (!data || Object.keys(data).length === 0) {
+  if (!rawData || Object.keys(rawData).length === 0) {
     return null;
   }
 
-  return deserialize(data);
+  return deserializeBookRecord(rawData);
 }
 
 /**
- * Get all book records from the store.
+ * Возвращает список всех книг в хранилище.
  */
 export async function getAllBooks(): Promise<BookRecord[]> {
-  const redis = getRedisClient();
-  const ids = await redis.smembers<string[]>(BOOKS_INDEX_KEY);
+  const redisClient = getRedisClient();
+  const bookIds = await redisClient.smembers<string[]>(REDIS_KEY_BOOKS_INDEX);
 
-  if (!ids || ids.length === 0) {
+  if (!bookIds || bookIds.length === 0) {
     return [];
   }
 
-  // Use pipeline to fetch all books in a single round-trip
-  const pipeline = redis.pipeline();
-  for (const id of ids) {
-    pipeline.hgetall(bookKey(id));
+  // Получаем данные всех книг за один запрос к Redis
+  const redisPipeline = redisClient.pipeline();
+  for (const id of bookIds) {
+    redisPipeline.hgetall(formatBookDetailsKey(id));
   }
 
-  const results = await pipeline.exec<(Record<string, unknown> | null)[]>();
+  const pipelineResults = await redisPipeline.exec<(Record<string, unknown> | null)[]>();
 
-  const books: BookRecord[] = [];
-  for (const data of results) {
-    if (data && typeof data === "object" && Object.keys(data).length > 0) {
-      books.push(deserialize(data));
+  const booksList: BookRecord[] = [];
+  for (const rawData of pipelineResults) {
+    if (rawData && typeof rawData === "object" && Object.keys(rawData).length > 0) {
+      booksList.push(deserializeBookRecord(rawData));
     }
   }
 
-  // Sort by uploadedAt descending (newest first)
-  books.sort((a, b) => b.uploadedAt - a.uploadedAt);
+  // Сортируем: сначала новые (по дате загрузки)
+  booksList.sort((a, b) => b.uploadedAt - a.uploadedAt);
 
-  return books;
+  return booksList;
 }
 
 /**
- * Update specific fields of a book record.
+ * Обновляет указанные поля в записи о книге.
  */
 export async function updateBook(
   id: string,
-  update: Partial<Omit<BookRecord, "id">>,
+  updateData: Partial<Omit<BookRecord, "id">>,
 ): Promise<void> {
-  const redis = getRedisClient();
-  const key = bookKey(id);
+  const redisClient = getRedisClient();
+  const bookKey = formatBookDetailsKey(id);
 
-  // Check if book exists and get current data for index management
-  const current = await getBook(id);
-  if (!current) {
-    log.error("book-store", "Cannot update: Book not found", { bookId: id });
+  // Проверяем существование книги и получаем текущие данные для обновления индексов
+  const currentRecord = await getBook(id);
+  if (!currentRecord) {
+    logger.error("book-store", "Cannot update: Book not found", { bookId: id });
     throw new Error(`Book "${id}" not found in store.`);
   }
 
-  const fields: Record<string, string | number | boolean> = {};
-  if (update.title !== undefined) fields.title = update.title;
-  if (update.author !== undefined) fields.author = update.author;
-  if (update.coverUrl !== undefined) fields.coverUrl = update.coverUrl;
-  if (update.filename !== undefined) fields.filename = update.filename;
-  if (update.fileSize !== undefined) fields.fileSize = update.fileSize;
-  if (update.uploadedAt !== undefined) fields.uploadedAt = update.uploadedAt;
-  if (update.vectorized !== undefined)
-    fields.vectorized = update.vectorized ? "1" : "0";
-
-  // Handle blobUrl change and reverse index update
-  if (update.blobUrl !== undefined && update.blobUrl !== current.blobUrl) {
-    fields.blobUrl = update.blobUrl;
-    const pipeline = redis.pipeline();
-    pipeline.hdel(BLOB_INDEX_KEY, current.blobUrl);
-    pipeline.hset(BLOB_INDEX_KEY, { [update.blobUrl]: id });
-    await pipeline.exec();
+  const fieldsToSet: Record<string, string | number | boolean> = {};
+  
+  if (updateData.title !== undefined) fieldsToSet.title = updateData.title;
+  if (updateData.author !== undefined) fieldsToSet.author = updateData.author;
+  if (updateData.coverUrl !== undefined) fieldsToSet.coverUrl = updateData.coverUrl;
+  if (updateData.filename !== undefined) fieldsToSet.filename = updateData.filename;
+  if (updateData.fileSize !== undefined) fieldsToSet.fileSize = updateData.fileSize;
+  if (updateData.uploadedAt !== undefined) fieldsToSet.uploadedAt = updateData.uploadedAt;
+  
+  if (updateData.vectorized !== undefined) {
+    fieldsToSet.vectorized = updateData.vectorized ? "1" : "0";
   }
 
-  if (Object.keys(fields).length > 0) {
-    await redis.hset(key, fields);
+  // Обработка изменения URL файла и обновление обратного индекса
+  if (updateData.blobUrl !== undefined && updateData.blobUrl !== currentRecord.blobUrl) {
+    fieldsToSet.blobUrl = updateData.blobUrl;
+    const redisPipeline = redisClient.pipeline();
+    redisPipeline.hdel(REDIS_KEY_BLOB_TO_ID_INDEX, currentRecord.blobUrl);
+    redisPipeline.hset(REDIS_KEY_BLOB_TO_ID_INDEX, { [updateData.blobUrl]: id });
+    await redisPipeline.exec();
+  }
 
-    // Minimal log that avoids logging the whole diff
-    log.info("book-store", "Updated book record", {
+  if (Object.keys(fieldsToSet).length > 0) {
+    await redisClient.hset(bookKey, fieldsToSet);
+
+    logger.info("book-store", "Updated book record", {
       bookId: id,
-      updatedFields: Object.keys(fields),
+      updatedFields: Object.keys(fieldsToSet),
     });
   }
 }
 
 /**
- * Delete a book and all its index entries.
+ * Удаляет книгу и все связанные с ней индексные записи.
  */
 export async function deleteBook(id: string): Promise<void> {
-  const redis = getRedisClient();
-  const book = await getBook(id);
-  if (!book) return;
+  const redisClient = getRedisClient();
+  const bookRecord = await getBook(id);
+  if (!bookRecord) {
+    return;
+  }
 
-  const pipeline = redis.pipeline();
-  pipeline.del(bookKey(id));
-  pipeline.srem(BOOKS_INDEX_KEY, id);
-  pipeline.hdel(BLOB_INDEX_KEY, book.blobUrl);
-  await pipeline.exec();
+  const redisPipeline = redisClient.pipeline();
+  redisPipeline.del(formatBookDetailsKey(id));
+  redisPipeline.srem(REDIS_KEY_BOOKS_INDEX, id);
+  redisPipeline.hdel(REDIS_KEY_BLOB_TO_ID_INDEX, bookRecord.blobUrl);
+  
+  await redisPipeline.exec();
 
-  log.info("book-store", "Deleted book record", { bookId: id });
+  logger.info("book-store", "Deleted book record", { bookId: id });
 }
 
 /**
- * Mark a book as vectorized.
+ * Помечает книгу как векторизованную.
  */
 export async function markBookVectorized(id: string): Promise<void> {
   await updateBook(id, { vectorized: true });
 }
 
 /**
- * Find a book by its blobUrl.
- * Uses a Redis Hash for O(1) reverse lookup.
+ * Ищет книгу по её URL файла.
+ * Использует Redis Hash для мгновенного обратного поиска.
  */
 export async function getBookByBlobUrl(
   blobUrl: string,
 ): Promise<BookRecord | null> {
-  const redis = getRedisClient();
-  const bookId = await redis.hget<string>(BLOB_INDEX_KEY, blobUrl);
+  const redisClient = getRedisClient();
+  const foundBookId = await redisClient.hget<string>(REDIS_KEY_BLOB_TO_ID_INDEX, blobUrl);
 
-  if (!bookId) {
+  if (!foundBookId) {
     return null;
   }
 
-  return getBook(bookId);
+  return getBook(foundBookId);
 }
 
 /**
- * Generate a URL-friendly slug from a book title with a unique suffix.
+ * Генерирует безопасный для URL идентификатор (slug) на основе названия книги.
+ * Поддерживает латиницу и кириллицу.
  */
 export function slugifyBookId(title: string): string {
-  const slug = title
+  const slugBase = title
     .toLowerCase()
-    .replace(/[^a-z0-9\u0400-\u04FF]+/gi, "-") // Allow English and Cyrillic
+    .replace(/[^a-z0-9\u0400-\u04FF]+/gi, "-")
     .replace(/^-|-$/g, "");
 
-  const suffix = crypto.randomUUID().split("-")[0];
-  return slug ? `${slug}-${suffix}` : crypto.randomUUID();
+  const uniqueSuffix = crypto.randomUUID().split("-")[0];
+  return slugBase ? `${slugBase}-${uniqueSuffix}` : crypto.randomUUID();
 }

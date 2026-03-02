@@ -1,5 +1,5 @@
 import { subscribeToEvents } from "../utils/events";
-import { log } from "../utils/logger";
+import { logger } from "../utils/logger";
 
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
@@ -14,7 +14,7 @@ export default defineEventHandler(async (event) => {
 
   eventStream.onClosed(async () => {
     isConnectionClosed = true;
-    log.info("events-api", "SSE connection closed", { userId });
+    logger.info("events-api", "SSE connection closed", { userId });
   });
 
   // Используем генератор для потоковой передачи событий из Redis
@@ -41,7 +41,7 @@ export default defineEventHandler(async (event) => {
         }
       }
     } catch (error) {
-      log.error("events-api", "Stream error", {
+      logger.error("events-api", "Stream error", {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });

@@ -1,6 +1,6 @@
 import { getAllBooks } from "../../utils/bookStore";
 import { getUserJobs, type JobState } from "../../utils/jobStore";
-import { log } from "../../utils/logger";
+import { logger } from "../../utils/logger";
 
 /**
  * GET /api/books
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
       userJobs = await getUserJobs(userId);
     }
 
-    log.info("books-api", "Fetched books list", {
+    logger.info("books-api", "Fetched books list", {
       count: allBooksList.length,
       jobsCount: userJobs.length,
       isAdmin: !!session.user?.isAdmin,
@@ -68,7 +68,7 @@ export default defineEventHandler(async (event) => {
       }),
     };
   } catch (fetchError: unknown) {
-    log.error("books-api", "Failed to fetch books list", {
+    logger.error("books-api", "Failed to fetch books list", {
       error: fetchError instanceof Error ? fetchError.message : String(fetchError),
     });
     throw createError({

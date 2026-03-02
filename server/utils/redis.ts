@@ -1,45 +1,55 @@
 import { Redis } from "@upstash/redis";
 
-let _redisClient: Redis | null = null;
+/** Кэшированный экземпляр клиента Redis для повторного использования (Singleton) */
+let cachedRedisClient: Redis | null = null;
 
 /**
- * Returns a Redis client configured from Nuxt runtimeConfig.
- * Falls back to KV_REST_API_URL / KV_REST_API_TOKEN env vars via config.
- * Reuses a single instance across function invocations for better performance.
+ * Возвращает клиент Redis, настроенный через Nuxt runtimeConfig или переменные окружения.
+ * 
+ * - Использует `useRuntimeConfig` для получения `upstashRedisUrl` и `upstashRedisToken`.
+ * - В качестве запасного варианта ищет `UPSTASH_REDIS_REST_URL` или `KV_REST_API_URL`.
+ * - Повторно использует один и тот же экземпляр между вызовами для повышения производительности.
+ * 
+ * @returns {Redis} Настроенный экземпляр клиента Redis.
+ * @throws {Error} Если конфигурация Redis отсутствует.
  */
 export function getRedisClient(): Redis {
-  if (!_redisClient) {
-    let url: string | undefined;
-    let token: string | undefined;
-
-    // Safely check for useRuntimeConfig in global scope
-    const g = globalThis as Record<string, unknown>;
-    if (typeof g.useRuntimeConfig === "function") {
-      try {
-        const config = (g.useRuntimeConfig as () => Record<string, string | undefined>)();
-        url = config.upstashRedisUrl;
-        token = config.upstashRedisToken;
-      } catch {
-        // Fallback if useRuntimeConfig fails or doesn't have the expected fields
-      }
-    }
-
-    // Fallback for scripts outside of Nuxt context or if config is missing
-    if (!url || !token) {
-      url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-      token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-    }
-
-    if (!url || !token) {
-      throw new Error(
-        "Redis configuration is missing. Provide UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN env vars.",
-      );
-    }
-
-    _redisClient = new Redis({
-      url,
-      token,
-    });
+  if (cachedRedisClient) {
+    return cachedRedisClient;
   }
-  return _redisClient;
+
+  let redisUrl: string | undefined;
+  let redisToken: string | undefined;
+
+  // Безопасно проверяем наличие useRuntimeConfig в глобальной области (Nuxt context)
+  const globalObject = globalThis as Record<string, unknown>;
+  
+  if (typeof globalObject.useRuntimeConfig === "function") {
+    try {
+      const runtimeConfig = (globalObject.useRuntimeConfig as () => Record<string, string | undefined>)();
+      redisUrl = runtimeConfig.upstashRedisUrl;
+      redisToken = runtimeConfig.upstashRedisToken;
+    } catch {
+      // Игнорируем ошибки, если useRuntimeConfig недоступен или не содержит нужных полей
+    }
+  }
+
+  // Запасной вариант для скриптов вне контекста Nuxt или при отсутствии конфига
+  if (!redisUrl || !redisToken) {
+    redisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+    redisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  }
+
+  if (!redisUrl || !redisToken) {
+    throw new Error(
+      "Redis configuration is missing. Provide UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN env vars.",
+    );
+  }
+
+  cachedRedisClient = new Redis({
+    url: redisUrl,
+    token: redisToken,
+  });
+
+  return cachedRedisClient;
 }

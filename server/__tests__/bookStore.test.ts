@@ -102,6 +102,15 @@ vi.mock("../utils/redis", () => ({
   getRedisClient: vi.fn(() => mockRedisClient),
 }));
 
+// Мокаем логгер
+vi.mock("../utils/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
 // Настройка конфигурации Nuxt
 vi.stubGlobal("useRuntimeConfig", () => ({
   upstashRedisUrl: "https://test.upstash.io",

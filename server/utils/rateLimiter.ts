@@ -1,24 +1,33 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { getRedisClient } from "./redis";
 
-// Export config objects so OpenAPI documentation can read the exact limits
+/** 
+ * Конфигурация ограничений частоты запросов (Rate Limits).
+ * Экспортируется для возможности чтения лимитов в документации OpenAPI.
+ */
 export const RATE_LIMITS = {
+  /** Стандартный лимит для легких GET-запросов */
   default: { tokens: 20, window: "10 s" as const },
+  /** Лимит для чата, сбалансированный для скорости человеческого общения */
   chat: { tokens: 12, window: "60 s" as const },
+  /** Строгий лимит для тяжелых POST-запросов (загрузка, векторизация) */
   strict: { tokens: 5, window: "60 s" as const },
-};
+} as const;
 
-let _defaultLimiter: Ratelimit | null = null;
-let _chatLimiter: Ratelimit | null = null;
-let _strictLimiter: Ratelimit | null = null;
+/** Кэшированные экземпляры ограничителей (Singleton) */
+let cachedDefaultLimiter: Ratelimit | null = null;
+let cachedChatLimiter: Ratelimit | null = null;
+let cachedStrictLimiter: Ratelimit | null = null;
 
 /**
- * Default rate limiter: 20 requests per 10 seconds (sliding window).
- * Used for lightweight GET endpoints.
+ * Возвращает стандартный ограничитель: 20 запросов за 10 секунд (скользящее окно).
+ * Используется для большинства информационных эндпоинтов.
+ * 
+ * @returns {Ratelimit} Экземпляр Ratelimit.
  */
 export function getDefaultLimiter(): Ratelimit {
-  if (!_defaultLimiter) {
-    _defaultLimiter = new Ratelimit({
+  if (!cachedDefaultLimiter) {
+    cachedDefaultLimiter = new Ratelimit({
       redis: getRedisClient(),
       limiter: Ratelimit.slidingWindow(
         RATE_LIMITS.default.tokens,
@@ -28,16 +37,18 @@ export function getDefaultLimiter(): Ratelimit {
       prefix: "smart-book-search:ratelimit:default",
     });
   }
-  return _defaultLimiter;
+  return cachedDefaultLimiter;
 }
 
 /**
- * Chat rate limiter: 12 requests per 60 seconds (sliding window).
- * Balanced for human conversation speed while protecting LLM resources.
+ * Возвращает ограничитель для чата: 12 запросов за 60 секунд (скользящее окно).
+ * Защищает ресурсы LLM от чрезмерного использования.
+ * 
+ * @returns {Ratelimit} Экземпляр Ratelimit.
  */
 export function getChatLimiter(): Ratelimit {
-  if (!_chatLimiter) {
-    _chatLimiter = new Ratelimit({
+  if (!cachedChatLimiter) {
+    cachedChatLimiter = new Ratelimit({
       redis: getRedisClient(),
       limiter: Ratelimit.slidingWindow(
         RATE_LIMITS.chat.tokens,
@@ -47,16 +58,18 @@ export function getChatLimiter(): Ratelimit {
       prefix: "smart-book-search:ratelimit:chat",
     });
   }
-  return _chatLimiter;
+  return cachedChatLimiter;
 }
 
 /**
- * Strict rate limiter: 5 requests per 60 seconds (sliding window).
- * Used for heavy POST endpoints like upload and vectorize.
+ * Возвращает строгий ограничитель: 5 запросов за 60 секунд (скользящее окно).
+ * Используется для ресурсоемких операций, таких как загрузка файлов.
+ * 
+ * @returns {Ratelimit} Экземпляр Ratelimit.
  */
 export function getStrictLimiter(): Ratelimit {
-  if (!_strictLimiter) {
-    _strictLimiter = new Ratelimit({
+  if (!cachedStrictLimiter) {
+    cachedStrictLimiter = new Ratelimit({
       redis: getRedisClient(),
       limiter: Ratelimit.slidingWindow(
         RATE_LIMITS.strict.tokens,
@@ -66,5 +79,5 @@ export function getStrictLimiter(): Ratelimit {
       prefix: "smart-book-search:ratelimit:strict",
     });
   }
-  return _strictLimiter;
+  return cachedStrictLimiter;
 }

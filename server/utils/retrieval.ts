@@ -1,114 +1,131 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 import { generateText } from "ai";
 import { CHAT_CONFIG, type ChatMessage } from "./chatConfig";
-import { log } from "./logger";
+import { logger } from "./logger";
 
 /**
- * Minimum cosine similarity score for a chunk to be considered relevant.
+ * Минимальный порог косинусного сходства для признания фрагмента релевантным.
  */
-const MIN_SCORE = 0.3;
+const MIN_SIMILARITY_SCORE = 0.3;
 
 /**
- * Generates search queries based on the user's question and context.
+ * Генерирует поисковые запросы на основе вопроса пользователя и контекста беседы.
+ * 
+ * @param {string} userQuestion Текущий вопрос пользователя.
+ * @param {string} bookMetadata Информация о книгах для контекста.
+ * @param {ChatMessage[]} chatHistory История сообщений.
+ * @returns {Promise<string[]>} Список сгенерированных запросов.
  */
 export async function generateSearchQueries(
-  query: string,
-  bookInfo: string,
-  history: ChatMessage[] = [],
-) {
-  log.info("retrieval", "Generating search queries", { query, bookInfo });
+  userQuestion: string,
+  bookMetadata: string,
+  chatHistory: ChatMessage[] = [],
+): Promise<string[]> {
+  logger.info("retrieval", "Generating search queries", { 
+    userQuestion, 
+    bookMetadata 
+  });
 
-  const recentHistory = history.slice(-CHAT_CONFIG.maxHistoryMessages);
-  const historyText = recentHistory
-    .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+  // Берем только последние сообщения из истории для экономии контекста
+  const recentMessages = chatHistory.slice(-CHAT_CONFIG.maxHistoryMessages);
+  const formattedHistory = recentMessages
+    .map((msg) => `${msg.role.toUpperCase()}: ${msg.content}`)
     .join("\n");
 
-  const prompt = [
-    bookInfo ? `Context: Information about the book(s): ${bookInfo}` : "",
-    historyText ? `Conversation History:\n${historyText}` : "",
-    `User Question: ${query}`,
+  const promptParts = [
+    bookMetadata ? `Context: Information about the book(s): ${bookMetadata}` : "",
+    formattedHistory ? `Conversation History:\n${formattedHistory}` : "",
+    `User Question: ${userQuestion}`,
     "\nGenerate 3-5 search queries in the same language as the question.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  ];
 
-  const { text } = await generateText({
+  const fullPrompt = promptParts.filter(Boolean).join("\n\n");
+
+  const { text: aiResponseText } = await generateText({
     model: CHAT_CONFIG.queryModel,
     system: CHAT_CONFIG.querySystemPrompt,
-    prompt,
+    prompt: fullPrompt,
   });
 
   try {
-    // Attempt to parse JSON array from the response
-    const match = text.match(/\[.*\]/s);
-    if (match) {
-      const jsonText = match[0];
+    // Пытаемся извлечь массив JSON из ответа модели
+    const jsonMatch = aiResponseText.match(/\[.*\]/s);
+    if (jsonMatch) {
+      const jsonContent = jsonMatch[0];
       try {
-        const queries = JSON.parse(jsonText) as string[];
-        if (Array.isArray(queries) && queries.length > 0) {
-          log.info("retrieval", "Queries generated successfully", { queries });
-          return queries;
+        const parsedQueries = JSON.parse(jsonContent) as string[];
+        if (Array.isArray(parsedQueries) && parsedQueries.length > 0) {
+          logger.info("retrieval", "Queries generated successfully", { queries: parsedQueries });
+          return parsedQueries;
         }
       } catch {
-        // Fallback: try replacing single quotes with double quotes if it looks like a simple array
-        // This is a common failure mode for some LLMs
-        const fixedJsonText = jsonText.replace(/'/g, '"');
-        const queries = JSON.parse(fixedJsonText) as string[];
-        if (Array.isArray(queries) && queries.length > 0) {
-          log.info("retrieval", "Queries generated successfully (after fix)", {
-            queries,
+        /**
+         * Запасной вариант: некоторые модели могут использовать одинарные кавычки в JSON.
+         * Пытаемся заменить их на двойные для корректного парсинга.
+         */
+        const fixedJson = jsonContent.replace(/'/g, '"');
+        const parsedQueries = JSON.parse(fixedJson) as string[];
+        if (Array.isArray(parsedQueries) && parsedQueries.length > 0) {
+          logger.info("retrieval", "Queries generated successfully (after fix)", {
+            queries: parsedQueries,
           });
-          return queries;
+          return parsedQueries;
         }
       }
     }
-  } catch (e) {
-    log.error("retrieval", "Failed to parse generated queries", {
-      error: e instanceof Error ? e.message : String(e),
-      rawText: text,
+  } catch (error) {
+    logger.error("retrieval", "Failed to parse generated queries", {
+      error: error instanceof Error ? error.message : String(error),
+      rawResponse: aiResponseText,
     });
   }
 
-  log.warn("retrieval", "Falling back to original query", { query });
-  return [query];
+  // Если не удалось сгенерировать — возвращаем исходный вопрос пользователя
+  logger.warn("retrieval", "Falling back to original query", { userQuestion });
+  return [userQuestion];
 }
 
 /**
- * Searches the book knowledge base for fragments relevant to the queries.
+ * Выполняет поиск релевантных фрагментов книг в векторной базе Pinecone.
+ * 
+ * @param {string | string[]} searchQueries Запросы для поиска.
+ * @param {string[]} bookIds Список ID книг, по которым ведется поиск.
+ * @param {number} resultsLimit Лимит количества фрагментов.
+ * @returns {Promise<Array<{ text: string, pageNumber: number, chapterTitle: string, score: number, bookId: string }>>}
  */
 export async function searchBookKnowledge(
-  queries: string | string[],
+  searchQueries: string | string[],
   bookIds: string[],
-  limit = 5,
+  resultsLimit = 5,
 ) {
-  const config = useRuntimeConfig();
-  const queryList = Array.isArray(queries) ? queries : [queries];
+  const runtimeConfig = useRuntimeConfig();
+  const queriesArray = Array.isArray(searchQueries) ? searchQueries : [searchQueries];
 
-  log.info("retrieval", "Starting knowledge search", {
-    queriesCount: queryList.length,
+  logger.info("retrieval", "Starting knowledge search", {
+    queriesCount: queriesArray.length,
     bookIdsCount: bookIds?.length || 0,
-    limit,
+    resultsLimit,
   });
 
-  const pc = new Pinecone({
-    apiKey: config.pineconeApiKey,
+  const pineconeClient = new Pinecone({
+    apiKey: runtimeConfig.pineconeApiKey,
   });
-  const index = pc.index(config.pineconeIndex);
+  const vectorIndex = pineconeClient.index(runtimeConfig.pineconeIndex);
 
-  // 1. Search for each query in parallel with retry logic
-  const searchPromises = queryList.map((q) => {
-    const performSearch = async (
-      attempt = 1,
+  // 1. Выполняем поиск по всем запросам параллельно с логикой повторных попыток
+  const searchTasks = queriesArray.map((queryText) => {
+    const executeQueryWithRetry = async (
+      currentAttempt = 1,
     ): Promise<{
       result?: {
         hits?: Array<{ _score?: number; fields?: Record<string, unknown> }>;
       };
     } | null> => {
       try {
-        return (await index.searchRecords({
+        return (await vectorIndex.searchRecords({
           query: {
-            topK: limit,
-            inputs: { text: q },
+            topK: resultsLimit,
+            inputs: { text: queryText },
             filter: {
               bookId: { $in: bookIds },
             },
@@ -119,29 +136,30 @@ export async function searchBookKnowledge(
           };
         };
       } catch (err) {
-        if (attempt < 3) {
-          log.warn("retrieval", "Pinecone search retry", {
-            query: q,
-            attempt,
+        if (currentAttempt < 3) {
+          logger.warn("retrieval", "Pinecone search retry", {
+            query: queryText,
+            attempt: currentAttempt,
             error: err instanceof Error ? err.message : String(err),
           });
-          await new Promise((r) => setTimeout(r, 500 * attempt));
-          return performSearch(attempt + 1);
+          // Экспоненциальная задержка перед повтором
+          await new Promise((resolve) => setTimeout(resolve, 500 * currentAttempt));
+          return executeQueryWithRetry(currentAttempt + 1);
         }
-        log.error("retrieval", "Pinecone search error after retries", {
-          query: q,
+        logger.error("retrieval", "Pinecone search error after retries", {
+          query: queryText,
           error: err instanceof Error ? err.message : String(err),
         });
         return null;
       }
     };
-    return performSearch();
+    return executeQueryWithRetry();
   });
 
-  const results = await Promise.all(searchPromises);
+  const allSearchResults = await Promise.all(searchTasks);
 
-  // 2. Merge and rerank results
-  const chunkMap = new Map<
+  // 2. Слияние результатов, дедупликация и фильтрация по скору
+  const uniqueChunksMap = new Map<
     string,
     {
       text: string;
@@ -152,41 +170,47 @@ export async function searchBookKnowledge(
     }
   >();
 
-  for (const res of results) {
-    if (!res?.result?.hits) continue;
+  for (const searchResponse of allSearchResults) {
+    if (!searchResponse?.result?.hits) {
+      continue;
+    }
 
-    for (const hit of res.result.hits) {
-      const score = hit._score ?? 0;
-      if (score < MIN_SCORE) continue;
+    for (const matchHit of searchResponse.result.hits) {
+      const matchScore = matchHit._score ?? 0;
+      if (matchScore < MIN_SIMILARITY_SCORE) {
+        continue;
+      }
 
-      const fields = (hit.fields ?? {}) as Record<string, unknown>;
-      const text = (fields.text as string) || "";
+      const hitFields = (matchHit.fields ?? {}) as Record<string, unknown>;
+      const contentText = (hitFields.text as string) || "";
 
-      // Use text content as key for deduplication.
-      // If we see the same chunk again, keep the one with the higher score.
-      const existing = chunkMap.get(text);
-      if (!existing || existing.score < score) {
-        chunkMap.set(text, {
-          text,
-          pageNumber: (fields.pageNumber as number) || 0,
-          chapterTitle: (fields.chapterTitle as string) || "",
-          score: score,
-          bookId: (fields.bookId as string) || "",
+      /**
+       * Используем содержимое текста как ключ для дедупликации.
+       * Если один и тот же фрагмент найден несколько раз, сохраняем вариант с наилучшим скором.
+       */
+      const alreadyFound = uniqueChunksMap.get(contentText);
+      if (!alreadyFound || alreadyFound.score < matchScore) {
+        uniqueChunksMap.set(contentText, {
+          text: contentText,
+          pageNumber: (hitFields.pageNumber as number) || 0,
+          chapterTitle: (hitFields.chapterTitle as string) || "",
+          score: matchScore,
+          bookId: (hitFields.bookId as string) || "",
         });
       }
     }
   }
 
-  // 3. Sort by score and limit
-  const finalChunks = Array.from(chunkMap.values())
+  // 3. Сортировка по релевантности и ограничение итогового списка
+  const finalRelevantChunks = Array.from(uniqueChunksMap.values())
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit * 2); // Allow more chunks if we have multiple queries
+    .slice(0, resultsLimit * 2); // Позволяем чуть больше фрагментов, если было несколько запросов
 
-  log.info("retrieval", "Search and reranking completed", {
-    totalUniqueMatches: chunkMap.size,
-    returnedCount: finalChunks.length,
-    topScore: finalChunks[0]?.score,
+  logger.info("retrieval", "Search and reranking completed", {
+    totalUniqueMatches: uniqueChunksMap.size,
+    returnedCount: finalRelevantChunks.length,
+    bestScore: finalRelevantChunks[0]?.score,
   });
 
-  return finalChunks;
+  return finalRelevantChunks;
 }

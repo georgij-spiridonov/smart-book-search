@@ -2,7 +2,7 @@ import { del } from "@vercel/blob";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { getBook, deleteBook } from "../../utils/bookStore";
 import { deleteHashesByBlobUrl } from "../../utils/hashStore";
-import { log } from "../../utils/logger";
+import { logger } from "../../utils/logger";
 import { publishEvent } from "../../utils/events";
 
 /**
@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
   // Проверка прав владения: только загрузчик или администратор может удалить книгу
   if (!session.user?.isAdmin && targetBook.userId !== userId) {
-    log.warn("delete-api", "Unauthorized deletion attempt", {
+    logger.warn("delete-api", "Unauthorized deletion attempt", {
       bookId,
       attemptBy: userId,
       ownedBy: targetBook.userId,
@@ -56,9 +56,9 @@ export default defineEventHandler(async (event) => {
         const pineconeClient = new Pinecone({ apiKey: applicationConfig.pineconeApiKey });
         const pineconeIndex = pineconeClient.index(applicationConfig.pineconeIndex);
         await pineconeIndex.deleteMany({ filter: { bookId } });
-        log.info("delete-api", "Deleted vectors from Pinecone", { bookId });
+        logger.info("delete-api", "Deleted vectors from Pinecone", { bookId });
       } catch (pineconeError) {
-        log.error("delete-api", "Failed to delete vectors from Pinecone", {
+        logger.error("delete-api", "Failed to delete vectors from Pinecone", {
           error: pineconeError instanceof Error ? pineconeError.message : String(pineconeError),
         });
         // Мы логируем ошибку, но продолжаем удаление из Blob и БД
@@ -69,14 +69,14 @@ export default defineEventHandler(async (event) => {
     if (targetBook.blobUrl) {
       try {
         await del(targetBook.blobUrl, { token: applicationConfig.blobToken });
-        log.info("delete-api", "Deleted file from Vercel Blob", {
+        logger.info("delete-api", "Deleted file from Vercel Blob", {
           blobUrl: targetBook.blobUrl,
         });
 
         // Удаляем известные хэши для этого URL Blob
         await deleteHashesByBlobUrl(targetBook.blobUrl);
       } catch (blobError) {
-        log.error("delete-api", "Failed to delete file from Blob", {
+        logger.error("delete-api", "Failed to delete file from Blob", {
           error: blobError instanceof Error ? blobError.message : String(blobError),
         });
         // Продолжаем удаление из БД
@@ -100,7 +100,7 @@ export default defineEventHandler(async (event) => {
       message: `Книга "${targetBook.title}" была полностью удалена.`,
     };
   } catch (unexpectedError: unknown) {
-    log.error("delete-api", "Nuclear deletion ran into an unexpected error", {
+    logger.error("delete-api", "Nuclear deletion ran into an unexpected error", {
       error: unexpectedError instanceof Error ? unexpectedError.message : String(unexpectedError),
     });
     throw createError({

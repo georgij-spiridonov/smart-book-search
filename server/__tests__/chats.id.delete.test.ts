@@ -84,10 +84,47 @@ describe("Удаление конкретного чата: DELETE /api/chats/[i
   it("должен возвращать ошибку 404, если чат не найден", async () => {
     mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-id-123" } });
     mockedGetRouterParams.mockReturnValue({ id: "unknown-chat-id" });
+    mockDbFindFirstChat.mockResolvedValueOnce(undefined);
 
     await expect(chatDeleteByIdHandler({} as any)).rejects.toThrowError(
       "Чат не найден",
     );
+  });
+
+  it("должен возвращать ошибку 400, если ID чата отсутствует", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-id-123" } });
+    mockedGetRouterParams.mockReturnValue({});
+
+    await expect(chatDeleteByIdHandler({} as any)).rejects.toThrowError(
+      "Неверный запрос: Отсутствует параметр id",
+    );
+  });
+
+  it("должен возвращать ошибку 403, если пользователь пытается удалить чужой чат", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-id-1" } });
+    mockedGetRouterParams.mockReturnValue({ id: "chat-1" });
+    mockDbFindFirstChat.mockResolvedValueOnce({ id: "chat-1", userId: "user-id-2" });
+
+    await expect(chatDeleteByIdHandler({} as any)).rejects.toThrowError(
+      "Отказано в доступе: Вы можете удалять только свои чаты",
+    );
+  });
+
+  it("должен разрешать удаление чужого чата, если пользователь — администратор", async () => {
+    const mockChatData = {
+      id: "chat-1",
+      userId: "user-id-2",
+    };
+
+    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "admin-1", isAdmin: true } });
+    mockedGetRouterParams.mockReturnValue({ id: "chat-1" });
+    mockDbFindFirstChat.mockResolvedValueOnce(mockChatData);
+    mockDbDeleteReturning.mockResolvedValueOnce([mockChatData]);
+
+    const result = await chatDeleteByIdHandler({} as any);
+
+    expect(result).toEqual([mockChatData]);
+    expect(mockDbDelete).toHaveBeenCalled();
   });
 
   it("должен успешно удалять и возвращать данные удаленного чата, если запрос валиден", async () => {

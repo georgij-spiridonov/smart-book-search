@@ -1,5 +1,5 @@
 import { getJob } from "../../../utils/jobStore";
-import { log } from "../../../utils/logger";
+import { logger } from "../../../utils/logger";
 
 /**
  * GET /api/books/jobs/:id
@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
   const jobId = getRouterParam(event, "id");
 
   if (!jobId) {
-    log.warn("jobs-api", "Job status requested without ID");
+    logger.warn("jobs-api", "Job status requested without ID");
     throw createError({
       statusCode: 400,
       message: "Отсутствует ID задачи.",
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   const vectorizationJob = await getJob(jobId);
 
   if (!vectorizationJob) {
-    log.warn("jobs-api", "Requested job not found", { jobId });
+    logger.warn("jobs-api", "Requested job not found", { jobId });
     throw createError({
       statusCode: 404,
       message: `Задача "${jobId}" не найдена.`,
@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
 
   // Проверка прав владения: только пользователь, запустивший задачу, может видеть её статус
   if (vectorizationJob.userId !== userId) {
-    log.warn("jobs-api", "Unauthorized job status request", {
+    logger.warn("jobs-api", "Unauthorized job status request", {
       jobId,
       attemptBy: userId,
       ownedBy: vectorizationJob.userId,
@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  log.info("jobs-api", "Job status fetched", { jobId, status: vectorizationJob.status });
+  logger.info("jobs-api", "Job status fetched", { jobId, status: vectorizationJob.status });
 
   return {
     id: vectorizationJob.id,

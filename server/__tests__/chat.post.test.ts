@@ -42,13 +42,17 @@ vi.mock("../utils/bookStore", () => ({
   getBook: (...args: any[]) => mockGetBookFromStore(...args),
 }));
 
-vi.mock("../utils/logger", () => ({
-  log: {
+vi.mock("../utils/logger", () => {
+  const loggerMock = {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-  },
-}));
+  };
+  return {
+    logger: loggerMock,
+    log: loggerMock,
+  };
+});
 
 // =======================
 // Имитации внешних библиотек (Mocks for External Libs)
@@ -149,7 +153,7 @@ describe("Обработка сообщений чата: POST /api/chat", () =>
     });
 
     await expect(chatPostHandler({} as any)).rejects.toThrowError(
-      "Missing or empty 'query' field.",
+      "Поле 'query' отсутствует или пустое.",
     );
   });
 
@@ -464,7 +468,7 @@ describe("Обработка сообщений чата: POST /api/chat", () =>
     const mockEvent = { waitUntil: vi.fn() };
     await chatPostHandler(mockEvent as any);
 
-    const { log } = await import("../utils/logger");
-    expect(log.error).toHaveBeenCalledWith("chat-api", expect.stringContaining("failed"), expect.anything());
+    const { logger } = await import("../utils/logger");
+    expect(logger.error).toHaveBeenCalledWith("chat-api", expect.stringContaining("failed"), expect.anything());
   });
 });

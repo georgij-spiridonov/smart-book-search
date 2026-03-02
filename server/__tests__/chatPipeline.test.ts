@@ -43,7 +43,7 @@ vi.mock("../utils/redis", () => ({
 
 // Имитация логгера
 vi.mock("../utils/logger", () => ({
-  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 // Настройка конфигурации времени выполнения Nuxt

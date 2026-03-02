@@ -15,23 +15,23 @@ interface BaseUserSession {
   /** Данные пользователя (если он авторизован) */
   user?: BaseUser;
   /** Дополнительные метаданные сессии */
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
  * Расширение типов для внешнего модуля nuxt-auth-utils.
  */
 declare module "nuxt-auth-utils" {
-  interface User extends BaseUser {}
-  interface UserSession extends BaseUserSession {}
+  type User = BaseUser
+  type UserSession = BaseUserSession
 }
 
 /**
  * Расширение типов для внутреннего алиаса Nuxt (#auth-utils).
  */
 declare module "#auth-utils" {
-  interface User extends BaseUser {}
-  interface UserSession extends BaseUserSession {}
+  type User = BaseUser
+  type UserSession = BaseUserSession
 }
 
 export {}

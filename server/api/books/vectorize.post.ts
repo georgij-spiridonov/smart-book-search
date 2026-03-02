@@ -1,7 +1,7 @@
 import { inngest } from "../../utils/inngest";
 import { generateJobId, createJob } from "../../utils/jobStore";
 import { getBook, getBookByBlobUrl } from "../../utils/bookStore";
-import { log } from "../../utils/logger";
+import { logger } from "../../utils/logger";
 import { VectorizeRequestSchema } from "../../utils/openapi/schemas";
 
 /**
@@ -27,7 +27,7 @@ export default defineEventHandler(async (event) => {
   if (!validationResult.success) {
     const errorMessage =
       validationResult.error.issues[0]?.message || "Неверное тело запроса";
-    log.error("vectorize-api", "Vectorize request validation failed", {
+    logger.error("vectorize-api", "Vectorize request validation failed", {
       error: errorMessage,
       issues: validationResult.error.issues,
     });
@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (!targetBook || !resolvedBookId) {
-    log.error("vectorize-api", "Book not found", { resolvedBookId, blobUrl });
+    logger.error("vectorize-api", "Book not found", { resolvedBookId, blobUrl });
     throw createError({
       statusCode: 404,
       message: "Книга не найдена в хранилище.",
@@ -66,7 +66,7 @@ export default defineEventHandler(async (event) => {
 
   // Проверка прав владения: только загрузчик или администратор может векторизовать книгу
   if (!session.user?.isAdmin && targetBook.userId !== userId) {
-    log.warn("vectorize-api", "Unauthorized vectorization attempt", {
+    logger.warn("vectorize-api", "Unauthorized vectorization attempt", {
       resolvedBookId,
       attemptBy: userId,
       ownedBy: targetBook.userId,
@@ -77,7 +77,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  log.info("vectorize-api", "Starting vectorization job", {
+  logger.info("vectorize-api", "Starting vectorization job", {
     resolvedBookId,
     bookName,
     resume: !!shouldResume,
@@ -106,7 +106,7 @@ export default defineEventHandler(async (event) => {
     },
   });
 
-  log.info("vectorize-api", "Vectorization job queued successfully", { generatedJobId });
+  logger.info("vectorize-api", "Vectorization job queued successfully", { generatedJobId });
 
   // Возвращаем 202 немедленно
   setResponseStatus(event, 202);

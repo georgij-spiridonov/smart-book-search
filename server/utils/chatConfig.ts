@@ -2,28 +2,27 @@ import { z } from "zod";
 import "zod-openapi";
 
 /**
- * Centralized configuration for the book chat pipeline.
- *
- * Change model names, limits, or prompts here — every pipeline
- * component reads from this single source of truth.
+ * Централизованная конфигурация для цепочки обработки чата с книгами.
+ * 
+ * Изменяйте названия моделей, лимиты или системные промпты здесь —
+ * каждый компонент системы использует этот единый источник истины.
  */
 
 export const CHAT_CONFIG = {
-  /** Primary model for answer generation. */
+  /** Основная модель для генерации итогового ответа */
   answerModel: "gemini-2.5-flash-lite",
 
-  /** Model for query generation. */
+  /** Модель для генерации поисковых запросов */
   queryModel: "gemini-2.5-flash-lite",
 
-
-  /** Maximum number of chunks to retrieve from the vector store per query. */
+  /** Максимальное количество фрагментов, извлекаемых из векторного хранилища на один запрос */
   retrievalLimit: 10,
 
-  /** Maximum number of previous messages to include as conversation context. */
+  /** Максимальное количество предыдущих сообщений для контекста беседы */
   maxHistoryMessages: 10,
 
   /**
-   * System prompt for the query generation model.
+   * Системный промпт для модели генерации поисковых запросов.
    */
   querySystemPrompt: [
     "You are an expert search query generator for a book knowledge base.",
@@ -35,7 +34,7 @@ export const CHAT_CONFIG = {
   ].join("\n"),
 
   /**
-   * System prompt for the answer model.
+   * Системный промпт для модели генерации ответа.
    */
   answerSystemPrompt: [
     "You are a knowledgeable assistant that answers questions about books.",
@@ -56,112 +55,117 @@ export const CHAT_CONFIG = {
   ].join("\n"),
 } as const;
 
-/** Schema for a single message in the chat history. */
+/** Схема для одного сообщения в истории чата */
 export const ChatMessageSchema = z
   .object({
-    role: z.enum(["user", "assistant"]).meta({ description: "Message role." }),
-    content: z.string().min(1).meta({ description: "Message text content." }),
+    role: z.enum(["user", "assistant"]).meta({ description: "Роль отправителя сообщения." }),
+    content: z.string().min(1).meta({ description: "Текстовое содержимое сообщения." }),
   })
   .meta({
     id: "ChatMessage",
-    description: "A single message in the conversation history.",
+    description: "Одно сообщение в истории переписки.",
   });
 
-/** A single message in the chat history. */
+/** Тип данных для сообщения чата */
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
-/** Schema for the /api/chat request body. */
+/** Схема тела запроса к /api/chat */
 export const ChatRequestSchema = z
   .object({
     chatId: z.string().optional().meta({
-      description: "Optional chat ID to continue an existing conversation.",
+      description: "Необязательный ID чата для продолжения существующей беседы.",
       example: "123e4567-e89b-12d3-a456-426614174000",
     }),
-    query: z.string().min(1, "Missing or empty 'query' field.").meta({
-      description: "User's search query or question.",
+    query: z.string().min(1, "Поле 'query' отсутствует или пустое.").meta({
+      description: "Поисковый запрос или вопрос пользователя.",
       example: "Что произошло с Наташей в эпилоге?",
     }),
     bookIds: z
       .array(z.string())
-      .min(1, "Missing or empty 'bookIds' array.")
+      .min(1, "Массив 'bookIds' отсутствует или пуст.")
       .meta({
-        description: "IDs of books to search across.",
+        description: "Список ID книг, по которым нужно провести поиск.",
         example: ["war-and-peace"],
       }),
   })
   .meta({
     id: "ChatRequest",
-    description: "Request body for the book chat pipeline.",
+    description: "Тело запроса для системы чата по книгам.",
   });
 
-/** A retrieved text chunk with location metadata. */
+/** Фрагмент извлеченного текста с метаданными расположения */
 export interface RetrievedChunk {
+  /** Содержимое фрагмента */
   text: string;
+  /** Номер страницы */
   pageNumber: number;
+  /** Заголовок главы */
   chapterTitle: string;
+  /** Оценка релевантности */
   score: number;
+  /** ID источника (книги) */
   bookId: string;
 }
 
-/** Schema for a single step in the `data-step` SSE event. */
+/** Схема для одного шага в SSE-событии `data-step` */
 export const DataStepSchema = z
   .object({
-    text: z.string().meta({ description: "Description of the step." }),
+    text: z.string().meta({ description: "Описание текущего шага обработки." }),
     state: z
       .enum(["active", "done"])
-      .meta({ description: "Current state of the step." }),
+      .meta({ description: "Текущее состояние шага." }),
   })
   .meta({
     id: "DataStep",
-    description: "A reasoning step sent during the retrieval pipeline.",
+    description: "Информационный шаг процесса обработки запроса.",
   });
 
-// ─── SSE response schemas (for OpenAPI documentation) ───
+// ─── Схемы SSE-ответов (для документации OpenAPI) ───
 
-/** Schema for the `data-meta` SSE event payload. */
+/** Схема полезной нагрузки для SSE-события `data-meta` */
 export const DataMetaSchema = z
   .object({
     bookIds: z
       .array(z.string())
-      .meta({ description: "IDs of books that were searched." }),
+      .meta({ description: "Список ID книг, в которых велся поиск." }),
     hasContext: z
       .boolean()
-      .meta({ description: "Whether relevant text fragments were found." }),
+      .meta({ description: "Были ли найдены релевантные фрагменты." }),
     notVectorized: z
       .array(z.string())
-      .meta({ description: "Book IDs that have not been indexed yet." }),
+      .meta({ description: "Список ID книг, которые еще не проиндексированы." }),
   })
   .meta({
     id: "DataMeta",
-    description: "Metadata sent as the first SSE event in the chat stream.",
+    description: "Метаданные, отправляемые первым событием в потоке чата.",
   });
 
-/** Schema for a single chunk in the `data-chunks` SSE event. */
+/** Схема отдельного фрагмента для SSE-события `data-chunks` */
 export const ChunkItemSchema = z
   .object({
     index: z
       .number()
       .int()
-      .meta({ description: "1-based fragment index.", example: 1 }),
-    text: z.string().meta({ description: "Text content of the fragment." }),
+      .meta({ description: "Индекс фрагмента (начиная с 1).", example: 1 }),
+    text: z.string().meta({ description: "Текст фрагмента." }),
     pageNumber: z
       .number()
       .int()
-      .meta({ description: "Page number (0 if unknown).", example: 42 }),
+      .meta({ description: "Номер страницы (0, если неизвестно).", example: 42 }),
     chapterTitle: z.string().meta({
-      description: "Chapter title (empty string if unknown).",
+      description: "Название главы (пустая строка, если неизвестно).",
       example: "Эпилог",
     }),
     score: z.number().meta({
-      description: "Cosine similarity relevance score (0.0–1.0).",
+      description: "Оценка косинусного сходства (0.0–1.0).",
       example: 0.87,
     }),
     bookId: z.string().meta({
-      description: "ID of the source book.",
+      description: "ID исходной книги.",
       example: "war-and-peace",
     }),
   })
   .meta({
     id: "ChunkItem",
-    description: "A retrieved text fragment with source metadata.",
+    description: "Найденный текстовый фрагмент с метаданными источника.",
   });

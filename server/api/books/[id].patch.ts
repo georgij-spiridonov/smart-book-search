@@ -1,5 +1,5 @@
 import { getBook, updateBook } from "../../utils/bookStore";
-import { log } from "../../utils/logger";
+import { logger } from "../../utils/logger";
 import { publishEvent } from "../../utils/events";
 import { UpdateBookRequestSchema } from "../../utils/openapi/schemas";
 
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event) => {
 
   // Проверка прав владения: только загрузчик или администратор может редактировать книгу
   if (!session.user?.isAdmin && existingBook.userId !== userId) {
-    log.warn("update-book-api", "Unauthorized update attempt", {
+    logger.warn("update-book-api", "Unauthorized update attempt", {
       bookId,
       attemptBy: userId,
       ownedBy: existingBook.userId,
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    log.info("update-book-api", "Updated book metadata", {
+    logger.info("update-book-api", "Updated book metadata", {
       bookId,
       title: newTitle,
       author: newAuthor,
@@ -87,7 +87,7 @@ export default defineEventHandler(async (event) => {
       message: `Метаданные книги обновлены.`,
     };
   } catch (updateError: unknown) {
-    log.error("update-book-api", "Failed to update book metadata", {
+    logger.error("update-book-api", "Failed to update book metadata", {
       error: updateError instanceof Error ? updateError.message : String(updateError),
     });
     throw createError({
