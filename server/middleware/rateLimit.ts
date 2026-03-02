@@ -1,3 +1,4 @@
+import { defineEventHandler, getRequestURL, getRequestHeaders, setResponseHeaders, setResponseHeader, createError } from "h3";
 import {
   getDefaultLimiter,
   getChatLimiter,
@@ -6,60 +7,58 @@ import {
 import { log } from "../utils/logger";
 
 /**
- * Nuxt server middleware — rate limiting for /api/** routes.
- *
- * - Skips non-API and test routes
- * - Uses strict limiter (5 req/60s) for heavy background jobs (upload/vectorize)
- * - Uses chat limiter (12 req/60s) for the chat pipeline
- * - Uses default limiter (20 req/10s) for everything else
- * - Identifies clients by IP address
+ * Промежуточное ПО (Middleware) для ограничения частоты запросов к API.
+ * 
+ * - Применяется только к маршрутам /api/**.
+ * - Использует различные лимиты в зависимости от ресурсоемкости запроса.
+ * - Идентифицирует пользователей по IP-адресу.
  */
 export default defineEventHandler(async (event) => {
-  const path = getRequestURL(event).pathname;
+  const { pathname: requestPath } = getRequestURL(event);
 
-  // Only rate-limit API routes
-  if (!path.startsWith("/api/")) return;
+  // Обрабатываем только API-запросы
+  if (!requestPath.startsWith("/api/")) return;
 
-  // Skip test endpoints
-  if (path.startsWith("/api/tests/")) return;
+  // Игнорируем тестовые эндпоинты
+  if (requestPath.startsWith("/api/tests/")) return;
 
-  // --- Determine client IP ---
+  // --- Определение IP-адреса клиента ---
   const headers = getRequestHeaders(event);
-  const forwarded = headers["x-forwarded-for"];
-  const ip =
-    (forwarded ? forwarded.split(",")[0]?.trim() : null) ||
+  const xForwardedForHeader = headers["x-forwarded-for"];
+  const clientIpAddress =
+    (typeof xForwardedForHeader === "string" ? xForwardedForHeader.split(",")[0]?.trim() : null) ||
     headers["x-real-ip"] ||
     event.node.req.socket?.remoteAddress ||
     "unknown";
 
-  // --- Choose limiter ---
-  let limiter;
-  let identifier;
+  // --- Выбор подходящего лимитера на основе типа запроса ---
+  let selectedLimiter;
+  let rateLimitIdentifier;
 
-  if (
-    event.method === "POST" &&
-    (path === "/api/books/upload" || path === "/api/books/vectorize")
-  ) {
-    limiter = getStrictLimiter();
-    identifier = `strict:${ip}`;
-  } else if (event.method === "POST" && path === "/api/chat") {
-    limiter = getChatLimiter();
-    identifier = `chat:${ip}`;
+  const isHeavyOperation = event.method === "POST" && (requestPath === "/api/books/upload" || requestPath === "/api/books/vectorize");
+  const isChatOperation = event.method === "POST" && requestPath === "/api/chat";
+
+  if (isHeavyOperation) {
+    selectedLimiter = getStrictLimiter();
+    rateLimitIdentifier = `strict:${clientIpAddress}`;
+  } else if (isChatOperation) {
+    selectedLimiter = getChatLimiter();
+    rateLimitIdentifier = `chat:${clientIpAddress}`;
   } else {
-    limiter = getDefaultLimiter();
-    identifier = `default:${ip}`;
+    selectedLimiter = getDefaultLimiter();
+    rateLimitIdentifier = `default:${clientIpAddress}`;
   }
 
   try {
     const { success, limit, remaining, reset, pending } =
-      await limiter.limit(identifier);
+      await selectedLimiter.limit(rateLimitIdentifier);
 
-    // Let the serverless runtime finish async analytics/sync work
+    // Позволяем среде выполнения (напр. Vercel/Cloudflare) завершить фоновую работу
     if (typeof event.waitUntil === "function") {
       event.waitUntil(pending);
     }
 
-    // Attach rate-limit headers to every response
+    // Добавляем информационные заголовки лимитов в ответ
     setResponseHeaders(event, {
       "X-RateLimit-Limit": String(limit),
       "X-RateLimit-Remaining": String(remaining),
@@ -67,40 +66,35 @@ export default defineEventHandler(async (event) => {
     });
 
     if (!success) {
-      const retryAfterSec = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
+      const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000));
 
       log.warn("rate-limit", "Rate limit exceeded", {
-        ip,
-        path,
-        identifier,
+        ip: clientIpAddress,
+        path: requestPath,
+        identifier: rateLimitIdentifier,
         limit,
-        retryAfter: retryAfterSec,
+        retryAfter: retryAfterSeconds,
       });
 
-      setResponseHeader(event, "Retry-After", retryAfterSec);
+      setResponseHeader(event, "Retry-After", retryAfterSeconds);
       throw createError({
         statusCode: 429,
         statusMessage: "Too Many Requests",
         data: {
-          error: "Rate limit exceeded. Please try again later.",
-          retryAfter: retryAfterSec,
+          error: "Превышен лимит запросов. Пожалуйста, попробуйте позже.",
+          retryAfter: retryAfterSeconds,
         },
       });
     }
-  } catch (error: unknown) {
-    // Re-throw 429 errors
-    if (
-      error &&
-      typeof error === "object" &&
-      "statusCode" in error &&
-      (error as { statusCode: number }).statusCode === 429
-    )
-      throw error;
+  } catch (err: unknown) {
+    // Если это наша ошибка 429, пробрасываем её дальше
+    if (err && typeof err === "object" && "statusCode" in err && (err as { statusCode?: number }).statusCode === 429) {
+      throw err;
+    }
 
-    // If Redis is unreachable, fail open (allow the request through)
-    // Log the error but don't block the user
+    // В случае сбоя Redis (напр. таймаут), разрешаем запрос (fail open)
     log.error("rate-limit", "Redis error during rate limiting, failing open", {
-      error: error instanceof Error ? error.message : String(error),
+      message: err instanceof Error ? err.message : String(err),
     });
   }
 });
