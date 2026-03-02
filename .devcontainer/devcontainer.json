@@ -4,6 +4,13 @@
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
+  "containerEnv": {
+    "NUXT_TELEMETRY_DISABLED": "1"
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb"
+  },
   "customizations": {
     "vscode": {
       "extensions": [
@@ -43,6 +50,6 @@
       "onAutoForward": "silent"
     }
   },
-  "postCreateCommand": "npm install && npx nuxt prepare",
+  "postCreateCommand": "npm ci && npx nuxt prepare",
   "remoteUser": "node"
 }
