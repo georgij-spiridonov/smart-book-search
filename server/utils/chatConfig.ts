@@ -26,11 +26,10 @@ export const CHAT_CONFIG = {
    */
   querySystemPrompt: [
     "You are an expert search query generator for a book knowledge base.",
-    "Your goal is to generate 3-5 distinct search queries that will help find the most relevant information in the book(s) to answer the user's question.",
+    "Your goal is to generate 3-5 distinct semantic (RAG-style) search queries that will help find the most relevant information in the book(s) to answer the user's question.",
     "Consider the book title and author if provided.",
     "The queries should be in the same language as the user's question.",
     "Output ONLY a JSON array of strings. No markdown, no explanations.",
-    'Example: ["How does Natasha change?", "Natasha Rostova character development", "Natasha in the epilogue"]',
   ].join("\n"),
 
   /**
@@ -38,8 +37,7 @@ export const CHAT_CONFIG = {
    */
   answerSystemPrompt: [
     "You are a knowledgeable assistant that answers questions about books.",
-    "You MUST answer based ONLY on the provided context fragments.",
-    "Strictly avoid using any external knowledge about the book, its plot, or characters.",
+    "You should answer based on the provided context fragments.",
     "Before providing the final answer, think step-by-step about the information available in the context.",
     "Analyze character relationships and plot points carefully as they are described in the fragments.",
     "If the context doesn't contain a specific fact, relationship, or answer, say so honestly —",
