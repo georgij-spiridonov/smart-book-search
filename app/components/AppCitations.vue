@@ -1,24 +1,41 @@
 <script setup lang="ts">
+/**
+ * Компонент для отображения списка цитат, послуживших основой для ответа.
+ * Отображает цитаты в виде раскрывающегося списка с возможностью просмотра каждой цитаты отдельно.
+ */
 import { LazyModalCitationView } from "#components";
 
-interface Chunk {
+/** Фрагмент текста из книги, используемый как цитата. */
+interface CitationChunk {
+  /** Уникальный индекс фрагмента. */
   index: number;
+  /** Текст цитаты. */
   text: string;
+  /** Номер страницы, на которой находится текст. */
   pageNumber: number;
+  /** Заголовок главы (при наличии). */
   chapterTitle?: string;
+  /** Оценка релевантности фрагмента запросу. */
   score: number;
+  /** Идентификатор книги, из которой взят фрагмент. */
   bookId: string;
 }
 
+// Определение входных параметров компонента
 defineProps<{
-  chunks: Chunk[];
+  /** Список фрагментов текста (цитат) */
+  chunks: CitationChunk[];
 }>();
 
 const { t } = useI18n();
 const overlay = useOverlay();
-const open = ref(false);
+const isExpanded = ref(false);
 
-function openCitation(chunk: Chunk) {
+/**
+ * Открывает модальное окно для детального просмотра цитаты.
+ * @param chunk Объект цитаты, которую нужно отобразить.
+ */
+function openCitationDetails(chunk: CitationChunk): void {
   const modal = overlay.create(LazyModalCitationView, {
     props: {
       text: chunk.text,
@@ -33,7 +50,7 @@ function openCitation(chunk: Chunk) {
 
 <template>
   <div v-if="chunks?.length" class="flex flex-col gap-3 mt-4 border-t border-default/50 pt-4">
-    <UCollapsible v-model:open="open" class="flex flex-col gap-3">
+    <UCollapsible v-model:open="isExpanded" class="flex flex-col gap-3">
       <UButton
         color="neutral"
         variant="ghost"
@@ -55,7 +72,7 @@ function openCitation(chunk: Chunk) {
             v-for="(chunk, index) in chunks"
             :key="index"
             class="p-3 rounded-lg ring ring-default bg-elevated/25 transition-colors hover:bg-elevated/50 cursor-pointer"
-            @click="openCitation(chunk)"
+            @click="openCitationDetails(chunk)"
           >
             <div class="text-sm font-semibold text-highlighted line-clamp-1">
               {{ chunk.chapterTitle || t('chat.untitledChapter') }}

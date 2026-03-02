@@ -1,32 +1,44 @@
 <script setup lang="ts">
+/**
+ * Компонент для отображения процесса "размышления" или работы конвейера обработки (pipeline).
+ * Позволяет пользователю видеть детали того, как ИИ пришел к ответу.
+ */
 const { t } = useI18n();
 
+// Определение входных параметров
 const { isStreaming = false } = defineProps<{
+  /** Текст с описанием процесса работы */
   text: string;
+  /** Флаг, указывающий на то, идет ли процесс генерации в данный момент */
   isStreaming?: boolean;
 }>();
 
-const open = ref(false);
+const isExpanded = ref(false);
 
+// Автоматически раскрываем блок, если идет стриминг
 watch(
   () => isStreaming,
-  () => {
-    open.value = isStreaming;
+  (newVal) => {
+    isExpanded.value = newVal;
   },
   { immediate: true },
 );
 
-function cleanMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "$1") // Remove bold
-    .replace(/\*(.+?)\*/g, "$1") // Remove italic
-    .replace(/`(.+?)`/g, "$1") // Remove inline code
-    .replace(/^#+\s+/gm, ""); // Remove headers
+/**
+ * Очищает текст от базовой разметки Markdown для более чистого отображения в логах.
+ * @param markdown Текст с разметкой.
+ * @returns Очищенный текст.
+ */
+function removeMarkdownFormatting(markdown: string): string {
+  if (!markdown) return "";
+  
+  return markdown
+    .replace(/(\*\*|\*|`|#+\s+)/g, ""); // Удаляем жирный, курсив, код и заголовки одним регулярным выражением
 }
 </script>
 
 <template>
-  <UCollapsible v-model:open="open" class="flex flex-col gap-1 my-5">
+  <UCollapsible v-model:open="isExpanded" class="flex flex-col gap-1 my-5">
     <UButton
       class="p-0 group"
       color="neutral"
@@ -44,13 +56,13 @@ function cleanMarkdown(text: string): string {
 
     <template #content>
       <div
-        v-for="(value, index) in cleanMarkdown(text)
+        v-for="(line, index) in removeMarkdownFormatting(text)
           .split('\n')
           .filter(Boolean)"
         :key="index"
       >
         <span class="whitespace-pre-wrap text-sm text-muted font-normal">{{
-          value
+          line
         }}</span>
       </div>
     </template>

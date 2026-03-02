@@ -1,27 +1,38 @@
 <script setup lang="ts">
+/**
+ * Компонент модального окна для детального просмотра цитаты из книги.
+ * Позволяет прочитать полный текст фрагмента и скопировать его в буфер обмена.
+ */
 const { t } = useI18n();
 const toast = useToast();
 
 const props = defineProps<{
+  /** Текст цитаты */
   text: string;
+  /** Заголовок главы, к которой относится цитата */
   chapterTitle?: string;
+  /** Номер страницы, на которой находится цитата */
   pageNumber?: number;
 }>();
 
 defineEmits<{
+  /** Событие закрытия модального окна */
   close: [];
 }>();
 
-function copyCitation() {
+/**
+ * Копирует текст цитаты в буфер обмена.
+ */
+async function copyCitationToClipboard(): Promise<void> {
   try {
-    navigator.clipboard.writeText(props.text);
+    await navigator.clipboard.writeText(props.text);
     toast.add({
       title: t("chat.copyCitationSuccess"),
       color: "success",
       icon: "i-lucide-check",
     });
-  } catch (err) {
-    console.error("Failed to copy citation:", err);
+  } catch (err: unknown) {
+    console.error("Failed to copy citation to clipboard:", err);
     toast.add({
       title: t("library.statusError"),
       description: String(err),
@@ -56,7 +67,7 @@ function copyCitation() {
           color="primary"
           icon="i-lucide-copy"
           :label="t('chat.copyCitation')"
-          @click="copyCitation"
+          @click="copyCitationToClipboard"
         />
       </div>
     </template>

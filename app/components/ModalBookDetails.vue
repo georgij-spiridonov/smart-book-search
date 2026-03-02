@@ -1,45 +1,47 @@
 <script setup lang="ts">
+/**
+ * Компонент модального окна для просмотра и редактирования деталей книги.
+ * Позволяет изменять метаданные книги (название, автор, обложка) и удалять книгу из библиотеки.
+ */
 import { useMediaQuery } from "@vueuse/core";
 import { formatBytes } from "~/utils/formatBytes";
-
-interface BookRecord {
-  id: string;
-  userId: string;
-  title: string;
-  author: string;
-  coverUrl: string;
-  blobUrl: string;
-  filename: string;
-  fileSize: number;
-  uploadedAt: string | number;
-  vectorized: boolean;
-}
+import type { Book } from "~~/shared/types/book";
+import { LazyModalConfirm } from "#components";
 
 const { t } = useI18n();
 
 const props = defineProps<{
-  book: BookRecord;
+  /** Объект книги с ее данными */
+  book: Book;
+  /** Является ли текущий пользователь владельцем книги */
   isOwner?: boolean;
 }>();
 
 const emit = defineEmits<{
+  /** Событие закрытия модального окна */
   close: [];
+  /** Событие после успешного удаления книги */
   deleted: [bookId: string];
+  /** Событие после успешного обновления метаданных книги */
   updated: [book: { id: string; title: string; author: string }];
 }>();
 
 const toast = useToast();
+const overlay = useOverlay();
+
 const isDeleting = ref(false);
 const isUpdating = ref(false);
 const isEditing = ref(false);
 
+/** Форма для редактирования метаданных книги */
 const editForm = ref({
   title: props.book.title,
   author: props.book.author,
   coverUrl: props.book.coverUrl,
 });
 
-function startEditing() {
+/** Переключение в режим редактирования */
+function startEditing(): void {
   editForm.value = {
     title: props.book.title,
     author: props.book.author,
@@ -48,11 +50,13 @@ function startEditing() {
   isEditing.value = true;
 }
 
-function cancelEditing() {
+/** Отмена редактирования */
+function cancelEditing(): void {
   isEditing.value = false;
 }
 
-async function saveMetadata() {
+/** Сохранение измененных метаданных на сервере */
+async function saveMetadata(): Promise<void> {
   isUpdating.value = true;
   try {
     await $fetch(`/api/books/${props.book.id}`, {
@@ -61,10 +65,11 @@ async function saveMetadata() {
     });
     toast.add({ title: t("library.updateSuccessMessage"), color: "success" });
     isEditing.value = false;
-    // We notify parent to refresh the list
+    // Уведомляем родительский компонент об изменениях
     emit("updated", { id: props.book.id, ...editForm.value });
   } catch (err: unknown) {
     const error = err as { data?: { message?: string }; message?: string };
+    console.error("Failed to update book metadata:", err);
     toast.add({
       title: t("library.statusError"),
       description: error.data?.message || error.message,
@@ -75,16 +80,28 @@ async function saveMetadata() {
   }
 }
 
-async function deleteBook() {
-  if (!window.confirm(t("library.deleteBookConfirm"))) return;
+/** Удаление книги после подтверждения */
+async function deleteBook(): Promise<void> {
+  // Создаем и открываем модальное окно подтверждения
+  const confirmModal = overlay.create(LazyModalConfirm, {
+    props: {
+      title: t("library.deleteBookConfirm"),
+      description: t("library.deleteBookConfirmDetail") || t("library.deleteBookConfirm"),
+    },
+  });
+  
+  const userConfirmed = await confirmModal.open();
+  if (!userConfirmed) return;
 
   isDeleting.value = true;
   try {
     await $fetch(`/api/books/${props.book.id}`, { method: "DELETE" });
     toast.add({ title: t("library.deleteBookSuccess"), color: "success" });
     emit("deleted", props.book.id);
+    emit("close");
   } catch (err: unknown) {
     const error = err as { data?: { message?: string }; message?: string };
+    console.error("Failed to delete book:", err);
     toast.add({
       title: t("library.statusError"),
       description: error.data?.message || error.message,
@@ -95,6 +112,7 @@ async function deleteBook() {
   }
 }
 
+/** Форматированная дата загрузки книги */
 const uploadDate = computed(() => {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -104,9 +122,8 @@ const uploadDate = computed(() => {
 
 const isMobile = useMediaQuery("(max-width: 640px)");
 
-function startChat() {
-  // Navigate to index with this book selected.
-  // In the current setup we might just go to '/' but ideally we pass the book ID.
+/** Переход к чату с выбранной книгой */
+function startChat(): void {
   navigateTo({
     path: "/",
     query: { bookId: props.book.id },
