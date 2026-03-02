@@ -42,10 +42,22 @@ export async function generateSearchQueries(
     // Attempt to parse JSON array from the response
     const match = text.match(/\[.*\]/s);
     if (match) {
-      const queries = JSON.parse(match[0]) as string[];
-      if (Array.isArray(queries) && queries.length > 0) {
-        log.info("retrieval", "Queries generated successfully", { queries });
-        return queries;
+      let jsonText = match[0];
+      try {
+        const queries = JSON.parse(jsonText) as string[];
+        if (Array.isArray(queries) && queries.length > 0) {
+          log.info("retrieval", "Queries generated successfully", { queries });
+          return queries;
+        }
+      } catch (innerError) {
+        // Fallback: try replacing single quotes with double quotes if it looks like a simple array
+        // This is a common failure mode for some LLMs
+        const fixedJsonText = jsonText.replace(/'/g, '"');
+        const queries = JSON.parse(fixedJsonText) as string[];
+        if (Array.isArray(queries) && queries.length > 0) {
+          log.info("retrieval", "Queries generated successfully (after fix)", { queries });
+          return queries;
+        }
       }
     }
   } catch (e) {

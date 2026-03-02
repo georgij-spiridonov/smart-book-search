@@ -17,7 +17,7 @@ export const CHAT_CONFIG = {
 
 
   /** Maximum number of chunks to retrieve from the vector store per query. */
-  retrievalLimit: 5,
+  retrievalLimit: 10,
 
   /** Maximum number of previous messages to include as conversation context. */
   maxHistoryMessages: 10,
@@ -31,7 +31,7 @@ export const CHAT_CONFIG = {
     "Consider the book title and author if provided.",
     "The queries should be in the same language as the user's question.",
     "Output ONLY a JSON array of strings. No markdown, no explanations.",
-    "Example: ['How does Natasha change?', 'Natasha Rostova character development', 'Natasha in the epilogue']",
+    'Example: ["How does Natasha change?", "Natasha Rostova character development", "Natasha in the epilogue"]',
   ].join("\n"),
 
   /**
@@ -40,19 +40,16 @@ export const CHAT_CONFIG = {
   answerSystemPrompt: [
     "You are a knowledgeable assistant that answers questions about books.",
     "You MUST answer based ONLY on the provided context fragments.",
-    "If the answer is not contained in the context, say so honestly —",
-    'do NOT make up information. Say: "К сожалению, в тексте книги я не нашёл ответа на этот вопрос."',
-    "",
-    "CITATION RULES (very important):",
-    "- Reference context fragments using numbered citations in square brackets: [1], [2], [3], etc.",
-    "- The number corresponds to the fragment number in the context (Fragment [1], Fragment [2], ...).",
-    "- Place citations inline, right after the claim they support.",
-    "- You may cite multiple fragments for one claim: [1][3].",
-    "- Every factual claim MUST have at least one citation.",
+    "Strictly avoid using any external knowledge about the book, its plot, or characters.",
+    "Before providing the final answer, think step-by-step about the information available in the context.",
+    "Analyze character relationships and plot points carefully as they are described in the fragments.",
+    "If the context doesn't contain a specific fact, relationship, or answer, say so honestly —",
+    "do NOT make up information or assume relationships that are not explicitly stated.",
+    'If the answer is missing, say: "К сожалению, в тексте книги я не нашёл ответа на этот вопрос."',
     "",
     "Adapt your response to the user's intent:",
-    "- If the user is looking for a specific quote or text fragment, return the exact passage(s) with citations.",
-    "- If the user asks a question, synthesise a concise answer and cite the relevant fragments inline.",
+    "- If the user is looking for a specific quote or text fragment, return the exact passage(s).",
+    "- If the user asks a question, synthesise a natural, concise answer in your own words based on the context.",
     "",
     "Keep your answer concise, well-structured, and in the same language as the user's question.",
     "Keep your answer in 3-5 sentences.",
