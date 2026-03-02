@@ -3,35 +3,61 @@ import * as locales from "@nuxt/ui/locale";
 import { LazyModalConfirm } from "#components";
 import { SpeedInsights } from "@vercel/speed-insights/nuxt";
 
-const { locale: i18nLocale, locales: i18nLocales, setLocale, t } = useI18n();
-const currentRoute = useRoute();
-const toastNotification = useToast();
-const modalOverlay = useOverlay();
+/**
+ * Основной макет приложения.
+ * Управляет боковой панелью, списком чатов, навигацией и локализацией.
+ */
+
+interface ChatItem {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+interface NavItem {
+  id?: string;
+  label: string;
+  to?: string;
+  icon?: string;
+  type?: "label";
+  slot?: "chat";
+  class?: string;
+  createdAt?: string;
+}
+
+const { locale: activeLocale, locales: supportedLocales, setLocale, t } = useI18n();
+const route = useRoute();
+const toast = useToast();
+const overlay = useOverlay();
 
 const isSidebarOpen = ref(false);
 
-const currentAppLocale = computed({
-  get: () => i18nLocale.value,
-  set: (newLocale) => {
-    setLocale(newLocale);
+// Модель для переключения языка в UI
+const localeModel = computed({
+  get: () => activeLocale.value,
+  set: (value) => {
+    setLocale(value);
   },
 });
 
-const availableAppLocales = computed(() => {
-  return i18nLocales.value.map((locale) => locales[locale.code as keyof typeof locales]);
+// Список доступных локалей, адаптированный для компонента выбора
+const availableLocales = computed(() => {
+  return supportedLocales.value.map((l) => locales[l.code as keyof typeof locales]);
 });
 
-const chatDeletionConfirmationModal = modalOverlay.create(LazyModalConfirm, {
+// Модальное окно подтверждения удаления чата
+const confirmDeleteModal = overlay.create(LazyModalConfirm, {
   props: {
     title: t("chat.deleteChatTitle"),
     description: t("chat.deleteChatConfirm"),
   },
 });
 
-const { data: chats, refresh: refreshChatsList } = await useFetch("/api/chats", {
-  key: "chats",
-  transform: (chatData: Array<{ id: string; title: string; createdAt: string }>) =>
-    chatData.map((chat) => ({
+// Запрос списка чатов с сервера
+const { data: chatList, refresh: refreshChats } = await useFetch("/api/chats", {
+  key: "chat-list",
+  transform: (data: ChatItem[]) =>
+    data.map((chat) => ({
       id: chat.id,
       label: chat.title || t("chat.untitledChat"),
       to: `/chat/${chat.id}`,
@@ -40,66 +66,67 @@ const { data: chats, refresh: refreshChatsList } = await useFetch("/api/chats", 
     })),
 });
 
-// Адаптивный опрос чатов (резервный механизм при отсутствии SSE)
-const isChatPollingActive = ref(false);
-let chatPollingTimer: ReturnType<typeof setInterval> | null = null;
+// Резервный механизм опроса при отсутствии SSE
+const isPollingActive = ref(false);
+let pollingIntervalId: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Инициализирует интервальный опрос списка чатов.
- * Работает только на стороне клиента.
+ * Настройка интервального обновления списка чатов.
+ * @param intervalMs Интервал обновления в миллисекундах.
  */
-function initiateChatPolling(pollingIntervalMs: number) {
+function setupPolling(intervalMs: number) {
   if (!import.meta.client) return;
 
-  if (chatPollingTimer) {
-    clearInterval(chatPollingTimer);
+  if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
   }
 
-  chatPollingTimer = setInterval(() => {
-    // Обновляем список только если вкладка активна
+  pollingIntervalId = setInterval(() => {
+    // Обновляем список только если вкладка активна, чтобы экономить ресурсы
     if (document.visibilityState === "visible") {
-      refreshChatsList();
+      refreshChats();
     }
-  }, pollingIntervalMs);
+  }, intervalMs);
 }
 
-// Следим за чатами, которым может потребоваться обновление заголовка (генерируется асинхронно ИИ)
+// Отслеживание необходимости частого обновления (например, пока ИИ генерирует заголовок)
 watch(
-  () => chats.value,
-  (updatedChats) => {
-    const hasChatWithPlaceholderTitle =
-      updatedChats?.some((chat) => chat.label === t("chat.untitledChat")) || false;
+  () => chatList.value,
+  (newChats) => {
+    const hasPendingTitles =
+      newChats?.some((chat) => chat.label === t("chat.untitledChat")) || false;
 
-    if (hasChatWithPlaceholderTitle) {
-      // Опрашиваем чаще (раз в 5 сек), если ждем заголовок
-      initiateChatPolling(5000);
-      isChatPollingActive.value = true;
-    } else if (isChatPollingActive.value) {
-      // Возвращаемся к стандартному интервалу (раз в минуту)
-      initiateChatPolling(60000);
-      isChatPollingActive.value = false;
+    if (hasPendingTitles) {
+      // Опрашиваем чаще (5с), если есть чаты без заголовка
+      setupPolling(5000);
+      isPollingActive.value = true;
+    } else if (isPollingActive.value) {
+      // Возвращаемся к стандартному интервалу (60с)
+      setupPolling(60000);
+      isPollingActive.value = false;
     }
   },
   { immediate: true, deep: true },
 );
 
 onMounted(() => {
-  // Запускаем опрос по умолчанию, если он еще не активен
-  if (!isChatPollingActive.value) {
-    initiateChatPolling(60000);
+  // Запуск фонового обновления по умолчанию
+  if (!isPollingActive.value) {
+    setupPolling(60000);
   }
 });
 
 onUnmounted(() => {
-  if (chatPollingTimer) {
-    clearInterval(chatPollingTimer);
+  if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
   }
 });
 
-const { groups: chatGroups } = useChats(chats);
+const { groups: chatGroups } = useChats(chatList);
 useEvents();
 
-const topNavigationItems = computed(() => [
+// Элементы верхней навигации
+const topNavItems = computed(() => [
   {
     label: t("library.mainTitle"),
     to: "/library",
@@ -107,49 +134,49 @@ const topNavigationItems = computed(() => [
   },
 ]);
 
-const chatListItems = computed(() =>
-  chatGroups.value?.flatMap((group) => {
-    return [
-      {
-        label: group.label,
-        type: "label" as const,
-      },
-      ...group.items.map((item) => ({
-        ...item,
-        slot: "chat" as const,
-        class: item.label === t("chat.untitledChat") ? "text-muted" : "",
-      })),
-    ];
-  }),
+// Плоский список элементов для меню чатов с разделителями
+const chatMenuItems = computed<NavItem[]>(() =>
+  (chatGroups.value || []).flatMap((group) => [
+    {
+      label: group.label,
+      type: "label" as const,
+    },
+    ...group.items.map((item) => ({
+      ...item,
+      slot: "chat" as const,
+      class: item.label === t("chat.untitledChat") ? "text-muted" : "",
+    })),
+  ]),
 );
 
 /**
- * Удаляет чат после подтверждения пользователем.
+ * Обработка удаления чата с подтверждением.
+ * @param chatId Идентификатор чата для удаления.
  */
-async function performChatDeletion(targetChatId: string) {
-  const modalInstance = chatDeletionConfirmationModal.open();
-  const userConfirmed = await modalInstance.result;
+async function handleDeleteChat(chatId: string) {
+  const modal = confirmDeleteModal.open();
+  const confirmed = await modal.result;
   
-  if (!userConfirmed) {
-    return;
-  }
+  if (!confirmed) return;
 
   try {
-    await $fetch(`/api/chats/${targetChatId}`, { method: "DELETE" });
+    await $fetch(`/api/chats/${chatId}`, { method: "DELETE" });
 
-    toastNotification.add({
+    toast.add({
       title: t("chat.chatDeletedSuccess"),
       description: t("chat.chatDeletedDetail"),
       icon: "i-lucide-trash",
     });
 
-    refreshChatsList();
+    await refreshChats();
 
-    if (currentRoute.params.id === targetChatId) {
-      navigateTo("/");
+    // Если удален текущий открытый чат, переходим на главную
+    if (route.params.id === chatId) {
+      await navigateTo("/");
     }
-  } catch {
-    toastNotification.add({
+  } catch (err) {
+    console.error("Failed to delete chat:", err);
+    toast.add({
       title: t("error.unexpectedError"),
       description: t("chat.deleteChatError"),
       color: "error",
@@ -157,10 +184,9 @@ async function performChatDeletion(targetChatId: string) {
   }
 }
 
+// Горячие клавиши приложения
 defineShortcuts({
-  c: () => {
-    navigateTo("/");
-  },
+  c: () => navigateTo("/"),
 });
 </script>
 
@@ -184,9 +210,9 @@ defineShortcuts({
             class="shrink-0 transition-all duration-200"
             :class="collapsed ? 'h-10 w-10' : 'h-8 w-8'"
           />
-          <span v-if="!collapsed" class="text-xl font-bold text-highlighted">{{
-            t("chat.mainTitle")
-          }}</span>
+          <span v-if="!collapsed" class="text-xl font-bold text-highlighted">
+            {{ t("chat.mainTitle") }}
+          </span>
         </NuxtLink>
       </template>
 
@@ -198,7 +224,7 @@ defineShortcuts({
           >
             <div class="w-full" :class="{ 'flex justify-center': collapsed }">
               <UNavigationMenu
-                :items="topNavigationItems"
+                :items="topNavItems"
                 :collapsed="collapsed"
                 orientation="vertical"
                 :ui="{
@@ -237,7 +263,7 @@ defineShortcuts({
 
           <div v-if="!collapsed" class="w-full flex-1 overflow-y-auto px-2">
             <UNavigationMenu
-              :items="chatListItems"
+              :items="chatMenuItems"
               orientation="vertical"
               :ui="{
                 link: 'overflow-hidden px-2.5 h-10 flex items-center justify-center rounded-lg',
@@ -255,7 +281,7 @@ defineShortcuts({
                     size="xs"
                     class="text-muted hover:text-primary hover:bg-accented/50 focus-visible:bg-accented/50 p-0.5"
                     tabindex="-1"
-                    @click.stop.prevent="performChatDeletion((item as any).id)"
+                    @click.stop.prevent="handleDeleteChat((item as NavItem).id!)"
                   />
                 </div>
               </template>
@@ -281,8 +307,8 @@ defineShortcuts({
 
           <div v-if="!collapsed" class="flex items-center w-full mt-1">
             <ULocaleSelect
-              v-model="currentAppLocale"
-              :locales="availableAppLocales"
+              v-model="localeModel"
+              :locales="availableLocales"
               variant="subtle"
               color="neutral"
               class="flex-1"
