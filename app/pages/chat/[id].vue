@@ -18,12 +18,9 @@ const route = useRoute();
 const toast = useToast();
 const { copy: clipboardCopy } = useClipboard();
 
-const { data } = await useFetch(
-  () => `/api/chats/${route.params.id}`,
-  {
-    key: `chat-${route.params.id}`,
-  },
-);
+const { data } = await useFetch(() => `/api/chats/${route.params.id}`, {
+  key: `chat-${route.params.id}`,
+});
 
 if (!data.value) {
   throw createError({ statusCode: 404, statusMessage: t("chat.notFound") });
@@ -111,9 +108,10 @@ function getStepParts(message: UIMessage) {
   const steps = message.parts.filter((p) => p.type === "data-step");
   if (!steps.length) return null;
 
-  const lastStep = steps[steps.length - 1] as any;
+  type StepPart = { data: { text: string; state: string } };
+  const lastStep = steps[steps.length - 1] as unknown as StepPart;
   return {
-    text: steps.map((s: any) => s.data.text).join(""),
+    text: steps.map((s) => (s as unknown as StepPart).data.text).join(""),
     isStreaming: lastStep.data.state === "active",
   };
 }

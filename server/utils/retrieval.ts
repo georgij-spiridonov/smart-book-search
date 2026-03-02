@@ -42,20 +42,22 @@ export async function generateSearchQueries(
     // Attempt to parse JSON array from the response
     const match = text.match(/\[.*\]/s);
     if (match) {
-      let jsonText = match[0];
+      const jsonText = match[0];
       try {
         const queries = JSON.parse(jsonText) as string[];
         if (Array.isArray(queries) && queries.length > 0) {
           log.info("retrieval", "Queries generated successfully", { queries });
           return queries;
         }
-      } catch (innerError) {
+      } catch {
         // Fallback: try replacing single quotes with double quotes if it looks like a simple array
         // This is a common failure mode for some LLMs
         const fixedJsonText = jsonText.replace(/'/g, '"');
         const queries = JSON.parse(fixedJsonText) as string[];
         if (Array.isArray(queries) && queries.length > 0) {
-          log.info("retrieval", "Queries generated successfully (after fix)", { queries });
+          log.info("retrieval", "Queries generated successfully (after fix)", {
+            queries,
+          });
           return queries;
         }
       }
@@ -95,9 +97,15 @@ export async function searchBookKnowledge(
 
   // 1. Search for each query in parallel with retry logic
   const searchPromises = queryList.map((q) => {
-    const performSearch = async (attempt = 1): Promise<any> => {
+    const performSearch = async (
+      attempt = 1,
+    ): Promise<{
+      result?: {
+        hits?: Array<{ _score?: number; fields?: Record<string, unknown> }>;
+      };
+    } | null> => {
       try {
-        return await index.searchRecords({
+        return (await index.searchRecords({
           query: {
             topK: limit,
             inputs: { text: q },
@@ -105,20 +113,24 @@ export async function searchBookKnowledge(
               bookId: { $in: bookIds },
             },
           },
-        });
-      } catch (err: any) {
+        })) as {
+          result?: {
+            hits?: Array<{ _score?: number; fields?: Record<string, unknown> }>;
+          };
+        };
+      } catch (err) {
         if (attempt < 3) {
           log.warn("retrieval", "Pinecone search retry", {
             query: q,
             attempt,
-            error: err.message,
+            error: err instanceof Error ? err.message : String(err),
           });
           await new Promise((r) => setTimeout(r, 500 * attempt));
           return performSearch(attempt + 1);
         }
         log.error("retrieval", "Pinecone search error after retries", {
           query: q,
-          error: err.message,
+          error: err instanceof Error ? err.message : String(err),
         });
         return null;
       }
@@ -129,7 +141,16 @@ export async function searchBookKnowledge(
   const results = await Promise.all(searchPromises);
 
   // 2. Merge and rerank results
-  const chunkMap = new Map<string, any>();
+  const chunkMap = new Map<
+    string,
+    {
+      text: string;
+      pageNumber: number;
+      chapterTitle: string;
+      score: number;
+      bookId: string;
+    }
+  >();
 
   for (const res of results) {
     if (!res?.result?.hits) continue;
@@ -140,10 +161,11 @@ export async function searchBookKnowledge(
 
       const fields = (hit.fields ?? {}) as Record<string, unknown>;
       const text = (fields.text as string) || "";
-      
-      // Use text content as key for deduplication. 
+
+      // Use text content as key for deduplication.
       // If we see the same chunk again, keep the one with the higher score.
-      if (!chunkMap.has(text) || chunkMap.get(text).score < score) {
+      const existing = chunkMap.get(text);
+      if (!existing || existing.score < score) {
         chunkMap.set(text, {
           text,
           pageNumber: (fields.pageNumber as number) || 0,
