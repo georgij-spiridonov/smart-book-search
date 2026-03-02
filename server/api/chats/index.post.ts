@@ -16,6 +16,7 @@ export default defineEventHandler(async (event) => {
   // Simple retry logic for DB operations
   async function performInsert() {
     let retries = 3;
+    let delay = 500; // Начальная задержка
     while (retries > 0) {
       try {
         return await db.insert(schema.chats).values({
@@ -25,9 +26,11 @@ export default defineEventHandler(async (event) => {
           bookIds,
         });
       } catch (err) {
+        // В идеале, здесь стоит проверять, является ли ошибка временной
         retries--;
         if (retries === 0) throw err;
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Экспоненциальная задержка
       }
     }
   }
