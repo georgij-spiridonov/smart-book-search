@@ -97,6 +97,17 @@ function copy(_e: MouseEvent, message: UIMessage) {
   }, 2000);
 }
 
+function getStepParts(message: UIMessage) {
+  const steps = message.parts.filter((p) => p.type === "data-step");
+  if (!steps.length) return null;
+
+  const lastStep = steps[steps.length - 1] as any;
+  return {
+    text: steps.map((s: any) => s.data.text).join(""),
+    isStreaming: lastStep.data.state === "active",
+  };
+}
+
 onMounted(() => {
   if (route.query.prompt) {
     chat.sendMessage({ text: route.query.prompt as string });
@@ -142,20 +153,20 @@ onMounted(() => {
             class="lg:pt-(--ui-header-height) pb-4 sm:pb-6"
           >
             <template #content="{ message }">
+              <!-- Render all pipeline steps in a single collapsed block -->
+              <AppReasoning
+                v-if="getStepParts(message)"
+                :text="getStepParts(message)!.text"
+                :is-streaming="getStepParts(message)!.isStreaming"
+              />
+
               <template
                 v-for="(part, index) in message.parts"
                 :key="`${message.id}-${part.type}-${index}${'state' in part ? `-${(part as any).state}` : ''}`"
               >
-                <AppReasoning
-                  v-if="part.type === 'reasoning'"
-                  :text="(part as any).text"
-                  :is-streaming="(part as any).state !== 'done'"
-                />
                 <!-- Only render markdown for assistant messages to prevent XSS from user input -->
                 <MDCCached
-                  v-else-if="
-                    part.type === 'text' && message.role === 'assistant'
-                  "
+                  v-if="part.type === 'text' && message.role === 'assistant'"
                   :value="(part as any).text"
                   :cache-key="`${message.id}-${index}`"
                   :components="components"

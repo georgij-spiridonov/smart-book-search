@@ -9,21 +9,33 @@ import "zod-openapi";
  */
 
 export const CHAT_CONFIG = {
-  /** Primary model for answer generation (capable, high-quality). */
-  answerModel: "gemini-2.5-flash-lite", // Временно, для экономии на тестах
+  /** Primary model for answer generation. */
+  answerModel: "gemini-2.5-flash-lite",
 
-  /** Maximum number of chunks to retrieve from the vector store. */
+  /** Model for query generation. */
+  queryModel: "gemini-2.5-flash-lite",
+
+
+  /** Maximum number of chunks to retrieve from the vector store per query. */
   retrievalLimit: 5,
 
   /** Maximum number of previous messages to include as conversation context. */
   maxHistoryMessages: 10,
 
   /**
+   * System prompt for the query generation model.
+   */
+  querySystemPrompt: [
+    "You are an expert search query generator for a book knowledge base.",
+    "Your goal is to generate 3-5 distinct search queries that will help find the most relevant information in the book(s) to answer the user's question.",
+    "Consider the book title and author if provided.",
+    "The queries should be in the same language as the user's question.",
+    "Output ONLY a JSON array of strings. No markdown, no explanations.",
+    "Example: ['How does Natasha change?', 'Natasha Rostova character development', 'Natasha in the epilogue']",
+  ].join("\n"),
+
+  /**
    * System prompt for the answer model.
-   *
-   * The model adapts its response style to the query automatically:
-   *   - Fragment/quote searches → returns the exact text with source info.
-   *   - Questions → synthesises a concise answer with inline citations.
    */
   answerSystemPrompt: [
     "You are a knowledgeable assistant that answers questions about books.",
@@ -93,6 +105,19 @@ export interface RetrievedChunk {
   score: number;
   bookId: string;
 }
+
+/** Schema for a single step in the `data-step` SSE event. */
+export const DataStepSchema = z
+  .object({
+    text: z.string().meta({ description: "Description of the step." }),
+    state: z
+      .enum(["active", "done"])
+      .meta({ description: "Current state of the step." }),
+  })
+  .meta({
+    id: "DataStep",
+    description: "A reasoning step sent during the retrieval pipeline.",
+  });
 
 // ─── SSE response schemas (for OpenAPI documentation) ───
 

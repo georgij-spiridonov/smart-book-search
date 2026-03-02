@@ -31,6 +31,7 @@ function cleanMarkdown(text: string): string {
       class="p-0 group"
       color="neutral"
       variant="link"
+      icon="i-lucide-activity"
       trailing-icon="i-lucide-chevron-down"
       :ui="{
         trailingIcon:
@@ -38,7 +39,7 @@ function cleanMarkdown(text: string): string {
             ? 'group-data-[state=open]:rotate-180 transition-transform duration-200'
             : 'hidden',
       }"
-      :label="isStreaming ? t('chat.thinking') : t('chat.thoughts')"
+      :label="isStreaming ? t('chat.working') : t('chat.pipelineDetails')"
     />
 
     <template #content>

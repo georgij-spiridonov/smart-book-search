@@ -3,7 +3,7 @@ import {
   createUIMessageStreamResponse,
   generateText,
 } from "ai";
-import { searchBookKnowledge } from "../utils/retrieval";
+import { searchBookKnowledge, generateSearchQueries } from "../utils/retrieval";
 import { streamAnswer } from "../utils/generateAnswer";
 import { CHAT_CONFIG, ChatRequestSchema } from "../utils/chatConfig";
 import { log } from "../utils/logger";
@@ -158,44 +158,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // --- Retrieval ---
-  const chunks = await searchBookKnowledge(
-    query,
-    bookIds,
-    CHAT_CONFIG.retrievalLimit,
-  );
-
-  log.info("chat-api", "Context retrieved", {
-    chunksRetrieved: chunks.length,
-    topScore: chunks[0]?.score,
-  });
-
-  const hasContext = chunks.length > 0;
-
-  // --- Short-circuit: no relevant context found → skip LLM entirely ---
-  if (!hasContext) {
-    log.info("chat-api", "No relevant chunks found, skipping LLM call", {
-      bookIds,
-    });
-
-    return createUIMessageStreamResponse({
-      stream: createUIMessageStream({
-        execute({ writer }) {
-          writer.write({
-            type: "data-meta",
-            data: { bookIds, hasContext: false, notVectorized },
-          });
-
-          writer.write({
-            type: "data-chunks",
-            data: [],
-          });
-        },
-      }),
-    });
-  }
-
-  // --- Streaming response (has relevant context) ---
+  // --- Retrieval & Answer Pipeline ---
   const currentChatId = chatId || crypto.randomUUID();
 
   // If new chat, save to database
@@ -220,30 +183,95 @@ export default defineEventHandler(async (event) => {
     role: "user",
     parts: [{ type: "text", text: query }],
   });
+
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
-      execute({ writer }) {
-        // 1. Send metadata instantly via custom data parts
+      async execute({ writer }) {
+        // 1. Send initial metadata
         writer.write({
           type: "data-meta",
           data: { bookIds, hasContext: true, notVectorized },
         });
 
-        writer.write({
-          type: "data-chunks",
-          data: chunks.map((chunk, i) => ({
-            index: i + 1,
-            text: chunk.text,
-            pageNumber: chunk.pageNumber,
-            chapterTitle: chunk.chapterTitle,
-            score: chunk.score,
-            bookId: chunk.bookId,
-          })),
-        });
-
-        // 2. Stream LLM answer — wrapped in try/catch so a mid-stream
-        //    failure emits a structured error event instead of breaking the SSE.
         try {
+          // --- Step 1: Query Generation ---
+          writer.write({
+            type: "data-step",
+            data: {
+              text: "🔍 Формирую поисковые запросы на основе вашего вопроса...\n",
+              state: "active",
+            },
+          });
+
+          const bookInfo = books
+            .map((b) => (b ? `${b.title}${b.author ? ` (${b.author})` : ""}` : ""))
+            .filter(Boolean)
+            .join(", ");
+
+          const searchQueries = await generateSearchQueries(
+            query,
+            bookInfo,
+            history,
+          );
+
+          writer.write({
+            type: "data-step",
+            data: {
+              text: `✅ Сгенерировано ${searchQueries.length} поисковых запроса.\n`,
+              state: "active",
+            },
+          });
+
+          // --- Step 2 & 3: Search & Reranking ---
+          writer.write({
+            type: "data-step",
+            data: {
+              text: "📖 Ищу подходящие фрагменты в книгах и ранжирую их по релевантности...\n",
+              state: "active",
+            },
+          });
+
+          const chunks = await searchBookKnowledge(
+            searchQueries,
+            bookIds,
+            CHAT_CONFIG.retrievalLimit,
+          );
+
+          if (chunks.length === 0) {
+            writer.write({
+              type: "data-step",
+              data: {
+                text: "❌ К сожалению, подходящих фрагментов не найдено.\n",
+                state: "done",
+              },
+            });
+            writer.write({
+              type: "data-chunks",
+              data: [],
+            });
+            // We'll let streamAnswer handle the "no context" case as it already has logic for it
+          } else {
+            writer.write({
+              type: "data-step",
+              data: {
+                text: `📚 Найдено ${chunks.length} релевантных фрагмента(ов). Формирую ответ...\n`,
+                state: "done",
+              },
+            });
+            writer.write({
+              type: "data-chunks",
+              data: chunks.map((chunk, i) => ({
+                index: i + 1,
+                text: chunk.text,
+                pageNumber: chunk.pageNumber,
+                chapterTitle: chunk.chapterTitle,
+                score: chunk.score,
+                bookId: chunk.bookId,
+              })),
+            });
+          }
+
+          // --- Step 4: Answer Generation ---
           const result = streamAnswer(query, chunks, history);
           writer.merge(
             result.toUIMessageStream({
@@ -256,7 +284,7 @@ export default defineEventHandler(async (event) => {
           if (history.length === 0) {
             event.waitUntil(
               generateText({
-                model: CHAT_CONFIG.answerModel, // Use the configured model
+                model: CHAT_CONFIG.answerModel,
                 system:
                   "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
                 prompt: query,
@@ -272,7 +300,6 @@ export default defineEventHandler(async (event) => {
                     .where(eq(schema.chats.id, currentChatId))
                     .execute();
 
-                  // Notify client about title update
                   await publishEvent(userId, "chat:updated", {
                     chatId: currentChatId,
                     title,
@@ -280,23 +307,28 @@ export default defineEventHandler(async (event) => {
                 })
                 .catch((error) => {
                   log.error("chat-api", "Title generation failed", {
-                    error:
-                      error instanceof Error ? error.message : String(error),
-                    stack: error instanceof Error ? error.stack : undefined,
+                    error: error instanceof Error ? error.message : String(error),
                   });
                 }),
             );
           }
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : "Unknown generation error";
-          log.error("chat-api", "LLM stream failed", { error: message });
+            error instanceof Error ? error.message : "Unknown error in pipeline";
+          log.error("chat-api", "Pipeline failed", { error: message });
+
+          writer.write({
+            type: "data-step",
+            data: {
+              text: `⚠️ Произошла ошибка: ${message}\n`,
+              state: "done",
+            },
+          });
 
           writer.write({
             type: "data-error",
             data: {
-              error:
-                "Произошла ошибка при генерации ответа. Попробуйте ещё раз.",
+              error: "Произошла ошибка при обработке вашего запроса.",
             },
           });
         }

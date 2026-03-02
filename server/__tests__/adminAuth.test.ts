@@ -1,19 +1,25 @@
 import { describe, it, expect, vi } from "vitest";
-import loginHandler from "../api/admin/login.post";
 
-// Mocking Nuxt Auth Utils
-vi.mock("nuxt-auth-utils", () => ({
-  getUserSession: vi.fn(async () => ({})),
-  setUserSession: vi.fn(async () => {}),
-}));
+// Mock Nuxt auto-imports
+vi.hoisted(() => {
+  (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
+  (globalThis as any).createError = vi.fn((err: any) => {
+    const error = new Error(err.statusMessage || "Error");
+    (error as any).statusCode = err.statusCode;
+    (error as any).statusMessage = err.statusMessage;
+    return error;
+  });
+  (globalThis as any).getUserSession = vi.fn(async () => ({}));
+  (globalThis as any).setUserSession = vi.fn(async () => {});
+  (globalThis as any).readBody = vi.fn(async (event: any) => event._body);
+});
+
+import loginHandler from "../api/admin/login.post";
 
 // Mocking useRuntimeConfig
 vi.stubGlobal("useRuntimeConfig", (_event?: any) => ({
   adminPassword: "test-password",
 }));
-
-// Mocking readBody
-vi.stubGlobal("readBody", async (event: any) => event._body);
 
 describe("Admin Login API", () => {
   it("should fail with incorrect password", async () => {
