@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
     test: {
       globals: true,
       environment: "node",
-      include: ["server/__tests__/**/*.test.ts"],
+      include: ["server/__tests__/**/*.test.ts", "app/utils/__tests__/**/*.test.ts"],
       env,
     },
     resolve: {
