@@ -224,6 +224,7 @@ onMounted(() => {
                   label-key="label"
                   :placeholder="t('chat.selectBook')"
                   :search-input="{ placeholder: t('chat.searchBooks') }"
+                  :disabled="chat.messages.length > 0"
                   class="max-w-64"
                   variant="ghost"
                   size="sm"
