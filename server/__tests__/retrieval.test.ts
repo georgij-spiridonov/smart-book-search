@@ -1,34 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Use vi.hoisted to define mock functions that need to be shared
-// between the vi.mock factory and the test code
-const { mockSearchRecords } = vi.hoisted(() => ({
-  mockSearchRecords: vi.fn(),
+/**
+ * Имитации для Pinecone.
+ */
+const { mockPineconeSearchRecords } = vi.hoisted(() => ({
+  mockPineconeSearchRecords: vi.fn(),
 }));
 
-// Mock Pinecone — class definitions must be inside the factory
-// because vi.mock is hoisted to the top of the file
 vi.mock("@pinecone-database/pinecone", () => {
   class MockPineconeIndex {
-    searchRecords = mockSearchRecords;
+    searchRecords = mockPineconeSearchRecords;
   }
-
   class MockPinecone {
     index() {
       return new MockPineconeIndex();
     }
   }
-
   return { Pinecone: MockPinecone };
 });
 
-// Mock useRuntimeConfig
-vi.stubGlobal("useRuntimeConfig", () => ({
-  pineconeApiKey: "test-key",
-  pineconeIndex: "test-index",
+// Имитация AI SDK
+const { mockGenerateText } = vi.hoisted(() => ({
+  mockGenerateText: vi.fn(),
+}));
+vi.mock("ai", () => ({
+  generateText: mockGenerateText,
 }));
 
-// Mock logger to suppress output
+// Имитация конфигурации Nuxt
+vi.stubGlobal("useRuntimeConfig", () => ({
+  pineconeApiKey: "test-pinecone-key",
+  pineconeIndex: "test-pinecone-index",
+}));
+
+// Имитация логгера
 vi.mock("../utils/logger", () => ({
   log: {
     info: vi.fn(),
@@ -37,171 +42,147 @@ vi.mock("../utils/logger", () => ({
   },
 }));
 
-import { searchBookKnowledge } from "../utils/retrieval";
+import { searchBookKnowledge, generateSearchQueries } from "../utils/retrieval";
 
-describe("retrieval", () => {
+describe("Поиск по базе знаний (retrieval)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("unit (mocked)", () => {
-    it("returns formatted search results", async () => {
-      // Mock Pinecone searchRecords (integrated embedding)
-      mockSearchRecords.mockResolvedValueOnce({
-        result: {
-          hits: [
-            {
-              _id: "chunk-1",
-              _score: 0.95,
-              fields: {
-                text: "Test chunk text about AI",
-                pageNumber: 5,
-                chapterTitle: "Introduction",
-                bookId: "test-book",
-              },
-            },
-            {
-              _id: "chunk-2",
-              _score: 0.88,
-              fields: {
-                text: "Another relevant chunk",
-                pageNumber: 12,
-                chapterTitle: "Chapter 2",
-                bookId: "test-book",
-              },
-            },
-          ],
-        },
+  describe("Функция generateSearchQueries", () => {
+    it("должна успешно генерировать список запросов из JSON ответа", async () => {
+      mockGenerateText.mockResolvedValueOnce({
+        text: '["запрос 1", "запрос 2"]',
       });
 
-      const results = await searchBookKnowledge(
-        "What is artificial intelligence?",
-        ["test-book"],
-        2,
-      );
-
-      expect(results).toHaveLength(2);
-      expect(results[0]).toEqual({
-        text: "Test chunk text about AI",
-        pageNumber: 5,
-        chapterTitle: "Introduction",
-        score: 0.95,
-        bookId: "test-book",
-      });
-      expect(results[1]!.score).toBe(0.88);
-      expect(mockSearchRecords).toHaveBeenCalledOnce();
-      expect(mockSearchRecords).toHaveBeenCalledWith({
-        query: {
-          topK: 2,
-          inputs: { text: "What is artificial intelligence?" },
-          filter: {
-            bookId: { $in: ["test-book"] },
-          },
-        },
-      });
+      const queries = await generateSearchQueries("вопрос", "книга 1");
+      expect(queries).toEqual(["запрос 1", "запрос 2"]);
     });
 
-    it("returns empty array when no matches found", async () => {
-      mockSearchRecords.mockResolvedValueOnce({
-        result: { hits: [] },
+    it("должна извлекать JSON массив, даже если он окружен текстом", async () => {
+      mockGenerateText.mockResolvedValueOnce({
+        text: 'Вот ваши запросы: ["query A", "query B"]. Надеюсь, они помогут.',
       });
 
-      const results = await searchBookKnowledge("no match query", ["book-1"]);
-      expect(results).toHaveLength(0);
+      const queries = await generateSearchQueries("test", "book");
+      expect(queries).toEqual(["query A", "query B"]);
     });
 
-    it("filters out low-score results below MIN_SCORE threshold", async () => {
-      mockSearchRecords.mockResolvedValueOnce({
-        result: {
-          hits: [
-            {
-              _id: "chunk-1",
-              _score: 0.95,
-              fields: {
-                text: "High relevance",
-                pageNumber: 1,
-                chapterTitle: "Ch1",
-                bookId: "book-1",
-              },
-            },
-            {
-              _id: "chunk-2",
-              _score: 0.1,
-              fields: {
-                text: "Low relevance",
-                pageNumber: 2,
-                chapterTitle: "Ch2",
-                bookId: "book-1",
-              },
-            },
-          ],
-        },
+    it("должна исправлять одинарные кавычки в JSON массиве", async () => {
+      mockGenerateText.mockResolvedValueOnce({
+        text: "['single', 'quotes']",
       });
 
-      const results = await searchBookKnowledge("test query", ["book-1"]);
-      expect(results).toHaveLength(1);
-      expect(results[0]!.score).toBe(0.95);
+      const queries = await generateSearchQueries("q", "b");
+      expect(queries).toEqual(["single", "quotes"]);
     });
 
-    it("handles missing or undefined data correctly", async () => {
-      // 1. Missing bookIds handled by fallback `|| 0` in logger
-      // 1. Missing result handled by fallback `?? []`
-      mockSearchRecords.mockResolvedValueOnce({
-        result: undefined, // Missing result to cover ?? []
-      });
-      const results1 = await searchBookKnowledge("query", undefined as any);
-      expect(results1).toHaveLength(0);
-
-      const missingScoreHit = {
-        _id: "missing-score",
-        _score: 0.5,
-        fields: {},
-      } as any;
-
-      mockSearchRecords.mockResolvedValueOnce({
-        result: {
-          hits: [
-            missingScoreHit,
-            {
-              _id: "valid-but-empty-fields",
-              _score: 0.5,
-              fields: { text: "Some unique text" },
-            },
-            {
-              _id: "completely-missing-score-for-filter",
-              fields: {},
-            },
-          ],
-        },
+    it("должна возвращать исходный запрос при ошибке парсинга", async () => {
+      mockGenerateText.mockResolvedValueOnce({
+        text: "Это не JSON массив вовсе",
       });
 
-      const results2 = await searchBookKnowledge("query", ["book"]);
+      const queries = await generateSearchQueries("original query", "info");
+      expect(queries).toEqual(["original query"]);
+    });
 
-      expect(results2).toHaveLength(2);
-      expect(results2[0]).toEqual({
-        text: "",
-        pageNumber: 0,
-        chapterTitle: "",
-        score: 0.5,
-        bookId: "",
-      });
-      expect(results2[1]).toEqual({
-        text: "Some unique text",
-        pageNumber: 0,
-        chapterTitle: "",
-        score: 0.5,
-        bookId: "",
-      });
+    it("должна включать историю в промпт", async () => {
+      mockGenerateText.mockResolvedValueOnce({ text: '["q1"]' });
+      
+      await generateSearchQueries("current", "info", [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "hi there" }
+      ]);
+      
+      const callArgs = mockGenerateText.mock.calls[0]![0];
+      expect(callArgs.prompt).toContain("USER: hello");
+      expect(callArgs.prompt).toContain("ASSISTANT: hi there");
     });
   });
 
-  describe("availability", () => {
-    it.skipIf(!process.env.PINECONE_API_KEY)(
-      "can perform real retrieval query",
-      async () => {
-        // Real integration test — uses actual API keys
-        expect(true).toBe(true);
-      },
-    );
+  describe("Функция searchBookKnowledge", () => {
+    it("должна возвращать отформатированные результаты поиска", async () => {
+      mockPineconeSearchRecords.mockResolvedValueOnce({
+        result: {
+          hits: [
+            {
+              _id: "1",
+              _score: 0.9,
+              fields: { text: "AI content", pageNumber: 5, bookId: "b1" },
+            },
+          ],
+        },
+      });
+
+      const results = await searchBookKnowledge("query", ["b1"]);
+      expect(results).toHaveLength(1);
+      expect(results[0]).toMatchObject({ text: "AI content", score: 0.9 });
+    });
+
+    it("должна выполнять повторные попытки (retry) при сбое Pinecone", async () => {
+      vi.useFakeTimers();
+      
+      // Два сбоя, затем успех
+      mockPineconeSearchRecords
+        .mockRejectedValueOnce(new Error("Pinecone Timeout"))
+        .mockRejectedValueOnce(new Error("Pinecone Overload"))
+        .mockResolvedValueOnce({
+          result: { hits: [{ _id: "3", _score: 0.8, fields: { text: "retry success" } }] },
+        });
+
+      const searchPromise = searchBookKnowledge("query", ["b1"]);
+      
+      // Проматываем таймеры для ретраев
+      await vi.runAllTimersAsync();
+      await vi.runAllTimersAsync();
+
+      const results = await searchPromise;
+      expect(results[0]!.text).toBe("retry success");
+      expect(mockPineconeSearchRecords).toHaveBeenCalledTimes(3);
+      
+      vi.useRealTimers();
+    });
+
+    it("должна возвращать пустой массив после исчерпания попыток", async () => {
+      vi.useFakeTimers();
+      mockPineconeSearchRecords.mockRejectedValue(new Error("Permanent Failure"));
+
+      const searchPromise = searchBookKnowledge("query", ["b1"]);
+      await vi.runAllTimersAsync();
+      await vi.runAllTimersAsync();
+      
+      const results = await searchPromise;
+      expect(results).toEqual([]);
+      expect(mockPineconeSearchRecords).toHaveBeenCalledTimes(3);
+      
+      vi.useRealTimers();
+    });
+
+    it("должна дедуплицировать фрагменты и выбирать лучший скор", async () => {
+      // Имитируем два запроса, вернувших один и тот же текст с разными скорами
+      mockPineconeSearchRecords
+        .mockResolvedValueOnce({
+          result: { hits: [{ _id: "a", _score: 0.5, fields: { text: "duplicate" } }] },
+        })
+        .mockResolvedValueOnce({
+          result: { hits: [{ _id: "b", _score: 0.8, fields: { text: "duplicate" } }] },
+        });
+
+      const results = await searchBookKnowledge(["q1", "q2"], ["b1"]);
+      
+      expect(results).toHaveLength(1);
+      expect(results[0]!.score).toBe(0.8);
+    });
+
+    it("должна фильтровать результаты с низким скором (ниже MIN_SCORE=0.3)", async () => {
+      mockPineconeSearchRecords.mockResolvedValueOnce({
+        result: {
+          hits: [{ _id: "low", _score: 0.2, fields: { text: "too low" } }],
+        },
+      });
+
+      const results = await searchBookKnowledge("query", ["b1"]);
+      expect(results).toHaveLength(0);
+    });
   });
 });

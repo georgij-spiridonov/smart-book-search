@@ -1,300 +1,294 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ---- Mock pdfjs-dist ----
-const mockGetTextContent = vi.fn();
-const mockGetPage = vi.fn(() => ({ getTextContent: mockGetTextContent }));
-const mockGetDocument = vi.fn();
+// =======================
+// Имитации библиотек (Mocks for Libraries)
+// =======================
+
+// Имитация pdfjs-dist
+const mockPdfGetTextContent = vi.fn();
+const mockPdfGetPage = vi.fn(() => ({ getTextContent: mockPdfGetTextContent }));
+const mockPdfGetDocument = vi.fn();
 
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
-  getDocument: (opts: any) => ({ promise: mockGetDocument(opts) }),
+  getDocument: (options: any) => ({ promise: mockPdfGetDocument(options) }),
 }));
 
-// ---- Mock epub2 ----
-const mockGetChapterAsync = vi.fn();
-const mockCreateAsync = vi.fn();
+// Имитация epub2
+const mockEpubGetChapterAsync = vi.fn();
+const mockEpubCreateAsync = vi.fn();
 
 vi.mock("epub2", () => ({
   EPub: {
-    createAsync: (path: string) => mockCreateAsync(path),
+    createAsync: (filePath: string) => mockEpubCreateAsync(filePath),
   },
 }));
 
-// ---- Mock html-to-text ----
-const mockConvert = vi.fn();
+// Имитация html-to-text
+const mockHtmlConvert = vi.fn();
 vi.mock("html-to-text", () => ({
-  convert: (html: string, opts: any) => mockConvert(html, opts),
+  convert: (htmlContent: string, options: any) => mockHtmlConvert(htmlContent, options),
 }));
 
-// ---- Mock fs for EPUB temp file handling ----
-const mockWriteFileSync = vi.fn();
-const mockUnlinkSync = vi.fn();
+// Имитация fs для работы с временными файлами EPUB
+const mockFsWriteFileSync = vi.fn();
+const mockFsUnlinkSync = vi.fn();
 vi.mock("fs", () => ({
   default: {
-    writeFileSync: (...args: any[]) => mockWriteFileSync(...args),
-    unlinkSync: (...args: any[]) => mockUnlinkSync(...args),
+    writeFileSync: (...args: any[]) => mockFsWriteFileSync(...args),
+    unlinkSync: (...args: any[]) => mockFsUnlinkSync(...args),
   },
-  writeFileSync: (...args: any[]) => mockWriteFileSync(...args),
-  unlinkSync: (...args: any[]) => mockUnlinkSync(...args),
+  writeFileSync: (...args: any[]) => mockFsWriteFileSync(...args),
+  unlinkSync: (...args: any[]) => mockFsUnlinkSync(...args),
 }));
 
 import { extractText } from "../utils/textParser";
 import type { PageText } from "../utils/textParser";
 
-describe("textParser", () => {
+describe("Извлечение текста (textParser)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   // ──────── TXT ────────
-  describe("TXT extraction", () => {
-    it("extracts TXT content as a single PageText entry", async () => {
-      const content = "Hello, World! This is a test book content.";
-      const buffer = Buffer.from(content, "utf-8");
-      const pages: PageText[] = await extractText(buffer, "test.txt");
+  describe("Извлечение из TXT", () => {
+    it("должен извлекать содержимое TXT как одну запись PageText", async () => {
+      const textContent = "Привет, мир! Это тестовое содержимое книги.";
+      const textBuffer = Buffer.from(textContent, "utf-8");
+      const extractedPages: PageText[] = await extractText(textBuffer, "test.txt");
 
-      expect(pages).toHaveLength(1);
-      expect(pages[0]!.pageNumber).toBe(1);
-      expect(pages[0]!.text).toBe(content);
+      expect(extractedPages).toHaveLength(1);
+      expect(extractedPages[0]!.pageNumber).toBe(1);
+      expect(extractedPages[0]!.text).toBe(textContent);
     });
 
-    it("handles TXT with unicode characters", async () => {
-      const content = "Привет мир! 你好世界! مرحبا بالعالم";
-      const buffer = Buffer.from(content, "utf-8");
-      const pages = await extractText(buffer, "unicode-book.txt");
+    it("должен корректно обрабатывать TXT с символами Unicode", async () => {
+      const unicodeContent = "Привет мир! 你好世界! مرحبا بالعالم";
+      const textBuffer = Buffer.from(unicodeContent, "utf-8");
+      const extractedPages = await extractText(textBuffer, "unicode.txt");
 
-      expect(pages).toHaveLength(1);
-      expect(pages[0]!.text).toBe(content);
+      expect(extractedPages).toHaveLength(1);
+      expect(extractedPages[0]!.text).toBe(unicodeContent);
     });
 
-    it("returns empty array for empty TXT", async () => {
-      const buffer = Buffer.from("", "utf-8");
-      const pages = await extractText(buffer, "empty.txt");
-      expect(pages).toHaveLength(0);
+    it("должен возвращать пустой массив для пустого TXT файла", async () => {
+      const emptyBuffer = Buffer.from("", "utf-8");
+      const extractedPages = await extractText(emptyBuffer, "empty.txt");
+      expect(extractedPages).toHaveLength(0);
     });
 
-    it("returns empty array for whitespace-only TXT", async () => {
-      const buffer = Buffer.from("   \n\t  \n  ", "utf-8");
-      const pages = await extractText(buffer, "blank.txt");
-      expect(pages).toHaveLength(0);
+    it("должен возвращать пустой массив для TXT, содержащего только пробелы", async () => {
+      const whitespaceBuffer = Buffer.from("   \n\t  \n  ", "utf-8");
+      const extractedPages = await extractText(whitespaceBuffer, "blank.txt");
+      expect(extractedPages).toHaveLength(0);
     });
   });
 
-  // ──────── Error handling ────────
-  it("throws on unsupported file format", async () => {
-    const buffer = Buffer.from("data", "utf-8");
-    await expect(extractText(buffer, "file.docx")).rejects.toThrow(
-      "Unsupported file format",
-    );
-  });
+  // ──────── Обработка ошибок (Error handling) ────────
+  describe("Обработка ошибок", () => {
+    it("должен выбрасывать ошибку для неподдерживаемого формата файла", async () => {
+      const dummyBuffer = Buffer.from("данные", "utf-8");
+      await expect(extractText(dummyBuffer, "file.docx")).rejects.toThrow(
+        "Unsupported file format",
+      );
+    });
 
-  it("throws for format without extension", async () => {
-    const buffer = Buffer.from("data", "utf-8");
-    await expect(extractText(buffer, "noextension")).rejects.toThrow(
-      "Unsupported file format",
-    );
+    it("должен выбрасывать ошибку для файлов без расширения", async () => {
+      const dummyBuffer = Buffer.from("данные", "utf-8");
+      await expect(extractText(dummyBuffer, "noextension")).rejects.toThrow(
+        "Unsupported file format",
+      );
+    });
   });
 
   // ──────── PDF ────────
-  describe("PDF extraction", () => {
-    it("extracts text from multiple PDF pages", async () => {
-      mockGetDocument.mockResolvedValue({
+  describe("Извлечение из PDF", () => {
+    it("должен извлекать текст из нескольких страниц PDF", async () => {
+      mockPdfGetDocument.mockResolvedValue({
         numPages: 2,
-        getPage: mockGetPage,
+        getPage: mockPdfGetPage,
       });
 
-      // Page 1
-      mockGetTextContent
+      // Страница 1
+      mockPdfGetTextContent
         .mockResolvedValueOnce({
-          items: [{ str: "Hello " }, { str: "World" }],
+          items: [{ str: "Привет " }, { str: "Мир" }],
         })
-        // Page 2
+        // Страница 2
         .mockResolvedValueOnce({
-          items: [{ str: "Second page content" }],
+          items: [{ str: "Содержимое второй страницы" }],
         });
 
-      const buffer = Buffer.from("fake-pdf-data");
-      const pages = await extractText(buffer, "book.pdf");
+      const pdfBuffer = Buffer.from("fake-pdf-data");
+      const extractedPages = await extractText(pdfBuffer, "book.pdf");
 
-      expect(pages).toHaveLength(2);
-      expect(pages[0]!.pageNumber).toBe(1);
-      expect(pages[0]!.text).toContain("Hello");
-      expect(pages[1]!.pageNumber).toBe(2);
-      expect(pages[1]!.text).toContain("Second page content");
+      expect(extractedPages).toHaveLength(2);
+      expect(extractedPages[0]!.pageNumber).toBe(1);
+      expect(extractedPages[0]!.text).toContain("Привет");
+      expect(extractedPages[1]!.pageNumber).toBe(2);
+      expect(extractedPages[1]!.text).toContain("Содержимое второй страницы");
     });
 
-    it("skips empty PDF pages", async () => {
-      mockGetDocument.mockResolvedValue({
+    it("должен пропускать пустые страницы PDF", async () => {
+      mockPdfGetDocument.mockResolvedValue({
         numPages: 3,
-        getPage: mockGetPage,
+        getPage: mockPdfGetPage,
       });
 
-      mockGetTextContent
-        .mockResolvedValueOnce({ items: [{ str: "Page one" }] })
-        .mockResolvedValueOnce({ items: [{ str: "   " }] }) // empty after trim
-        .mockResolvedValueOnce({ items: [{ str: "Page three" }] });
+      mockPdfGetTextContent
+        .mockResolvedValueOnce({ items: [{ str: "Страница один" }] })
+        .mockResolvedValueOnce({ items: [{ str: "   " }] }) // пустая страница
+        .mockResolvedValueOnce({ items: [{ str: "Страница три" }] });
 
-      const buffer = Buffer.from("fake-pdf");
-      const pages = await extractText(buffer, "test.pdf");
+      const pdfBuffer = Buffer.from("fake-pdf");
+      const extractedPages = await extractText(pdfBuffer, "test.pdf");
 
-      expect(pages).toHaveLength(2);
-      expect(pages[0]!.pageNumber).toBe(1);
-      expect(pages[1]!.pageNumber).toBe(3);
+      expect(extractedPages).toHaveLength(2);
+      expect(extractedPages[0]!.pageNumber).toBe(1);
+      expect(extractedPages[1]!.pageNumber).toBe(3);
     });
 
-    it("filters out non-text items in PDF content", async () => {
-      mockGetDocument.mockResolvedValue({
+    it("должен фильтровать нетекстовые элементы в содержимом PDF", async () => {
+      mockPdfGetDocument.mockResolvedValue({
         numPages: 1,
-        getPage: mockGetPage,
+        getPage: mockPdfGetPage,
       });
 
-      mockGetTextContent.mockResolvedValueOnce({
+      mockPdfGetTextContent.mockResolvedValueOnce({
         items: [
-          { str: "Text item" },
-          { width: 100, height: 50 }, // non-text item without 'str'
-          { str: " continues" },
+          { str: "Текстовый элемент" },
+          { width: 100, height: 50 }, // нетекстовый элемент (без поля 'str')
+          { str: " продолжается" },
         ],
       });
 
-      const buffer = Buffer.from("fake-pdf");
-      const pages = await extractText(buffer, "mixed.pdf");
+      const pdfBuffer = Buffer.from("fake-pdf");
+      const extractedPages = await extractText(pdfBuffer, "mixed.pdf");
 
-      expect(pages).toHaveLength(1);
-      expect(pages[0]!.text).toContain("Text item");
-      expect(pages[0]!.text).toContain("continues");
+      expect(extractedPages).toHaveLength(1);
+      expect(extractedPages[0]!.text).toContain("Текстовый элемент");
+      expect(extractedPages[0]!.text).toContain("продолжается");
     });
 
-    it("returns empty array for PDF with no text content", async () => {
-      mockGetDocument.mockResolvedValue({
+    it("должен возвращать пустой массив для PDF без текстового содержимого", async () => {
+      mockPdfGetDocument.mockResolvedValue({
         numPages: 1,
-        getPage: mockGetPage,
+        getPage: mockPdfGetPage,
       });
 
-      mockGetTextContent.mockResolvedValueOnce({ items: [] });
+      mockPdfGetTextContent.mockResolvedValueOnce({ items: [] });
 
-      const buffer = Buffer.from("empty-pdf");
-      const pages = await extractText(buffer, "empty.pdf");
+      const pdfBuffer = Buffer.from("empty-pdf");
+      const extractedPages = await extractText(pdfBuffer, "empty.pdf");
 
-      expect(pages).toHaveLength(0);
+      expect(extractedPages).toHaveLength(0);
     });
   });
 
   // ──────── EPUB ────────
-  describe("EPUB extraction", () => {
-    it("extracts text from EPUB chapters", async () => {
-      mockCreateAsync.mockResolvedValue({
+  describe("Извлечение из EPUB", () => {
+    it("должен извлекать текст из глав EPUB", async () => {
+      mockEpubCreateAsync.mockResolvedValue({
         flow: [
-          { id: "ch1", title: "Chapter 1" },
-          { id: "ch2", title: "Chapter 2" },
+          { id: "ch1", title: "Глава 1" },
+          { id: "ch2", title: "Глава 2" },
         ],
-        getChapterAsync: mockGetChapterAsync,
+        getChapterAsync: mockEpubGetChapterAsync,
       });
 
-      mockGetChapterAsync
-        .mockResolvedValueOnce("<p>First chapter HTML</p>")
-        .mockResolvedValueOnce("<p>Second chapter HTML</p>");
+      mockEpubGetChapterAsync
+        .mockResolvedValueOnce("<p>HTML первой главы</p>")
+        .mockResolvedValueOnce("<p>HTML второй главы</p>");
 
-      mockConvert
-        .mockReturnValueOnce("First chapter text")
-        .mockReturnValueOnce("Second chapter text");
+      mockHtmlConvert
+        .mockReturnValueOnce("Текст первой главы")
+        .mockReturnValueOnce("Текст второй главы");
 
-      const buffer = Buffer.from("fake-epub-data");
-      const pages = await extractText(buffer, "book.epub");
+      const epubBuffer = Buffer.from("fake-epub-data");
+      const extractedPages = await extractText(epubBuffer, "book.epub");
 
-      expect(pages).toHaveLength(2);
-      expect(pages[0]!.pageNumber).toBe(1);
-      expect(pages[0]!.text).toBe("First chapter text");
-      expect(pages[0]!.title).toBe("Chapter 1");
-      expect(pages[1]!.pageNumber).toBe(2);
-      expect(pages[1]!.text).toBe("Second chapter text");
-      expect(pages[1]!.title).toBe("Chapter 2");
+      expect(extractedPages).toHaveLength(2);
+      expect(extractedPages[0]!.pageNumber).toBe(1);
+      expect(extractedPages[0]!.text).toBe("Текст первой главы");
+      expect(extractedPages[0]!.title).toBe("Глава 1");
+      expect(extractedPages[1]!.pageNumber).toBe(2);
+      expect(extractedPages[1]!.text).toBe("Текст второй главы");
+      expect(extractedPages[1]!.title).toBe("Глава 2");
     });
 
-    it("skips chapters that return empty text", async () => {
-      mockCreateAsync.mockResolvedValue({
+    it("должен пропускать главы с пустым текстом", async () => {
+      mockEpubCreateAsync.mockResolvedValue({
         flow: [
-          { id: "ch1", title: "Chapter 1" },
-          { id: "ch2", title: "Empty Chapter" },
+          { id: "ch1", title: "Глава 1" },
+          { id: "ch2", title: "Пустая глава" },
         ],
-        getChapterAsync: mockGetChapterAsync,
+        getChapterAsync: mockEpubGetChapterAsync,
       });
 
-      mockGetChapterAsync
-        .mockResolvedValueOnce("<p>Real content</p>")
+      mockEpubGetChapterAsync
+        .mockResolvedValueOnce("<p>Реальный контент</p>")
         .mockResolvedValueOnce("<p></p>");
 
-      mockConvert
-        .mockReturnValueOnce("Real content")
-        .mockReturnValueOnce("   "); // empty after trim
+      mockHtmlConvert
+        .mockReturnValueOnce("Реальный контент")
+        .mockReturnValueOnce("   "); // пусто после обрезки пробелов
 
-      const buffer = Buffer.from("fake-epub");
-      const pages = await extractText(buffer, "test.epub");
+      const epubBuffer = Buffer.from("fake-epub");
+      const extractedPages = await extractText(epubBuffer, "test.epub");
 
-      expect(pages).toHaveLength(1);
-      expect(pages[0]!.title).toBe("Chapter 1");
+      expect(extractedPages).toHaveLength(1);
+      expect(extractedPages[0]!.title).toBe("Глава 1");
     });
 
-    it("silently skips chapters that throw errors", async () => {
-      mockCreateAsync.mockResolvedValue({
+    it("должен игнорировать главы, при чтении которых возникла ошибка", async () => {
+      mockEpubCreateAsync.mockResolvedValue({
         flow: [
-          { id: "ch1", title: "Good Chapter" },
-          { id: "ch2", title: "Bad Chapter" },
-          { id: "ch3", title: "Another Good" },
+          { id: "ch1", title: "Хорошая глава" },
+          { id: "ch2", title: "Плохая глава" },
+          { id: "ch3", title: "Еще одна хорошая" },
         ],
-        getChapterAsync: mockGetChapterAsync,
+        getChapterAsync: mockEpubGetChapterAsync,
       });
 
-      mockGetChapterAsync
-        .mockResolvedValueOnce("<p>Content 1</p>")
-        .mockRejectedValueOnce(new Error("Chapter read error"))
-        .mockResolvedValueOnce("<p>Content 3</p>");
+      mockEpubGetChapterAsync
+        .mockResolvedValueOnce("<p>Контент 1</p>")
+        .mockRejectedValueOnce(new Error("Ошибка чтения главы"))
+        .mockResolvedValueOnce("<p>Контент 3</p>");
 
-      mockConvert
-        .mockReturnValueOnce("Content 1")
-        .mockReturnValueOnce("Content 3");
+      mockHtmlConvert
+        .mockReturnValueOnce("Контент 1")
+        .mockReturnValueOnce("Контент 3");
 
-      const buffer = Buffer.from("fake-epub");
-      const pages = await extractText(buffer, "broken.epub");
+      const epubBuffer = Buffer.from("fake-epub");
+      const extractedPages = await extractText(epubBuffer, "broken.epub");
 
-      expect(pages).toHaveLength(2);
-      expect(pages[0]!.pageNumber).toBe(1);
-      expect(pages[1]!.pageNumber).toBe(3);
+      expect(extractedPages).toHaveLength(2);
+      expect(extractedPages[0]!.pageNumber).toBe(1);
+      expect(extractedPages[1]!.pageNumber).toBe(3);
     });
 
-    it("cleans up temp file even on parsing error", async () => {
-      mockCreateAsync.mockRejectedValue(new Error("Invalid EPUB"));
+    it("должен удалять временный файл даже при ошибке парсинга", async () => {
+      mockEpubCreateAsync.mockRejectedValue(new Error("Невалидный EPUB"));
 
-      const buffer = Buffer.from("bad-epub");
-      await expect(extractText(buffer, "bad.epub")).rejects.toThrow(
-        "Invalid EPUB",
+      const epubBuffer = Buffer.from("bad-epub");
+      await expect(extractText(epubBuffer, "bad.epub")).rejects.toThrow(
+        "Невалидный EPUB",
       );
 
-      // Temp file should be written and then cleaned up
-      expect(mockWriteFileSync).toHaveBeenCalledOnce();
-      expect(mockUnlinkSync).toHaveBeenCalledOnce();
+      // Временный файл должен быть записан и затем удален
+      expect(mockFsWriteFileSync).toHaveBeenCalledOnce();
+      expect(mockFsUnlinkSync).toHaveBeenCalledOnce();
     });
 
-    it("handles EPUB with empty flow", async () => {
-      mockCreateAsync.mockResolvedValue({
+    it("должен корректно обрабатывать EPUB с пустым списком flow", async () => {
+      mockEpubCreateAsync.mockResolvedValue({
         flow: [],
-        getChapterAsync: mockGetChapterAsync,
+        getChapterAsync: mockEpubGetChapterAsync,
       });
 
-      const buffer = Buffer.from("empty-epub");
-      const pages = await extractText(buffer, "empty.epub");
+      const epubBuffer = Buffer.from("empty-epub");
+      const extractedPages = await extractText(epubBuffer, "empty.epub");
 
-      expect(pages).toHaveLength(0);
-    });
-
-    it("handles EPUB with undefined flow", async () => {
-      mockCreateAsync.mockResolvedValue({
-        flow: undefined,
-        getChapterAsync: mockGetChapterAsync,
-      });
-
-      const buffer = Buffer.from("no-flow-epub");
-      const pages = await extractText(buffer, "noflow.epub");
-
-      expect(pages).toHaveLength(0);
+      expect(extractedPages).toHaveLength(0);
     });
   });
 });

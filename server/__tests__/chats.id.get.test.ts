@@ -1,18 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock Nuxt auto-imports
+// =======================
+// Имитации для Nuxt (Mocks for Nuxt Imports)
+// =======================
 const { mockedGetUserSession, mockedGetRouterParams } = vi.hoisted(() => {
   const sessionMock = vi.fn();
   const paramsMock = vi.fn();
 
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
-  (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.message || "Error");
-    (error as any).statusCode = err.statusCode;
+  (globalThis as any).createError = vi.fn((errorData: { statusCode: number; message: string }) => {
+    const error = new Error(errorData.message || "Ошибка сервера");
+    (error as any).statusCode = errorData.statusCode;
     return error;
   });
-  (globalThis as any).getUserSession = sessionMock as any;
-  (globalThis as any).getRouterParams = paramsMock as any;
+  (globalThis as any).getUserSession = sessionMock;
+  (globalThis as any).getRouterParams = paramsMock;
 
   return {
     mockedGetUserSession: sessionMock,
@@ -20,13 +22,15 @@ const { mockedGetUserSession, mockedGetRouterParams } = vi.hoisted(() => {
   };
 });
 
-// Mock DB
-const mockFindFirst = vi.fn();
+// =======================
+// Имитация базы данных (Mocks for DB)
+// =======================
+const mockDbFindFirstChat = vi.fn();
 vi.mock("hub:db", () => ({
   db: {
     query: {
       chats: {
-        findFirst: (...args: any[]) => mockFindFirst(...args),
+        findFirst: (...args: any[]) => mockDbFindFirstChat(...args),
       },
     },
   },
@@ -47,53 +51,56 @@ vi.mock("drizzle-orm", () => ({
   asc: vi.fn(),
 }));
 
-import chatGetHandler from "../api/chats/[id].get";
+import chatGetByIdHandler from "../api/chats/[id].get";
 
-describe("GET /api/chats/[id]", () => {
+describe("Получение конкретного чата: GET /api/chats/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("should throw 401 Unauthorized if user is not logged in", async () => {
+  it("должен возвращать ошибку 401, если пользователь не авторизован", async () => {
     mockedGetUserSession.mockResolvedValueOnce({});
 
-    await expect(chatGetHandler({} as any)).rejects.toThrowError(
+    await expect(chatGetByIdHandler({} as any)).rejects.toThrowError(
       "Не авторизован",
     );
   });
 
-  it("should throw 404 Not Found if chat doesn't exist", async () => {
-    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-123" } });
-    mockedGetRouterParams.mockReturnValue({ id: "chat-unknown" });
-    mockFindFirst.mockResolvedValueOnce(null);
+  it("должен возвращать ошибку 404, если чат не найден", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-id-123" } });
+    mockedGetRouterParams.mockReturnValue({ id: "unknown-chat-id" });
+    mockDbFindFirstChat.mockResolvedValueOnce(null);
 
-    await expect(chatGetHandler({} as any)).rejects.toThrowError(
+    await expect(chatGetByIdHandler({} as any)).rejects.toThrowError(
       "Чат не найден",
     );
   });
 
-  it("should return the chat and messages if chat exists and belongs to user", async () => {
-    const mockChat = {
-      id: "chat-yes",
-      title: "Valid Chat",
-      userId: "user-123",
-      messages: [{ id: "msg-1", role: "user", text: "hello" }],
+  it("должен возвращать чат и сообщения, если чат существует и принадлежит пользователю", async () => {
+    const mockChatData = {
+      id: "valid-chat-id",
+      title: "Существующий чат",
+      userId: "user-id-123",
+      messages: [{ id: "msg-id-1", role: "user", text: "привет" }],
     };
 
-    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-123" } });
-    mockedGetRouterParams.mockReturnValue({ id: "chat-yes" });
-    mockFindFirst.mockImplementationOnce((args: any) => {
+    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-id-123" } });
+    mockedGetRouterParams.mockReturnValue({ id: "valid-chat-id" });
+    
+    mockDbFindFirstChat.mockImplementationOnce((args: any) => {
+      // Имитируем выполнение условий Drizzle внутри обработчика
       if (typeof args?.where === "function") args.where();
       if (typeof args?.with?.messages?.orderBy === "function")
         args.with.messages.orderBy();
-      return Promise.resolve(mockChat);
+      return Promise.resolve(mockChatData);
     });
-    const result = await chatGetHandler({} as any);
+
+    const result = await chatGetByIdHandler({} as any);
 
     expect(mockedGetUserSession).toHaveBeenCalledOnce();
     expect(mockedGetRouterParams).toHaveBeenCalledOnce();
-    expect(mockFindFirst).toHaveBeenCalledOnce();
+    expect(mockDbFindFirstChat).toHaveBeenCalledOnce();
 
-    expect(result).toEqual(mockChat);
+    expect(result).toEqual(mockChatData);
   });
 });

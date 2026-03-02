@@ -1,12 +1,13 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { H3Event } from "h3";
 
-// Mock Nuxt auto-imports
+// Имитация (Mock) авто-импортов Nuxt
 vi.hoisted(() => {
-  (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
-  (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.message || "Error");
-    (error as any).statusCode = err.statusCode;
-    (error as any).message = err.message;
+  (globalThis as any).defineEventHandler = vi.fn((handler: (event: H3Event) => Promise<any>) => handler);
+  (globalThis as any).createError = vi.fn((errorData: { statusCode: number; message: string }) => {
+    const error = new Error(errorData.message || "Ошибка сервера");
+    (error as any).statusCode = errorData.statusCode;
+    (error as any).message = errorData.message;
     return error;
   });
   (globalThis as any).getUserSession = vi.fn(async () => ({}));
@@ -14,44 +15,56 @@ vi.hoisted(() => {
   (globalThis as any).readBody = vi.fn(async (event: any) => event._body);
 });
 
-import loginHandler from "../api/admin/login.post";
+import adminLoginHandler from "../api/admin/login.post";
 
-// Mocking useRuntimeConfig
-vi.stubGlobal("useRuntimeConfig", (_event?: any) => ({
+// Имитация useRuntimeConfig
+vi.stubGlobal("useRuntimeConfig", (_event?: H3Event) => ({
   adminPassword: "test-password",
 }));
 
-describe("Admin Login API", () => {
-  it("should fail with incorrect password", async () => {
-    const event = { _body: { password: "wrong-password" } } as any;
+describe("API Входа Администратора (Admin Login API)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("должен вернуть ошибку при неверном пароле", async () => {
+    const mockEvent = { _body: { password: "wrong-password" } } as unknown as H3Event;
     
     try {
-      await loginHandler(event);
-      expect(true).toBe(false); // Should not reach here
+      await adminLoginHandler(mockEvent);
+      // Если выполнение дошло сюда, значит тест провален
+      expect.fail("Обработчик должен был выбросить ошибку 401");
     } catch (error: any) {
       expect(error.statusCode).toBe(401);
       expect(error.message).toBe("Неверный пароль");
     }
   });
 
-  it("should succeed with correct password", async () => {
-    const event = { _body: { password: "test-password" } } as any;
-    const result = await loginHandler(event);
+  it("должен успешно авторизовать при верном пароле", async () => {
+    const mockEvent = { _body: { password: "test-password" } } as unknown as H3Event;
+    const response = await adminLoginHandler(mockEvent);
     
-    expect(result.status).toBe("success");
-    expect(result.message).toBe("Доступ администратора предоставлен");
+    expect(response.status).toBe("success");
+    expect(response.message).toBe("Доступ администратора предоставлен");
+    expect((globalThis as any).setUserSession).toHaveBeenCalledWith(mockEvent, expect.objectContaining({
+      user: {
+        id: expect.any(String),
+        isAdmin: true,
+      }
+    }));
   });
 
-  it("should fail if admin password not configured", async () => {
-    vi.stubGlobal("useRuntimeConfig", (_event?: any) => ({
+  it("должен вернуть ошибку 500, если пароль администратора не настроен", async () => {
+    // Переопределяем конфигурацию для этого конкретного теста
+    vi.stubGlobal("useRuntimeConfig", () => ({
       adminPassword: "",
     }));
     
-    const event = { _body: { password: "any" } } as any;
+    const mockEvent = { _body: { password: "any-password" } } as unknown as H3Event;
     
     try {
-      await loginHandler(event);
-      expect(true).toBe(false);
+      await adminLoginHandler(mockEvent);
+      expect.fail("Обработчик должен был выбросить ошибку 500");
     } catch (error: any) {
       expect(error.statusCode).toBe(500);
       expect(error.message).toBe("Пароль администратора не настроен на сервере");

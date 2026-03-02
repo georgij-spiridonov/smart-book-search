@@ -1,15 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock the redis module
-const mockPing = vi.fn();
+// =======================
+// Имитации (Mocks)
+// =======================
+
+// Имитация модуля redis
+const mockRedisPing = vi.fn();
 
 vi.mock("../utils/redis", () => ({
   getRedisClient: vi.fn(() => ({
-    ping: mockPing,
+    ping: mockRedisPing,
   })),
 }));
 
-// Mock useRuntimeConfig
+// Настройка конфигурации Nuxt
 vi.stubGlobal("useRuntimeConfig", () => ({
   upstashRedisUrl: "https://test-redis.upstash.io",
   upstashRedisToken: "test-token",
@@ -23,112 +27,114 @@ import {
   getStrictLimiter,
 } from "../utils/rateLimiter";
 
-describe("rateLimit", () => {
+describe("Ограничение частоты запросов (rateLimit)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // ──────── RATE_LIMITS config ────────
-  describe("RATE_LIMITS config", () => {
-    it("has correct default limits", () => {
+  // ──────── Конфигурация RATE_LIMITS ────────
+  describe("Конфигурация лимитов (RATE_LIMITS config)", () => {
+    it("должен иметь корректные лимиты по умолчанию", () => {
       expect(RATE_LIMITS.default.tokens).toBe(20);
       expect(RATE_LIMITS.default.window).toBe("10 s");
     });
 
-    it("has correct chat limits", () => {
+    it("должен иметь корректные лимиты для чата", () => {
       expect(RATE_LIMITS.chat.tokens).toBe(12);
       expect(RATE_LIMITS.chat.window).toBe("60 s");
     });
 
-    it("has correct strict limits", () => {
+    it("должен иметь корректные строгие лимиты", () => {
       expect(RATE_LIMITS.strict.tokens).toBe(5);
       expect(RATE_LIMITS.strict.window).toBe("60 s");
     });
 
-    it("chat is more restrictive than default", () => {
+    it("лимиты чата должны быть строже, чем лимиты по умолчанию", () => {
       expect(RATE_LIMITS.chat.tokens).toBeLessThan(RATE_LIMITS.default.tokens);
     });
 
-    it("strict is the most restrictive", () => {
+    it("строгие лимиты должны быть самыми жесткими", () => {
       expect(RATE_LIMITS.strict.tokens).toBeLessThan(RATE_LIMITS.chat.tokens);
     });
   });
 
-  // ──────── Limiter instances ────────
-  describe("limiter getters", () => {
-    it("getDefaultLimiter returns a Ratelimit instance", () => {
+  // ──────── Экземпляры ограничителей (Limiter instances) ────────
+  describe("Получение экземпляров ограничителей (limiter getters)", () => {
+    it("getDefaultLimiter должен возвращать экземпляр Ratelimit", () => {
       const limiter = getDefaultLimiter();
       expect(limiter).toBeDefined();
       expect(typeof limiter.limit).toBe("function");
     });
 
-    it("getChatLimiter returns a Ratelimit instance", () => {
+    it("getChatLimiter должен возвращать экземпляр Ratelimit", () => {
       const limiter = getChatLimiter();
       expect(limiter).toBeDefined();
       expect(typeof limiter.limit).toBe("function");
     });
 
-    it("getStrictLimiter returns a Ratelimit instance", () => {
+    it("getStrictLimiter должен возвращать экземпляр Ratelimit", () => {
       const limiter = getStrictLimiter();
       expect(limiter).toBeDefined();
       expect(typeof limiter.limit).toBe("function");
     });
 
-    it("getDefaultLimiter returns the same instance on repeated calls", () => {
-      const a = getDefaultLimiter();
-      const b = getDefaultLimiter();
-      expect(a).toBe(b);
+    it("getDefaultLimiter должен возвращать один и тот же экземпляр при повторных вызовах (singleton)", () => {
+      const firstInstance = getDefaultLimiter();
+      const secondInstance = getDefaultLimiter();
+      expect(firstInstance).toBe(secondInstance);
     });
 
-    it("getChatLimiter returns the same instance on repeated calls", () => {
-      const a = getChatLimiter();
-      const b = getChatLimiter();
-      expect(a).toBe(b);
+    it("getChatLimiter должен возвращать один и тот же экземпляр при повторных вызовах (singleton)", () => {
+      const firstInstance = getChatLimiter();
+      const secondInstance = getChatLimiter();
+      expect(firstInstance).toBe(secondInstance);
     });
 
-    it("getStrictLimiter returns the same instance on repeated calls", () => {
-      const a = getStrictLimiter();
-      const b = getStrictLimiter();
-      expect(a).toBe(b);
-    });
-  });
-
-  // ──────── Redis connectivity (unit mocked) ────────
-  describe("unit (mocked)", () => {
-    it("succeeds when Redis PING returns PONG", async () => {
-      mockPing.mockResolvedValueOnce("PONG");
-
-      const redis = getRedisClient();
-      const pong = await redis.ping();
-
-      expect(pong).toBe("PONG");
-      expect(mockPing).toHaveBeenCalledOnce();
-    });
-
-    it("handles Redis connection failure", async () => {
-      mockPing.mockRejectedValueOnce(new Error("Connection refused"));
-
-      const redis = getRedisClient();
-      await expect(redis.ping()).rejects.toThrow("Connection refused");
+    it("getStrictLimiter должен возвращать один и тот же экземпляр при повторных вызовах (singleton)", () => {
+      const firstInstance = getStrictLimiter();
+      const secondInstance = getStrictLimiter();
+      expect(firstInstance).toBe(secondInstance);
     });
   });
 
-  // ──────── availability ────────
-  describe("availability", () => {
+  // ──────── Подключение к Redis (Юнит-тесты) ────────
+  describe("Юнит-тесты подключения (Unit mocked)", () => {
+    it("должен успешно работать, когда Redis отвечает PONG на PING", async () => {
+      mockRedisPing.mockResolvedValueOnce("PONG");
+
+      const redisClient = getRedisClient();
+      const pongResponse = await redisClient.ping();
+
+      expect(pongResponse).toBe("PONG");
+      expect(mockRedisPing).toHaveBeenCalledOnce();
+    });
+
+    it("должен корректно обрабатывать ошибку подключения к Redis", async () => {
+      mockRedisPing.mockRejectedValueOnce(new Error("В соединении отказано (Connection refused)"));
+
+      const redisClient = getRedisClient();
+      await expect(redisClient.ping()).rejects.toThrow("В соединении отказано (Connection refused)");
+    });
+  });
+
+  // ──────── Проверка доступности (Availability) ────────
+  describe("Проверка доступности (Availability)", () => {
+    // Тест выполняется только при наличии реальных учетных данных Upstash
     it.skipIf(!process.env.KV_REST_API_URL)(
-      "can connect to real Upstash Redis",
+      "должен успешно подключаться к реальному Upstash Redis",
       async () => {
-        const { Redis } =
+        const { Redis: RealUpstashRedis } =
           await vi.importActual<typeof import("@upstash/redis")>(
             "@upstash/redis",
           );
 
-        const redis = new Redis({
+        const redisInstance = new RealUpstashRedis({
           url: process.env.KV_REST_API_URL!,
           token: process.env.KV_REST_API_TOKEN!,
         });
-        const pong = await redis.ping();
-        expect(pong).toBe("PONG");
+        
+        const pongResponse = await redisInstance.ping();
+        expect(pongResponse).toBe("PONG");
       },
     );
   });

@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock environment and Nuxt globals before importing module
+/**
+ * Глобальные имитации (Mocks) для Redis клиента.
+ * Используем vi.hoisted для обеспечения доступности моков до импорта модулей.
+ */
 const { mockedGetRedisClient } = vi.hoisted(() => {
-  const mockMembers = {
+  const redisMethodsMock = {
     hget: vi.fn(),
     hset: vi.fn(),
     sismember: vi.fn(),
@@ -13,7 +16,7 @@ const { mockedGetRedisClient } = vi.hoisted(() => {
   };
 
   return {
-    mockedGetRedisClient: vi.fn(() => mockMembers),
+    mockedGetRedisClient: vi.fn(() => redisMethodsMock),
   };
 });
 
@@ -38,103 +41,120 @@ import {
   deleteHashesByBlobUrl,
 } from "../utils/hashStore";
 
-describe("hashStore", () => {
-  let redisMock: any;
+describe("Хранилище хэшей файлов (hashStore / redisStores)", () => {
+  let redisClientInstance: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    redisMock = mockedGetRedisClient();
+    redisClientInstance = mockedGetRedisClient();
   });
 
-  describe("getFileHash", () => {
-    it("should generate a valid SHA-256 hex string", () => {
-      const buffer = Buffer.from("test content");
-      const hash = getFileHash(buffer);
-      // SHA-256 of "test content"
-      expect(hash).toBe(
+  describe("Функция getFileHash", () => {
+    it("должна генерировать валидную строку SHA-256 в формате hex", () => {
+      const contentBuffer = Buffer.from("test content");
+      const generatedHash = getFileHash(contentBuffer);
+      
+      // SHA-256 хэш для строки "test content"
+      expect(generatedHash).toBe(
         "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72",
       );
     });
   });
 
-  describe("getExistingBlobUrl", () => {
-    it("should return the blob url if it exists", async () => {
-      redisMock.hget.mockResolvedValueOnce("https://blob/test");
-      const url = await getExistingBlobUrl("testhash");
-      expect(redisMock.hget).toHaveBeenCalledWith(
+  describe("Функция getExistingBlobUrl", () => {
+    it("должна возвращать ссылку на blob, если она существует в Redis", async () => {
+      const expectedUrl = "https://blob.test/book.pdf";
+      redisClientInstance.hget.mockResolvedValueOnce(expectedUrl);
+      
+      const resultUrl = await getExistingBlobUrl("test-file-hash");
+      
+      expect(redisClientInstance.hget).toHaveBeenCalledWith(
         "smart-book-search:blobs",
-        "testhash",
+        "test-file-hash",
       );
-      expect(url).toBe("https://blob/test");
+      expect(resultUrl).toBe(expectedUrl);
     });
 
-    it("should return undefined if the hash does not exist", async () => {
-      redisMock.hget.mockResolvedValueOnce(null);
-      const url = await getExistingBlobUrl("unknown");
-      expect(url).toBeUndefined();
+    it("должна возвращать undefined, если хэш не найден", async () => {
+      redisClientInstance.hget.mockResolvedValueOnce(null);
+      const resultUrl = await getExistingBlobUrl("unknown-hash");
+      expect(resultUrl).toBeUndefined();
     });
   });
 
-  describe("markFileAsUploaded", () => {
-    it("should store the hash and blob mapping", async () => {
-      redisMock.hset.mockResolvedValueOnce(1);
-      await markFileAsUploaded("newhash", "https://blob/new");
-      expect(redisMock.hset).toHaveBeenCalledWith("smart-book-search:blobs", {
-        newhash: "https://blob/new",
+  describe("Функция markFileAsUploaded", () => {
+    it("должна сохранять соответствие хэша и ссылки на blob в Redis", async () => {
+      redisClientInstance.hset.mockResolvedValueOnce(1);
+      
+      await markFileAsUploaded("new-hash", "https://blob.test/new-book.pdf");
+      
+      expect(redisClientInstance.hset).toHaveBeenCalledWith("smart-book-search:blobs", {
+        "new-hash": "https://blob.test/new-book.pdf",
       });
     });
   });
 
-  describe("isFileVectorized", () => {
-    it("should return true if the hash is in the vectorized set", async () => {
-      redisMock.sismember.mockResolvedValueOnce(1);
-      const isVec = await isFileVectorized("hash-123");
-      expect(redisMock.sismember).toHaveBeenCalledWith(
+  describe("Функция isFileVectorized", () => {
+    it("должна возвращать true, если хэш присутствует в наборе векторизованных файлов", async () => {
+      redisClientInstance.sismember.mockResolvedValueOnce(1);
+      
+      const isVectorized = await isFileVectorized("hash-123");
+      
+      expect(redisClientInstance.sismember).toHaveBeenCalledWith(
         "smart-book-search:vectorized",
         "hash-123",
       );
-      expect(isVec).toBe(true);
+      expect(isVectorized).toBe(true);
     });
 
-    it("should return false if the hash is not in the set", async () => {
-      redisMock.sismember.mockResolvedValueOnce(0);
-      const isVec = await isFileVectorized("hash-456");
-      expect(isVec).toBe(false);
+    it("должна возвращать false, если хэш отсутствует в наборе", async () => {
+      redisClientInstance.sismember.mockResolvedValueOnce(0);
+      const isVectorized = await isFileVectorized("hash-456");
+      expect(isVectorized).toBe(false);
     });
   });
 
-  describe("markFileAsVectorized", () => {
-    it("should add the hash to the vectorized set", async () => {
-      redisMock.sadd.mockResolvedValueOnce(1);
-      await markFileAsVectorized("hash-to-vec");
-      expect(redisMock.sadd).toHaveBeenCalledWith(
+  describe("Функция markFileAsVectorized", () => {
+    it("должна добавлять хэш в набор векторизованных файлов в Redis", async () => {
+      redisClientInstance.sadd.mockResolvedValueOnce(1);
+      
+      await markFileAsVectorized("hash-to-vectorize");
+      
+      expect(redisClientInstance.sadd).toHaveBeenCalledWith(
         "smart-book-search:vectorized",
-        "hash-to-vec",
+        "hash-to-vectorize",
       );
     });
   });
 
-  describe("deleteHashesByBlobUrl", () => {
-    it("should find and delete hashes matching the blobUrl", async () => {
-      // Mock finding one matching hash via hgetall
-      redisMock.hgetall.mockResolvedValueOnce({
-        hash1: "https://blob/target",
-        hash2: "https://blob/other",
+  describe("Функция deleteHashesByBlobUrl", () => {
+    it("должна находить и удалять хэши, соответствующие указанной ссылке на blob", async () => {
+      // Имитируем поиск хэша по URL через hgetall
+      redisClientInstance.hgetall.mockResolvedValueOnce({
+        "hash-to-delete": "https://blob.test/target",
+        "other-hash": "https://blob.test/other",
       });
-      redisMock.hdel.mockResolvedValueOnce(1);
-      redisMock.srem.mockResolvedValueOnce(1);
+      redisClientInstance.hdel.mockResolvedValueOnce(1);
+      redisClientInstance.srem.mockResolvedValueOnce(1);
 
-      await deleteHashesByBlobUrl("https://blob/target");
+      await deleteHashesByBlobUrl("https://blob.test/target");
 
-      // Verify that the hash mapping to this blobUrl is removed from both structures
-      expect(redisMock.hdel).toHaveBeenCalledWith(
+      // Проверяем удаление хэша из обеих структур данных Redis
+      expect(redisClientInstance.hdel).toHaveBeenCalledWith(
         "smart-book-search:blobs",
-        "hash1",
+        "hash-to-delete",
       );
-      expect(redisMock.srem).toHaveBeenCalledWith(
+      expect(redisClientInstance.srem).toHaveBeenCalledWith(
         "smart-book-search:vectorized",
-        "hash1",
+        "hash-to-delete",
       );
+    });
+
+    it("должна завершаться без ошибок, если в Redis нет записей о хэшах", async () => {
+      redisClientInstance.hgetall.mockResolvedValueOnce(null);
+      
+      await expect(deleteHashesByBlobUrl("https://any.url")).resolves.toBeUndefined();
+      expect(redisClientInstance.hdel).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,14 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock inngest client
-const mockSend = vi.fn();
+// =======================
+// Имитации сервисов (Mocks for Services)
+// =======================
+
+// Имитация клиента Inngest
+const mockInngestSend = vi.fn();
 vi.mock("../utils/inngest", () => ({
   inngest: {
-    send: mockSend,
+    send: mockInngestSend,
   },
 }));
 
-// Mock Redis for jobStore
+// Имитация Redis для jobStore
 vi.mock("../utils/redis", () => ({
   getRedisClient: vi.fn(() => ({
     hset: vi.fn(),
@@ -17,67 +21,67 @@ vi.mock("../utils/redis", () => ({
   })),
 }));
 
-// Mock logger
+// Имитация логгера
 vi.mock("../utils/logger", () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-// Mock useRuntimeConfig
+// Настройка конфигурации времени выполнения Nuxt
 vi.stubGlobal("useRuntimeConfig", () => ({
   upstashRedisUrl: "https://test.upstash.io",
-  upstashRedisToken: "token",
-  inngestEventKey: "test-key",
+  upstashRedisToken: "test-token",
+  inngestEventKey: "test-event-key",
 }));
 
-describe("inngestE2e", () => {
+describe("Сквозное тестирование Inngest (inngestE2e)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("unit (mocked)", () => {
-    it("sends event to Inngest and receives event IDs", async () => {
-      mockSend.mockResolvedValueOnce({
-        ids: ["evt-abc-123"],
+  describe("Юнит-тесты (Unit tests - mocked)", () => {
+    it("должен отправлять событие в Inngest и получать идентификаторы событий (IDs)", async () => {
+      mockInngestSend.mockResolvedValueOnce({
+        ids: ["evt-abc-123-id"],
       });
 
-      const result = await mockSend({
+      const result = await mockInngestSend({
         name: "book/vectorize",
         data: {
-          jobId: "test-job-1",
-          bookId: "test-book",
+          jobId: "test-job-id-1",
+          bookId: "test-book-id",
           blobUrl: "https://example.com/book.pdf",
-          bookName: "Test Book",
+          bookName: "Тестовая книга",
           resume: false,
-          pineconeApiKey: "dummy",
-          pineconeIndex: "dummy",
+          pineconeApiKey: "dummy-key",
+          pineconeIndex: "dummy-index",
         },
       });
 
       expect(result.ids).toBeDefined();
       expect(result.ids).toHaveLength(1);
-      expect(result.ids[0]).toBe("evt-abc-123");
-      expect(mockSend).toHaveBeenCalledOnce();
+      expect(result.ids[0]).toBe("evt-abc-123-id");
+      expect(mockInngestSend).toHaveBeenCalledOnce();
     });
 
-    it("handles Inngest send failure", async () => {
-      mockSend.mockRejectedValueOnce(new Error("Inngest unavailable"));
+    it("должен корректно обрабатывать ошибку отправки в Inngest", async () => {
+      mockInngestSend.mockRejectedValueOnce(new Error("Inngest недоступен (Inngest unavailable)"));
 
       await expect(
-        mockSend({
+        mockInngestSend({
           name: "book/vectorize",
-          data: { jobId: "test", bookId: "test" },
+          data: { jobId: "test-id", bookId: "test-id" },
         }),
-      ).rejects.toThrow("Inngest unavailable");
+      ).rejects.toThrow("Inngest недоступен (Inngest unavailable)");
     });
 
-    it("detects when Inngest returns no event IDs", async () => {
-      mockSend.mockResolvedValueOnce({
+    it("должен определять ситуацию, когда Inngest возвращает пустой список идентификаторов", async () => {
+      mockInngestSend.mockResolvedValueOnce({
         ids: [],
       });
 
-      const result = await mockSend({
+      const result = await mockInngestSend({
         name: "book/vectorize",
-        data: { jobId: "test", bookId: "test" },
+        data: { jobId: "test-id", bookId: "test-id" },
       });
 
       expect(result.ids).toHaveLength(0);
