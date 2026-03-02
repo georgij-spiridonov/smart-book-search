@@ -19,11 +19,11 @@ Smart Book Search is a RAG (Retrieval-Augmented Generation) application built wi
 - **Framework**: [Nuxt 4](https://nuxt.com/) (using the new `app/` and `server/` directory structure).
 - **Frontend**: Vue 3, [Nuxt UI v4.5](https://ui.nuxt.com/), Tailwind CSS v4.
 - **Backend**: Nuxt Server (H3), [Nuxt Hub](https://hub.nuxt.com/) (SQLite/Drizzle).
-- **AI/LLM**: [Vercel AI SDK](https://sdk.vercel.ai/) (`ai` package), Google Gemini models (via AI Gateway).
+- **AI/LLM**: [Vercel AI SDK](https://sdk.vercel.ai/) (`ai` package), Google Gemini models (e.g., `gemini-2.5-flash-lite` and `gemini-3-flash` via AI Gateway).
 - **Vector Database**: [Pinecone](https://www.pinecone.io/).
 - **Background Jobs**: [Inngest](https://www.inngest.com/).
 - **File Storage**: Vercel Blob.
-- **Database**: Drizzle ORM with SQLite.
+- **Database**: Drizzle ORM with SQLite (Nuxt Hub) / Turso.
 - **Validation**: Zod.
 
 ---
@@ -75,7 +75,7 @@ When a user asks a question in `server/api/chat.post.ts`:
 
 ### Styling (Tailwind CSS v4)
 - We use **Tailwind CSS v4** with the `@theme` syntax in `app/assets/css/main.css`.
-- Use **Nuxt UI v3** components whenever possible for consistency.
+- Use **Nuxt UI v4.5** components whenever possible for consistency.
 - Prefer semantic colors (e.g., `text-highlighted`, `bg-neutral-50`).
 
 ### Database (Drizzle ORM)
@@ -97,11 +97,13 @@ When a user asks a question in `server/api/chat.post.ts`:
 ## 🔑 Environment Variables
 The following variables are required for full functionality:
 - `BOOKS_BLOB_READ_WRITE_TOKEN`: Vercel Blob access.
-- `AI_GATEWAY_API_KEY`: API key for the AI Gateway (OpenAI/Groq).
+- `AI_GATEWAY_API_KEY`: API key for the AI Gateway.
 - `PINECONE_API_KEY` / `PINECONE_INDEX` / `PINECONE_HOST`: Vector DB config.
 - `KV_REST_API_URL` / `KV_REST_API_TOKEN`: Upstash Redis (Rate limiting).
 - `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`: Inngest background jobs.
 - `ADMIN_PASSWORD`: Simple password for admin login.
+- `NUXT_SESSION_PASSWORD`: Encryption key for sessions (nuxt-auth-utils).
+- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`: Database connection (if using Turso).
 
 ---
 
