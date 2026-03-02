@@ -215,7 +215,7 @@ onMounted(() => {
             @submit="handleSubmit"
           >
             <template #footer>
-              <div class="flex items-center gap-1">
+              <div class="flex items-center gap-1 flex-1 min-w-0">
                 <USelectMenu
                   v-model="selectedBook"
                   :items="books"
@@ -223,7 +223,7 @@ onMounted(() => {
                   :placeholder="t('chat.selectBook')"
                   :search-input="{ placeholder: t('chat.searchBooks') }"
                   :disabled="chat.messages.length > 0"
-                  class="max-w-64"
+                  class="w-full"
                   variant="ghost"
                   size="sm"
                   color="neutral"
