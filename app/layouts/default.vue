@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import * as locales from "@nuxt/ui/locale";
 import { LazyModalConfirm } from "#components";
+import { SpeedInsights } from "@vercel/speed-insights/vue";
 
 const { locale: i18nLocale, locales: i18nLocales, setLocale, t } = useI18n();
 const route = useRoute();
@@ -272,5 +273,7 @@ defineShortcuts({
     >
       <slot />
     </div>
+
+    <SpeedInsights />
   </UDashboardGroup>
 </template>
