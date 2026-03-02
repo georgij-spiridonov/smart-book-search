@@ -9,41 +9,52 @@ import {
 } from "./hashStore";
 import { updateJob } from "./jobStore";
 import { markBookVectorized } from "./bookStore";
-import { log } from "./logger";
+import { logger } from "./logger";
 import { publishEvent } from "./events";
 
+/**
+ * Выполняет загрузку файла (blob) с несколькими попытками при 404 ошибке.
+ * Это необходимо, так как Vercel Blob может быть доступен не мгновенно после загрузки.
+ * 
+ * @param {string} fileUrl URL файла.
+ * @param {number} maxRetries Максимальное количество попыток.
+ * @param {number} retryDelayMs Задержка между попытками в мс.
+ * @returns {Promise<Response>} Ответ fetch.
+ */
 async function fetchBlobWithRetries(
-  url: string,
+  fileUrl: string,
   maxRetries = 10,
-  delayMs = 2000,
+  retryDelayMs = 2000,
 ): Promise<Response> {
-  let response = await fetch(url);
-  let retries = 0;
-  while (!response.ok && response.status === 404 && retries < maxRetries) {
-    log.warn("inngest", "Blob not found on GET, retrying...", {
-      url,
-      attempt: retries + 1,
+  let fetchResponse = await fetch(fileUrl);
+  let currentRetry = 0;
+
+  while (!fetchResponse.ok && fetchResponse.status === 404 && currentRetry < maxRetries) {
+    logger.warn("inngest", "Blob not found on GET, retrying...", {
+      url: fileUrl,
+      attempt: currentRetry + 1,
     });
-    await new Promise((r) => setTimeout(r, delayMs));
-    response = await fetch(url);
-    retries++;
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    fetchResponse = await fetch(fileUrl);
+    currentRetry++;
   }
-  return response;
+  return fetchResponse;
 }
 
-// Create Inngest client
-const isDev = process.env.NODE_ENV !== "production";
+// Создание клиента Inngest
+const isDevelopment = process.env.NODE_ENV !== "production";
 export const inngest = new Inngest({
   id: "smart-book-search",
-  isDev,
-  eventKey: isDev ? "test" : process.env.INNGEST_EVENT_KEY,
+  isDev: isDevelopment,
+  eventKey: isDevelopment ? "test" : process.env.INNGEST_EVENT_KEY,
 });
 
-const PINECONE_BATCH_SIZE = 96;
+/** Размер порции данных для вставки в Pinecone */
+const PINECONE_UPSERT_BATCH_SIZE = 96;
 
 /**
- * Inngest function for book vectorization.
- * Breaks the long-running process into steps to avoid Vercel timeouts.
+ * Функция Inngest для векторизации книги.
+ * Разбивает длительный процесс на шаги (steps), чтобы избежать таймаутов Vercel.
  */
 export const vectorizeBook = inngest.createFunction(
   { id: "vectorize-book", name: "Vectorize Book" },
@@ -62,8 +73,9 @@ export const vectorizeBook = inngest.createFunction(
     } = event.data;
 
     try {
+      // Начальный шаг: обновление статуса задачи
       await step.run("update-job-status", async () => {
-        log.info("inngest", "Starting vectorize-book step function", {
+        logger.info("inngest", "Starting vectorize-book step function", {
           jobId,
           bookId,
           resume,
@@ -79,54 +91,57 @@ export const vectorizeBook = inngest.createFunction(
         }
       });
 
-      // 1. Wait for blob availability
+      // 1. Ожидание доступности файла (blob)
       await step.run("wait-for-blob", async () => {
-        const maxRetries = 50;
-        let retries = 0;
+        const maxCheckAttempts = 50;
+        let attemptCounter = 0;
 
-        while (retries < maxRetries) {
+        while (attemptCounter < maxCheckAttempts) {
           try {
-            const response = await fetch(blobUrl, { method: "HEAD" });
-            if (response.ok) return true;
+            const headResponse = await fetch(blobUrl, { method: "HEAD" });
+            if (headResponse.ok) return true;
           } catch {
-            // ignore
+            // Игнорируем сетевые ошибки при проверке
           }
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          retries++;
+          attemptCounter++;
         }
         throw new Error("Blob did not become available.");
       });
 
-      // 2. Fetch and hash check
+      // 2. Загрузка файла и проверка хэша
       const { fileHash, filename } = await step.run(
         "fetch-and-hash",
         async () => {
-          const response = await fetchBlobWithRetries(blobUrl);
-          if (!response.ok) throw new Error("Failed to download file.");
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const fileHash = getFileHash(buffer);
-          const filename = blobUrl.split("/").pop() || "unknown.txt";
-          return { fileHash, filename };
+          const downloadResponse = await fetchBlobWithRetries(blobUrl);
+          if (!downloadResponse.ok) throw new Error("Failed to download file.");
+          
+          const fileBuffer = Buffer.from(await downloadResponse.arrayBuffer());
+          const generatedHash = getFileHash(fileBuffer);
+          const extractedFilename = blobUrl.split("/").pop() || "unknown.txt";
+          
+          return { fileHash: generatedHash, filename: extractedFilename };
         },
       );
 
-      const alreadyVectorized = await step.run(
+      // Проверка, не был ли этот файл уже векторизован
+      const isAlreadyVectorized = await step.run(
         "check-already-vectorized",
         async () => {
           if (!resume && (await isFileVectorized(fileHash))) {
-            const result = {
+            const emptyResult = {
               totalPages: 0,
               totalChunks: 0,
               skipped: 0,
               newVectors: 0,
             };
-            await updateJob(jobId, { status: "completed", result });
+            await updateJob(jobId, { status: "completed", result: emptyResult });
+            
             if (userId) {
               await publishEvent(userId, "job:updated", {
                 jobId,
                 status: "completed",
-                result,
+                result: emptyResult,
               });
             }
             return true;
@@ -135,93 +150,103 @@ export const vectorizeBook = inngest.createFunction(
         },
       );
 
-      if (alreadyVectorized) return;
+      if (isAlreadyVectorized) return;
 
-      // 3. Extract text
-      const pages = await step.run("extract-text", async () => {
-        const response = await fetchBlobWithRetries(blobUrl);
-        if (!response.ok) throw new Error("Failed to download file.");
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const extractedPages = await extractText(buffer, filename);
-        if (!extractedPages.length) throw new Error("No text extracted.");
-        return extractedPages;
+      // 3. Извлечение текста из файла
+      const extractedPages = await step.run("extract-text", async () => {
+        const downloadResponse = await fetchBlobWithRetries(blobUrl);
+        if (!downloadResponse.ok) throw new Error("Failed to download file.");
+        
+        const fileBuffer = Buffer.from(await downloadResponse.arrayBuffer());
+        const pages = await extractText(fileBuffer, filename);
+        
+        if (!pages.length) throw new Error("No text extracted.");
+        return pages;
       });
 
-      const totalChunks = await step.run("calculate-total-chunks", async () => {
-        const allChunks = splitPages(pages);
+      // Подсчет общего количества фрагментов (чанков)
+      const totalChunksCount = await step.run("calculate-total-chunks", async () => {
+        const allChunks = splitPages(extractedPages);
         const count = allChunks.length;
-        const progress = {
+        const initialProgress = {
           currentPage: 0,
-          totalPages: pages.length,
+          totalPages: extractedPages.length,
           chunksProcessed: 0,
           totalChunks: count,
         };
-        await updateJob(jobId, { progress });
+        
+        await updateJob(jobId, { progress: initialProgress });
+        
         if (userId) {
           await publishEvent(userId, "job:updated", {
             jobId,
             status: "processing",
-            progress,
+            progress: initialProgress,
           });
         }
         return count;
       });
 
-      // 4. Process in batches
-      // Dynamically adjust batch size: for small files process 1 by 1, for large up to 10
-      const PAGE_BATCH_SIZE = Math.max(
+      // 4. Поэтапная обработка страниц
+      /** 
+       * Динамический размер пачки страниц: для маленьких файлов по 1, 
+       * для больших — до 10 страниц за шаг Inngest.
+       */
+      const PAGES_PER_BATCH = Math.max(
         1,
-        Math.min(10, Math.floor(pages.length / 10)),
+        Math.min(10, Math.floor(extractedPages.length / 10)),
       );
-      let chunksProcessed = 0;
-      let skipped = 0;
-      let newVectorsCount = 0;
-      let globalChunkOffset = 0;
+      
+      let totalChunksProcessed = 0;
+      let totalSkippedChunks = 0;
+      let totalNewVectors = 0;
+      let globalChunkIndexOffset = 0;
 
-      const pc = new Pinecone({ apiKey: pineconeApiKey });
-      const index = pc.index(pineconeIndex);
+      const pineconeClient = new Pinecone({ apiKey: pineconeApiKey });
+      const vectorIndex = pineconeClient.index(pineconeIndex);
 
-      // Get existing IDs if resume
-      let existingIds = new Set<string>();
+      // Получаем список уже существующих ID чанков, если это продолжение (resume)
+      let existingVectorIds = new Set<string>();
       if (resume) {
-        const idsArray = await step.run("get-existing-ids", async () => {
-          const allChunks = splitPages(pages);
-          const ids = await getExistingChunkIds(index, bookId, allChunks);
+        const existingIdsArray = await step.run("get-existing-ids", async () => {
+          const allChunks = splitPages(extractedPages);
+          const ids = await getExistingVectorIds(vectorIndex, bookId, allChunks);
           return Array.from(ids);
         });
-        existingIds = new Set(idsArray);
+        existingVectorIds = new Set(existingIdsArray);
       }
 
-      for (let i = 0; i < pages.length; i += PAGE_BATCH_SIZE) {
-        const pageBatch = pages.slice(i, i + PAGE_BATCH_SIZE);
+      // Основной цикл обработки пачек страниц
+      for (let i = 0; i < extractedPages.length; i += PAGES_PER_BATCH) {
+        const currentPageBatch = extractedPages.slice(i, i + PAGES_PER_BATCH);
 
-        const result = await step.run(
-          `process-pages-${i}-${i + PAGE_BATCH_SIZE}`,
+        const batchProcessingResult = await step.run(
+          `process-pages-${i}-${i + PAGES_PER_BATCH}`,
           async () => {
-            let batchNewVectors = 0;
-            let batchSkipped = 0;
-            let batchChunksProcessed = 0;
-            let localOffset = globalChunkOffset;
+            let batchNewVectorsCount = 0;
+            let batchSkippedCount = 0;
+            let batchProcessedCount = 0;
+            let currentLocalOffset = globalChunkIndexOffset;
 
-            for (const page of pageBatch) {
-              const pageChunks = splitPages([page]).map((c) => ({
-                ...c,
-                chunkIndex: localOffset + c.chunkIndex,
+            for (const pageData of currentPageBatch) {
+              // Разбиваем страницу на фрагменты
+              const pageChunks = splitPages([pageData]).map((chunk) => ({
+                ...chunk,
+                chunkIndex: currentLocalOffset + chunk.chunkIndex,
               }));
-              localOffset += pageChunks.length;
+              currentLocalOffset += pageChunks.length;
 
+              // Фильтруем те, что уже есть в базе
+              const bookIdBase64 = Buffer.from(bookId).toString("base64url");
               const newChunks = pageChunks.filter(
-                (c) =>
-                  !existingIds.has(
-                    `${Buffer.from(bookId).toString("base64url")}-chunk-${c.chunkIndex}`,
-                  ),
+                (c) => !existingVectorIds.has(`${bookIdBase64}-chunk-${c.chunkIndex}`),
               );
-              batchSkipped += pageChunks.length - newChunks.length;
+              batchSkippedCount += pageChunks.length - newChunks.length;
 
               if (newChunks.length > 0) {
-                const records = newChunks.map((chunk) => ({
-                  id: `${Buffer.from(bookId).toString("base64url")}-chunk-${chunk.chunkIndex}`,
-                  text: chunk.text.slice(0, 1000),
+                const vectorRecords = newChunks.map((chunk) => ({
+                  id: `${bookIdBase64}-chunk-${chunk.chunkIndex}`,
+                  text: chunk.text.slice(0, 1000), // Ограничиваем длину для безопасности
                   bookId,
                   bookName,
                   author: author || "Unknown",
@@ -231,75 +256,79 @@ export const vectorizeBook = inngest.createFunction(
                   chapterTitle: chunk.title || "",
                 }));
 
+                // Отправляем в Pinecone порциями
                 const upsertPromises = [];
-                for (let j = 0; j < records.length; j += PINECONE_BATCH_SIZE) {
+                for (let j = 0; j < vectorRecords.length; j += PINECONE_UPSERT_BATCH_SIZE) {
                   upsertPromises.push(
-                    index.upsertRecords({
-                      records: records.slice(j, j + PINECONE_BATCH_SIZE),
+                    vectorIndex.upsertRecords({
+                      records: vectorRecords.slice(j, j + PINECONE_UPSERT_BATCH_SIZE),
                     }),
                   );
                 }
                 await Promise.all(upsertPromises);
-                batchNewVectors += records.length;
+                batchNewVectorsCount += vectorRecords.length;
               }
-              batchChunksProcessed += pageChunks.length;
+              batchProcessedCount += pageChunks.length;
             }
 
             return {
-              batchNewVectors,
-              batchSkipped,
-              batchChunksProcessed,
-              nextOffset: localOffset,
+              newVectors: batchNewVectorsCount,
+              skipped: batchSkippedCount,
+              processed: batchProcessedCount,
+              nextOffset: currentLocalOffset,
             };
           },
         );
 
-        newVectorsCount += result.batchNewVectors;
-        skipped += result.batchSkipped;
-        chunksProcessed += result.batchChunksProcessed;
-        globalChunkOffset = result.nextOffset;
+        totalNewVectors += batchProcessingResult.newVectors;
+        totalSkippedChunks += batchProcessingResult.skipped;
+        totalChunksProcessed += batchProcessingResult.processed;
+        globalChunkIndexOffset = batchProcessingResult.nextOffset;
 
+        // Обновляем прогресс выполнения после каждой пачки
         await step.run(`update-progress-${i}`, async () => {
-          const progress = {
-            currentPage: Math.min(i + PAGE_BATCH_SIZE, pages.length),
-            totalPages: pages.length,
-            chunksProcessed,
-            totalChunks,
+          const currentProgress = {
+            currentPage: Math.min(i + PAGES_PER_BATCH, extractedPages.length),
+            totalPages: extractedPages.length,
+            chunksProcessed: totalChunksProcessed,
+            totalChunks: totalChunksCount,
           };
-          await updateJob(jobId, { progress });
+          await updateJob(jobId, { progress: currentProgress });
+          
           if (userId) {
             await publishEvent(userId, "job:updated", {
               jobId,
               status: "processing",
-              progress,
+              progress: currentProgress,
             });
           }
         });
       }
 
-      // 5. Finalize
+      // 5. Завершение работы
       await step.run("finalize-job", async () => {
+        // Помечаем файл и книгу как векторизованные в Redis
         await markFileAsVectorized(fileHash);
         try {
           await markBookVectorized(bookId);
         } catch {
-          // ignore
+          // Игнорируем ошибки обновления статуса книги, если запись не найдена
         }
 
-        const result = {
-          totalPages: pages.length,
-          totalChunks,
-          skipped,
-          newVectors: newVectorsCount,
+        const finalExecutionResult = {
+          totalPages: extractedPages.length,
+          totalChunks: totalChunksCount,
+          skipped: totalSkippedChunks,
+          newVectors: totalNewVectors,
         };
 
-        await updateJob(jobId, { status: "completed", result });
+        await updateJob(jobId, { status: "completed", result: finalExecutionResult });
 
         if (userId) {
           await publishEvent(userId, "job:updated", {
             jobId,
             status: "completed",
-            result,
+            result: finalExecutionResult,
           });
           await publishEvent(userId, "book:updated", {
             bookId,
@@ -308,15 +337,17 @@ export const vectorizeBook = inngest.createFunction(
         }
       });
     } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      // Обработка критических ошибок
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      
       await step.run("mark-failed", async () => {
-        await updateJob(jobId, { status: "failed", error: errorMessage });
+        await updateJob(jobId, { status: "failed", error: errorMsg });
+        
         if (userId) {
           await publishEvent(userId, "job:updated", {
             jobId,
             status: "failed",
-            error: errorMessage,
+            error: errorMsg,
           });
         }
       });
@@ -325,21 +356,31 @@ export const vectorizeBook = inngest.createFunction(
   },
 );
 
-async function getExistingChunkIds(
-  index: ReturnType<Pinecone["index"]>,
+/**
+ * Получает список ID чанков, которые уже существуют в индексе Pinecone.
+ */
+async function getExistingVectorIds(
+  pineconeIndex: ReturnType<Pinecone["index"]>,
   bookId: string,
-  chunks: TextChunk[],
+  allChunks: TextChunk[],
 ): Promise<Set<string>> {
-  const candidateIds = chunks.map(
-    (c) => `${Buffer.from(bookId).toString("base64url")}-chunk-${c.chunkIndex}`,
+  const bookIdBase64 = Buffer.from(bookId).toString("base64url");
+  const candidateIdsList = allChunks.map(
+    (chunk) => `${bookIdBase64}-chunk-${chunk.chunkIndex}`,
   );
-  const existing = new Set<string>();
-  for (let i = 0; i < candidateIds.length; i += 1000) {
-    const batch = candidateIds.slice(i, i + 1000);
-    const fetched = await index.fetch({ ids: batch }).catch(() => ({ records: {} }));
-    if (fetched && fetched.records) {
-      for (const id of Object.keys(fetched.records)) existing.add(id);
+  
+  const foundIdsSet = new Set<string>();
+  
+  // Проверяем наличие порциями по 1000 ID
+  for (let i = 0; i < candidateIdsList.length; i += 1000) {
+    const currentBatch = candidateIdsList.slice(i, i + 1000);
+    const fetchResponse = await pineconeIndex.fetch({ ids: currentBatch }).catch(() => ({ records: {} }));
+    
+    if (fetchResponse && fetchResponse.records) {
+      for (const id of Object.keys(fetchResponse.records)) {
+        foundIdsSet.add(id);
+      }
     }
   }
-  return existing;
+  return foundIdsSet;
 }

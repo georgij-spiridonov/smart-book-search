@@ -6,7 +6,7 @@ import {
 import { searchBookKnowledge, generateSearchQueries } from "../utils/retrieval";
 import { streamAnswer } from "../utils/generateAnswer";
 import { CHAT_CONFIG, ChatRequestSchema } from "../utils/chatConfig";
-import { log } from "../utils/logger";
+import { logger } from "../utils/logger";
 import { getBook } from "../utils/bookStore";
 import { db, schema } from "hub:db";
 import { eq, asc } from "drizzle-orm";
@@ -16,122 +16,114 @@ import type { ChatMessage } from "../utils/chatConfig";
 /**
  * POST /api/chat
  *
- * Main book chat pipeline endpoint (streaming).
+ * Основной эндпоинт конвейера книжного чата (потоковый).
  *
- * Receives a user query (with book IDs and optional chat history),
- * retrieves relevant chunks from the vector store, then streams
- * the answer back to the client while sending metadata via custom
- * data parts.
- *
- * Response format (SSE / UI Message Stream):
- *   1. data-meta   — { bookIds, hasContext, notVectorized }
- *   2. data-chunks — array of retrieved text fragments
- *   3. text-start / text-delta / text-end — streamed LLM answer
+ * Получает запрос пользователя (с ID книг и опциональной историей чата),
+ * извлекает релевантные фрагменты из векторного хранилища, затем транслирует
+ * ответ клиенту, одновременно отправляя метаданные через пользовательские части данных.
  */
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
   const userId = session.user?.id || session.id;
 
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+    throw createError({ statusCode: 401, message: "Не авторизован" });
   }
 
-  const body = await readBody(event);
+  const requestBody = await readBody(event);
 
-  // --- Input validation with Zod ---
-  const validation = ChatRequestSchema.safeParse(body);
+  // Валидация входных данных с помощью Zod
+  const validationResult = ChatRequestSchema.safeParse(requestBody);
 
-  if (!validation.success) {
-    const errorMsg =
-      validation.error.issues[0]?.message || "Invalid request body";
-    log.error("chat-api", "Chat request validation failed", {
-      error: errorMsg,
-      issues: validation.error.issues,
+  if (!validationResult.success) {
+    const errorMessage =
+      validationResult.error.issues[0]?.message || "Неверное тело запроса";
+    logger.error("chat-api", "Chat request validation failed", {
+      error: errorMessage,
+      issues: validationResult.error.issues,
     });
     throw createError({
       statusCode: 400,
-      statusMessage: "Bad Request",
-      message: errorMsg,
+      message: errorMessage,
     });
   }
 
-  const { query, bookIds, chatId } = validation.data;
+  const { query: userQuery, bookIds, chatId } = validationResult.data;
 
-  // Fetch history from DB instead of trusting the client payload
-  let history: ChatMessage[] = [];
+  // Извлекаем историю из БД вместо доверия полезной нагрузке клиента
+  let chatHistory: ChatMessage[] = [];
   if (chatId) {
     const existingChat = await db.query.chats.findFirst({
       where: eq(schema.chats.id, chatId),
     });
 
     if (!existingChat) {
-      throw createError({ statusCode: 404, statusMessage: "Chat not found" });
+      throw createError({ statusCode: 404, message: "Чат не найден" });
     }
 
     if (!session.user?.isAdmin && existingChat.userId !== userId) {
-      throw createError({ statusCode: 403, statusMessage: "Forbidden" });
+      throw createError({ statusCode: 403, message: "Отказано в доступе" });
     }
 
-    const dbMessages = await db.query.messages.findMany({
+    const databaseMessages = await db.query.messages.findMany({
       where: () => eq(schema.messages.chatId, chatId),
       orderBy: () => [asc(schema.messages.createdAt)],
     });
 
-    history = dbMessages.map((msg) => {
-      let content = "";
-      if (Array.isArray(msg.parts)) {
-        content = msg.parts
+    chatHistory = databaseMessages.map((message) => {
+      let messageContent = "";
+      if (Array.isArray(message.parts)) {
+        messageContent = message.parts
           .filter(
-            (p: unknown): p is { text: string } =>
-              p !== null &&
-              typeof p === "object" &&
-              "text" in p &&
-              typeof p.text === "string",
+            (part: unknown): part is { text: string } =>
+              part !== null &&
+              typeof part === "object" &&
+              "text" in part &&
+              typeof part.text === "string",
           )
-          .map((p) => p.text)
+          .map((part) => part.text)
           .join("");
       }
       return {
-        role: msg.role as "user" | "assistant",
-        content,
+        role: message.role as "user" | "assistant",
+        content: messageContent,
       };
     });
   }
 
-  log.info("chat-api", "Processing chat query", {
-    queryLength: query.length,
+  logger.info("chat-api", "Processing chat query", {
+    queryLength: userQuery.length,
     bookCount: bookIds?.length || 0,
-    historyLength: history.length,
+    historyLength: chatHistory.length,
   });
 
-  // --- Verify that all requested books exist and are vectorized ---
-  const books = await Promise.all(bookIds.map((id) => getBook(id)));
+  // Убеждаемся, что все запрошенные книги существуют и векторизованы
+  const requestedBooks = await Promise.all(bookIds.map((id) => getBook(id)));
 
-  const missingIndex = books.findIndex((b) => b === null);
-  if (missingIndex !== -1) {
-    const missingId = bookIds[missingIndex];
-    log.warn("chat-api", "Requested book not found", { missingId });
+  const missingBookIndex = requestedBooks.findIndex((book) => book === null);
+  if (missingBookIndex !== -1) {
+    const missingBookId = bookIds[missingBookIndex];
+    logger.warn("chat-api", "Requested book not found", { missingBookId });
     throw createError({
       statusCode: 404,
-      statusMessage: "Not Found",
-      message: `Book with ID '${missingId}' not found.`,
+      message: `Книга с ID '${missingBookId}' не найдена.`,
     });
   }
 
-  // Collect IDs of books that haven't been vectorized yet
-  const notVectorized = books
-    .filter((b) => b !== null && !b.vectorized)
-    .map((b) => b!.id);
+  // Собираем ID книг, которые еще не были векторизованы
+  const unvectorizedBookIds = requestedBooks
+    .filter((book) => book !== null && !book.vectorized)
+    .map((book) => book!.id);
 
-  if (notVectorized.length > 0) {
-    log.warn("chat-api", "Some requested books are not vectorized", {
-      notVectorized,
+  if (unvectorizedBookIds.length > 0) {
+    logger.warn("chat-api", "Some requested books are not vectorized", {
+      unvectorizedBookIds,
     });
   }
 
-  // If ALL requested books are un-vectorized, return early — no data to search
-  if (notVectorized.length === bookIds.length) {
-    log.info(
+  // Если ВСЕ запрошенные книги не векторизованы, возвращаемся досрочно — нет данных для поиска
+  if (unvectorizedBookIds.length === bookIds.length) {
+    logger.info(
       "chat-api",
       "All requested books are un-vectorized, skipping pipeline",
       { bookIds },
@@ -145,7 +137,7 @@ export default defineEventHandler(async (event) => {
             data: {
               bookIds,
               hasContext: false,
-              notVectorized,
+              notVectorized: unvectorizedBookIds,
             },
           });
 
@@ -158,43 +150,43 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // --- Retrieval & Answer Pipeline ---
-  const currentChatId = chatId || crypto.randomUUID();
+  // Конвейер поиска и ответа
+  const resolvedChatId = chatId || crypto.randomUUID();
 
-  // If new chat, save to database
+  // Если чат новый, сохраняем в базу данных
   if (!chatId) {
     await db.insert(schema.chats).values({
-      id: currentChatId,
+      id: resolvedChatId,
       title: "",
       userId: userId,
       bookIds,
     });
 
-    // Notify client about new chat immediately
+    // Немедленно уведомляем клиента о новом чате
     await publishEvent(userId, "chat:updated", {
-      chatId: currentChatId,
+      chatId: resolvedChatId,
       status: "created",
     });
   }
 
-  // Save user's question to the database
+  // Сохраняем вопрос пользователя в базу данных
   await db.insert(schema.messages).values({
-    chatId: currentChatId,
+    chatId: resolvedChatId,
     role: "user",
-    parts: [{ type: "text", text: query }],
+    parts: [{ type: "text", text: userQuery }],
   });
 
   return createUIMessageStreamResponse({
     stream: createUIMessageStream({
       async execute({ writer }) {
-        // 1. Send initial metadata
+        // Отправляем начальные метаданные
         writer.write({
           type: "data-meta",
-          data: { bookIds, hasContext: true, notVectorized },
+          data: { bookIds, hasContext: true, notVectorized: unvectorizedBookIds },
         });
 
         try {
-          // --- Step 1: Query Generation ---
+          // Генерация запросов
           writer.write({
             type: "data-step",
             data: {
@@ -203,26 +195,26 @@ export default defineEventHandler(async (event) => {
             },
           });
 
-          const bookInfo = books
-            .map((b) => (b ? `${b.title}${b.author ? ` (${b.author})` : ""}` : ""))
+          const bookInformation = requestedBooks
+            .map((book) => (book ? `${book.title}${book.author ? ` (${book.author})` : ""}` : ""))
             .filter(Boolean)
             .join(", ");
 
-          const searchQueries = await generateSearchQueries(
-            query,
-            bookInfo,
-            history,
+          const generatedSearchQueries = await generateSearchQueries(
+            userQuery,
+            bookInformation,
+            chatHistory,
           );
 
           writer.write({
             type: "data-step",
             data: {
-              text: `✅ Сгенерировано ${searchQueries.length} поисковых запроса.\n`,
+              text: `✅ Сгенерировано ${generatedSearchQueries.length} поисковых запроса.\n`,
               state: "active",
             },
           });
 
-          // --- Step 2 & 3: Search & Reranking ---
+          // Поиск и переранжирование
           writer.write({
             type: "data-step",
             data: {
@@ -231,13 +223,13 @@ export default defineEventHandler(async (event) => {
             },
           });
 
-          const chunks = await searchBookKnowledge(
-            searchQueries,
+          const foundChunks = await searchBookKnowledge(
+            generatedSearchQueries,
             bookIds,
             CHAT_CONFIG.retrievalLimit,
           );
 
-          if (chunks.length === 0) {
+          if (foundChunks.length === 0) {
             writer.write({
               type: "data-step",
               data: {
@@ -249,19 +241,18 @@ export default defineEventHandler(async (event) => {
               type: "data-chunks",
               data: [],
             });
-            // We'll let streamAnswer handle the "no context" case as it already has logic for it
           } else {
             writer.write({
               type: "data-step",
               data: {
-                text: `📚 Найдено ${chunks.length} релевантных фрагмента(ов). Формирую ответ...\n`,
+                text: `📚 Найдено ${foundChunks.length} релевантных фрагмента(ов). Формирую ответ...\n`,
                 state: "done",
               },
             });
             writer.write({
               type: "data-chunks",
-              data: chunks.map((chunk, i) => ({
-                index: i + 1,
+              data: foundChunks.map((chunk, index) => ({
+                index: index + 1,
                 text: chunk.text,
                 pageNumber: chunk.pageNumber,
                 chapterTitle: chunk.chapterTitle,
@@ -271,56 +262,56 @@ export default defineEventHandler(async (event) => {
             });
           }
 
-          // --- Step 4: Answer Generation ---
-          const result = streamAnswer(query, chunks, history);
+          // Генерация ответа
+          const responseStreamResult = streamAnswer(userQuery, foundChunks, chatHistory);
           writer.merge(
-            result.toUIMessageStream({
+            responseStreamResult.toUIMessageStream({
               sendStart: false,
               sendReasoning: false,
             }),
           );
 
-          // Generate a title for the chat if it's new
-          if (history.length === 0) {
+          // Генерируем заголовок для чата, если он новый
+          if (chatHistory.length === 0) {
             event.waitUntil(
               generateText({
                 model: CHAT_CONFIG.answerModel,
                 system:
                   "You are a title generator for a chat. Generate a short title based on the user's message. Less than 30 characters. No punctuation, no quotes.",
-                prompt: query,
+                prompt: userQuery,
               })
-                .then(async ({ text: title }) => {
-                  log.info("chat-api", "Generated chat title", {
-                    title,
-                    chatId: currentChatId,
+                .then(async ({ text: generatedTitle }) => {
+                  logger.info("chat-api", "Generated chat title", {
+                    generatedTitle,
+                    chatId: resolvedChatId,
                   });
                   await db
                     .update(schema.chats)
-                    .set({ title })
-                    .where(eq(schema.chats.id, currentChatId))
+                    .set({ title: generatedTitle })
+                    .where(eq(schema.chats.id, resolvedChatId))
                     .execute();
 
                   await publishEvent(userId, "chat:updated", {
-                    chatId: currentChatId,
-                    title,
+                    chatId: resolvedChatId,
+                    title: generatedTitle,
                   });
                 })
                 .catch((error) => {
-                  log.error("chat-api", "Title generation failed", {
+                  logger.error("chat-api", "Title generation failed", {
                     error: error instanceof Error ? error.message : String(error),
                   });
                 }),
             );
           }
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : "Unknown error in pipeline";
-          log.error("chat-api", "Pipeline failed", { error: message });
+          const errorMessage =
+            error instanceof Error ? error.message : "Неизвестная ошибка в конвейере";
+          logger.error("chat-api", "Pipeline failed", { error: errorMessage });
 
           writer.write({
             type: "data-step",
             data: {
-              text: `⚠️ Произошла ошибка: ${message}\n`,
+              text: `⚠️ Произошла ошибка: ${errorMessage}\n`,
               state: "done",
             },
           });
@@ -334,20 +325,19 @@ export default defineEventHandler(async (event) => {
         }
       },
       onFinish: async ({ messages }) => {
-        // Find the assistant message in the output payload and save it
-        for (const message of messages) {
-          if (message.role === "assistant") {
+        // Находим сообщение ассистента в полезной нагрузке вывода и сохраняем его
+        for (const streamMessage of messages) {
+          if (streamMessage.role === "assistant") {
             await db.insert(schema.messages).values({
-              chatId: currentChatId,
+              chatId: resolvedChatId,
               role: "assistant",
-              parts: message.parts,
+              parts: streamMessage.parts,
             });
           }
         }
       },
       onError(error) {
-        // Prevent raw error details from leaking to the client
-        log.error("chat-api", "Stream-level error", {
+        logger.error("chat-api", "Stream-level error", {
           error: error instanceof Error ? error.message : String(error),
         });
         return "Произошла ошибка при генерации ответа. Попробуйте ещё раз.";

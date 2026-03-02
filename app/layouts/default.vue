@@ -1,139 +1,192 @@
 <script setup lang="ts">
 import * as locales from "@nuxt/ui/locale";
 import { LazyModalConfirm } from "#components";
-import { SpeedInsights } from "@vercel/speed-insights/vue";
+import { SpeedInsights } from "@vercel/speed-insights/nuxt";
 
-const { locale: i18nLocale, locales: i18nLocales, setLocale, t } = useI18n();
+/**
+ * Основной макет приложения.
+ * Управляет боковой панелью, списком чатов, навигацией и локализацией.
+ */
+
+interface ChatItem {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+interface NavItem {
+  id?: string;
+  label: string;
+  to?: string;
+  icon?: string;
+  type?: "label";
+  slot?: "chat";
+  class?: string;
+  createdAt?: string;
+}
+
+const { locale: activeLocale, locales: supportedLocales, setLocale, t } = useI18n();
 const route = useRoute();
 const toast = useToast();
 const overlay = useOverlay();
 
-const open = ref(false);
+const isSidebarOpen = ref(false);
 
-const currentLocale = computed({
-  get: () => i18nLocale.value,
-  set: (val) => {
-    setLocale(val);
+// Модель для переключения языка в UI
+const localeModel = computed({
+  get: () => activeLocale.value,
+  set: (value) => {
+    setLocale(value);
   },
 });
 
+// Список доступных локалей, адаптированный для компонента выбора
 const availableLocales = computed(() => {
-  return i18nLocales.value.map((l) => locales[l.code as keyof typeof locales]);
+  return supportedLocales.value.map((l) => locales[l.code as keyof typeof locales]);
 });
 
-const deleteModal = overlay.create(LazyModalConfirm, {
+// Модальное окно подтверждения удаления чата
+const confirmDeleteModal = overlay.create(LazyModalConfirm, {
   props: {
-    title: t("chat.deleteTitle"),
-    description: t("chat.deleteDescription"),
+    title: t("chat.deleteChatTitle"),
+    description: t("chat.deleteChatConfirm"),
   },
 });
 
-const { data: chats, refresh: refreshChats } = await useFetch("/api/chats", {
-  key: "chats",
-  transform: (data: Array<{ id: string; title: string; createdAt: string }>) =>
+// Запрос списка чатов с сервера
+const { data: chatList, refresh: refreshChats } = await useFetch("/api/chats", {
+  key: "chat-list",
+  transform: (data: ChatItem[]) =>
     data.map((chat) => ({
       id: chat.id,
-      label: chat.title || t("chat.untitled"),
+      label: chat.title || t("chat.untitledChat"),
       to: `/chat/${chat.id}`,
       icon: "i-lucide-message-circle",
       createdAt: chat.createdAt,
     })),
 });
 
-// Adaptive polling for chats (fallback for SSE)
-const pollingActive = ref(false);
-let timer: NodeJS.Timeout | null = null;
+// Резервный механизм опроса при отсутствии SSE
+const isPollingActive = ref(false);
+let pollingIntervalId: ReturnType<typeof setInterval> | null = null;
 
-function startPolling(interval: number) {
-  if (timer) clearInterval(timer);
-  timer = setInterval(() => {
+/**
+ * Настройка интервального обновления списка чатов.
+ * @param intervalMs Интервал обновления в миллисекундах.
+ */
+function setupPolling(intervalMs: number) {
+  if (!import.meta.client) return;
+
+  if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
+  }
+
+  pollingIntervalId = setInterval(() => {
+    // Обновляем список только если вкладка активна, чтобы экономить ресурсы
     if (document.visibilityState === "visible") {
       refreshChats();
     }
-  }, interval);
+  }, intervalMs);
 }
 
-// Watch for chats that need title updates
+// Отслеживание необходимости частого обновления (например, пока ИИ генерирует заголовок)
 watch(
-  () => chats.value,
+  () => chatList.value,
   (newChats) => {
-    const hasUntitled =
-      newChats?.some((chat) => chat.label === t("chat.untitled")) || false;
+    const hasPendingTitles =
+      newChats?.some((chat) => chat.label === t("chat.untitledChat")) || false;
 
-    if (hasUntitled) {
-      startPolling(5000); // 5s when waiting for title
-      pollingActive.value = true;
-    } else if (pollingActive.value) {
-      startPolling(60000); // 60s for background check
-      pollingActive.value = false;
+    if (hasPendingTitles) {
+      // Опрашиваем чаще (5с), если есть чаты без заголовка
+      setupPolling(5000);
+      isPollingActive.value = true;
+    } else if (isPollingActive.value) {
+      // Возвращаемся к стандартному интервалу (60с)
+      setupPolling(60000);
+      isPollingActive.value = false;
     }
   },
   { immediate: true, deep: true },
 );
 
 onMounted(() => {
-  if (!pollingActive.value) {
-    startPolling(60000);
+  // Запуск фонового обновления по умолчанию
+  if (!isPollingActive.value) {
+    setupPolling(60000);
   }
 });
 
 onUnmounted(() => {
-  if (timer) clearInterval(timer);
+  if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
+  }
 });
 
-const { groups } = useChats(chats);
+const { groups: chatGroups } = useChats(chatList);
 useEvents();
 
-const navigationItems = computed(() => [
+// Элементы верхней навигации
+const topNavItems = computed(() => [
   {
-    label: t("library.title"),
+    label: t("library.mainTitle"),
     to: "/library",
     icon: "i-lucide-library",
   },
 ]);
 
-const items = computed(() =>
-  groups.value?.flatMap((group) => {
-    return [
-      {
-        label: group.label,
-        type: "label" as const,
-      },
-      ...group.items.map((item) => ({
-        ...item,
-        slot: "chat" as const,
-        class: item.label === t("chat.untitled") ? "text-muted" : "",
-      })),
-    ];
-  }),
+// Плоский список элементов для меню чатов с разделителями
+const chatMenuItems = computed<NavItem[]>(() =>
+  (chatGroups.value || []).flatMap((group) => [
+    {
+      label: group.label,
+      type: "label" as const,
+    },
+    ...group.items.map((item) => ({
+      ...item,
+      slot: "chat" as const,
+      class: item.label === t("chat.untitledChat") ? "text-muted" : "",
+    })),
+  ]),
 );
 
-async function deleteChat(id: string) {
-  const instance = deleteModal.open();
-  const result = await instance.result;
-  if (!result) {
-    return;
-  }
+/**
+ * Обработка удаления чата с подтверждением.
+ * @param chatId Идентификатор чата для удаления.
+ */
+async function handleDeleteChat(chatId: string) {
+  const modal = confirmDeleteModal.open();
+  const confirmed = await modal.result;
+  
+  if (!confirmed) return;
 
-  await $fetch(`/api/chats/${id}`, { method: "DELETE" });
+  try {
+    await $fetch(`/api/chats/${chatId}`, { method: "DELETE" });
 
-  toast.add({
-    title: t("chat.chatDeleted"),
-    description: t("chat.chatDeletedDescription"),
-    icon: "i-lucide-trash",
-  });
+    toast.add({
+      title: t("chat.chatDeletedSuccess"),
+      description: t("chat.chatDeletedDetail"),
+      icon: "i-lucide-trash",
+    });
 
-  refreshChats();
+    await refreshChats();
 
-  if (route.params.id === id) {
-    navigateTo("/");
+    // Если удален текущий открытый чат, переходим на главную
+    if (route.params.id === chatId) {
+      await navigateTo("/");
+    }
+  } catch (err) {
+    console.error("Failed to delete chat:", err);
+    toast.add({
+      title: t("error.unexpectedError"),
+      description: t("chat.deleteChatError"),
+      color: "error",
+    });
   }
 }
 
+// Горячие клавиши приложения
 defineShortcuts({
-  c: () => {
-    navigateTo("/");
-  },
+  c: () => navigateTo("/"),
 });
 </script>
 
@@ -141,7 +194,7 @@ defineShortcuts({
   <UDashboardGroup unit="rem">
     <UDashboardSidebar
       id="default"
-      v-model:open="open"
+      v-model:open="isSidebarOpen"
       :min-size="12"
       collapsible
       resizable
@@ -153,26 +206,32 @@ defineShortcuts({
           class="flex items-center gap-2.5"
           :class="collapsed ? 'justify-center w-full' : 'px-6.5'"
         >
-          <AppLogo class="shrink-0 transition-all duration-200" :class="collapsed ? 'h-10 w-10' : 'h-8 w-8'" />
-          <span v-if="!collapsed" class="text-xl font-bold text-highlighted">{{
-            t("chat.title")
-          }}</span>
+          <AppLogo
+            class="shrink-0 transition-all duration-200"
+            :class="collapsed ? 'h-10 w-10' : 'h-8 w-8'"
+          />
+          <span v-if="!collapsed" class="text-xl font-bold text-highlighted">
+            {{ t("chat.mainTitle") }}
+          </span>
         </NuxtLink>
       </template>
 
       <template #default="{ collapsed }">
         <div class="flex flex-col gap-6" :class="{ 'items-center': collapsed }">
-          <div class="hidden lg:flex flex-col gap-2 w-full" :class="collapsed ? 'items-center' : 'px-4'">
+          <div
+            class="hidden lg:flex flex-col gap-2 w-full"
+            :class="collapsed ? 'items-center' : 'px-4'"
+          >
             <div class="w-full" :class="{ 'flex justify-center': collapsed }">
               <UNavigationMenu
-                :items="navigationItems"
+                :items="topNavItems"
                 :collapsed="collapsed"
                 orientation="vertical"
                 :ui="{
                   link: collapsed
                     ? 'w-10 h-10 flex items-center justify-center rounded-lg p-0'
                     : 'px-2.5 h-9 justify-center',
-                  linkLeadingIcon: 'w-5 h-5 text-highlighted'
+                  linkLeadingIcon: 'w-5 h-5 text-highlighted',
                 }"
               />
             </div>
@@ -181,14 +240,18 @@ defineShortcuts({
               v-bind="
                 collapsed
                   ? { icon: 'i-lucide-square-pen', square: true }
-                  : { label: t('chat.newChat'), icon: 'i-lucide-square-pen', block: true }
+                  : {
+                      label: t('chat.newChatButton'),
+                      icon: 'i-lucide-square-pen',
+                      block: true,
+                    }
               "
               variant="solid"
               color="primary"
               to="/"
               class="transition-all duration-200 justify-center"
               :class="collapsed ? 'h-10 w-10 rounded-xl' : 'h-9'"
-              @click="open = false"
+              @click="isSidebarOpen = false"
             >
               <template v-if="collapsed" #leading>
                 <UIcon name="i-lucide-square-pen" class="w-5 h-5" />
@@ -200,11 +263,11 @@ defineShortcuts({
 
           <div v-if="!collapsed" class="w-full flex-1 overflow-y-auto px-2">
             <UNavigationMenu
-              :items="items"
+              :items="chatMenuItems"
               orientation="vertical"
               :ui="{
                 link: 'overflow-hidden px-2.5 h-10 flex items-center justify-center rounded-lg',
-                linkLeadingIcon: 'w-5 h-5'
+                linkLeadingIcon: 'w-5 h-5',
               }"
             >
               <template #chat-trailing="{ item }">
@@ -218,7 +281,7 @@ defineShortcuts({
                     size="xs"
                     class="text-muted hover:text-primary hover:bg-accented/50 focus-visible:bg-accented/50 p-0.5"
                     tabindex="-1"
-                    @click.stop.prevent="deleteChat((item as any).id)"
+                    @click.stop.prevent="handleDeleteChat((item as NavItem).id!)"
                   />
                 </div>
               </template>
@@ -228,23 +291,23 @@ defineShortcuts({
       </template>
 
       <template #footer="{ collapsed }">
-        <div class="flex flex-col gap-1 w-full" :class="collapsed ? 'items-center' : 'px-4'">
+        <div
+          class="flex flex-col gap-1 w-full"
+          :class="collapsed ? 'items-center' : 'px-4'"
+        >
           <UButton
             icon="i-lucide-github"
             color="neutral"
             variant="ghost"
-            :label="collapsed ? undefined : t('chat.sourceCode')"
+            :label="collapsed ? undefined : t('chat.viewSourceCode')"
             to="https://github.com/georgij-spiridonov/smart-book-search"
             target="_blank"
             :block="!collapsed"
           />
 
-          <div
-            v-if="!collapsed"
-            class="flex items-center w-full mt-1"
-          >
+          <div v-if="!collapsed" class="flex items-center w-full mt-1">
             <ULocaleSelect
-              v-model="currentLocale"
+              v-model="localeModel"
               :locales="availableLocales"
               variant="subtle"
               color="neutral"
@@ -258,10 +321,7 @@ defineShortcuts({
               :ui="{ base: 'focus-visible:ring-inset' }"
             />
           </div>
-          <div
-            v-else
-            class="mt-1"
-          >
+          <div v-else class="mt-1">
             <UColorModeButton />
           </div>
         </div>

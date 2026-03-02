@@ -1,0 +1,115 @@
+import type { LocaleSchema } from "./schema";
+
+/**
+ * Локализация на английском языке.
+ * Оптимизирована для высокой скорости работы и полной типобезопасности.
+ */
+export default defineI18nLocale((): LocaleSchema => {
+  return {
+    seo: {
+      pageTitle: "Smart Book Search",
+      pageDescription:
+        "Smart book search with AI assistant. Ask questions and get answers based on book text.",
+    },
+
+    chat: {
+      mainTitle: "Book Search",
+      welcomeMessage: "What do you want to know?",
+      newChatButton: "New Chat",
+      searchChatsPlaceholder: "Search chats...",
+      untitledChat: "Untitled",
+      deleteChatTitle: "Delete Chat",
+      deleteChatConfirm:
+        "Are you sure you want to delete this chat? This action cannot be undone.",
+      deleteButton: "Delete",
+      cancelButton: "Cancel",
+      chatDeletedSuccess: "Chat deleted",
+      chatDeletedDetail: "Your chat was deleted",
+      deleteChatError: "Failed to delete chat. Please try again.",
+      processingMessage: "Processing...",
+      viewPipelineDetails: "Pipeline details",
+      groupToday: "Today",
+      groupYesterday: "Yesterday",
+      groupLastWeek: "Last week",
+      groupLastMonth: "Last month",
+      inputPlaceholder: "Type a message...",
+      selectBookLabel: "Select a book",
+      selectBookRequired: "Please select a book before sending a message",
+      searchBooksPlaceholder: "Search books...",
+      noBooksFound: "No books",
+      noMatchingBooks: "No matching books",
+      copyCitation: "Copy",
+      copyCitationSuccess: "Citation copied to clipboard",
+      citationLabel: "Citation",
+      citationsLabel: "Citations",
+      untitledChapter: "Untitled chapter",
+      chatNotFound: "Chat not found",
+      viewSourceCode: "Source code",
+    },
+
+    error: {
+      backToHomeButton: "Back to Home",
+      pageNotFoundTitle: "Page Not Found",
+      pageNotFoundDetail:
+        "The page you are looking for doesn't exist or has been moved.",
+      internalServerErrorTitle: "Internal Server Error",
+      unexpectedError: "An unexpected error occurred",
+      internalServerErrorDetail: "Something went wrong on our end.",
+      required: "This field is required",
+    },
+
+    library: {
+      mainTitle: "Library",
+      mainDescription: "Manage your books and documents",
+      uploadBookButton: "Upload Book",
+      uploadModalTitle: "Upload new book",
+      startChatButton: "Start Chat",
+      closeButton: "Close",
+      columnAuthor: "Author",
+      columnPage: "Page",
+      columnSize: "Size",
+      columnUploadedAt: "Uploaded",
+      columnStatus: "Status",
+      statusProcessed: "Processed",
+      statusPending: "Pending",
+      statusProcessing: "Processing",
+      statusWaiting: "Waiting",
+      statusUploading: "Uploading...",
+      statusError: "Error",
+      selectFileLabel: "Select a file to upload",
+      dropzoneMainLabel: "Drop your PDF, TXT or EPUB here",
+      dropzoneDescription: "Supported formats: .pdf, .txt, .epub",
+      fileLabel: "File",
+      coverUrlLabel: "Cover URL",
+      bookTitleLabel: "Title",
+      uploadSubmitButton: "Upload",
+      uploadSuccessMessage: "Book uploaded successfully",
+      statusVectorizing: "Vectorizing...",
+      vectorizeSuccessMessage: "Book processed successfully",
+      unknownValue: "Unknown",
+      deleteBookTitle: "Delete Book",
+      deleteButton: "Delete",
+      deleteBookConfirm:
+        "Are you sure you want to completely delete this book? This action cannot be undone.",
+      deleteBookSuccess: "Book deleted successfully",
+      editBookTitle: "Edit Metadata",
+      editButton: "Edit",
+      saveButton: "Save",
+      updateSuccessMessage: "Book metadata updated successfully",
+    },
+
+    admin: {
+      mainTitle: "Administrator Access",
+      mainDescription:
+        "Log in to enable elevated permissions for managing content across the platform.",
+      passwordField: "Password",
+      loginButton: "Enable Access",
+      logoutButton: "Disable Access",
+      accessGrantedMessage: "Access Granted",
+      accessRevokedMessage: "Access Revoked",
+      redirectingMessage: "Enabling administrator mode...",
+      redirectingHomeMessage: "Redirecting to home...",
+      loginErrorMessage: "Login failed",
+    },
+  };
+});

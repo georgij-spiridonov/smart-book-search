@@ -4,14 +4,15 @@ import {
   type ChatMessage,
   type RetrievedChunk,
 } from "./chatConfig";
-import { log } from "./logger";
+import { logger } from "./logger";
 
+/** Результат генерации ответа моделью */
 export interface AnswerResult {
-  /** The generated answer text. */
+  /** Текст сгенерированного ответа */
   text: string;
-  /** The model used for generation. */
+  /** Название использованной модели */
   model: string;
-  /** Token usage statistics. */
+  /** Статистика использования токенов */
   usage: {
     inputTokens: number | undefined;
     outputTokens: number | undefined;
@@ -19,16 +20,19 @@ export interface AnswerResult {
 }
 
 /**
- * Formats retrieved chunks into a context block for the model prompt.
+ * Форматирует найденные фрагменты текста в блок контекста для промпта модели.
+ * 
+ * @param {RetrievedChunk[]} contextChunks Список найденных релевантных фрагментов.
+ * @returns {string} Отформатированная строка контекста.
  */
-function formatContext(chunks: RetrievedChunk[]): string {
-  if (chunks.length === 0) {
+function formatKnowledgeContext(contextChunks: RetrievedChunk[]): string {
+  if (contextChunks.length === 0) {
     return "No relevant text fragments were found in the books.";
   }
 
-  return chunks
-    .map((chunk, i) => {
-      const location = [
+  return contextChunks
+    .map((chunk, index) => {
+      const metadataParts = [
         chunk.chapterTitle && `Chapter: ${chunk.chapterTitle}`,
         chunk.pageNumber > 0 && `Page: ${chunk.pageNumber}`,
         chunk.bookId && `Book ID: ${chunk.bookId}`,
@@ -36,116 +40,116 @@ function formatContext(chunks: RetrievedChunk[]): string {
         .filter(Boolean)
         .join(" | ");
 
-      return `--- Fragment [${i + 1}] (${location}) ---\n${chunk.text}`;
+      return `--- Fragment [${index + 1}] (${metadataParts}) ---\n${chunk.text}`;
     })
     .join("\n\n");
 }
 
 /**
- * Converts chat history into the messages format expected by the AI SDK.
+ * Формирует список сообщений для AI SDK на основе истории и нового контекста.
+ * 
+ * @param {string} userQuery Текущий вопрос пользователя.
+ * @param {RetrievedChunk[]} contextChunks Фрагменты текста из книг.
+ * @param {ChatMessage[]} chatHistory История переписки.
+ * @returns {Array<{ role: "user" | "assistant"; content: string }>} Список сообщений для LLM.
  */
-function buildMessages(
-  query: string,
-  chunks: RetrievedChunk[],
-  history: ChatMessage[],
+function buildLlmMessages(
+  userQuery: string,
+  contextChunks: RetrievedChunk[],
+  chatHistory: ChatMessage[],
 ): Array<{ role: "user" | "assistant"; content: string }> {
-  // Take only the most recent messages to stay within context limits
-  const recentHistory = history.slice(-CHAT_CONFIG.maxHistoryMessages);
-
-  const contextBlock = formatContext(chunks);
+  // Ограничиваем историю сообщений согласно конфигурации
+  const limitedHistory = chatHistory.slice(-CHAT_CONFIG.maxHistoryMessages);
+  const knowledgeContext = formatKnowledgeContext(contextChunks);
 
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
 
-  // Add conversation history
-  for (const msg of recentHistory) {
-    messages.push({ role: msg.role, content: msg.content });
+  // Добавляем историю беседы
+  for (const message of limitedHistory) {
+    messages.push({ role: message.role, content: message.content });
   }
 
-  // Add current query with context
+  // Добавляем текущий вопрос вместе с контекстом из книг
   messages.push({
     role: "user",
-    content: `Context from books:\n\n${contextBlock}\n\n---\n\nUser question: ${query}`,
+    content: `Context from books:\n\n${knowledgeContext}\n\n---\n\nUser question: ${userQuery}`,
   });
 
   return messages;
 }
 
 /**
- * Generates an answer to the user's question based on retrieved book chunks
- * and conversation history.
- *
- * @param query - The user's current question.
- * @param chunks - Retrieved text chunks providing context.
- * @param history - Previous messages in the conversation.
- * @returns The generated answer with usage metadata.
+ * Генерирует полный ответ на вопрос пользователя на основе найденных фрагментов и истории.
+ * 
+ * @param {string} userQuery Вопрос пользователя.
+ * @param {RetrievedChunk[]} contextChunks Релевантные фрагменты книг.
+ * @param {ChatMessage[]} chatHistory История чата.
+ * @returns {Promise<AnswerResult>} Сгенерированный ответ с метаданными.
  */
 export async function generateAnswer(
-  query: string,
-  chunks: RetrievedChunk[],
-  history: ChatMessage[] = [],
+  userQuery: string,
+  contextChunks: RetrievedChunk[],
+  chatHistory: ChatMessage[] = [],
 ): Promise<AnswerResult> {
-  log.info("generation", "Generating complete answer", {
-    queryLength: query.length,
-    chunksCount: chunks.length,
-    historyLength: history.length,
+  logger.info("generation", "Generating complete answer", {
+    queryLength: userQuery.length,
+    chunksCount: contextChunks.length,
+    historyLength: chatHistory.length,
     model: CHAT_CONFIG.answerModel,
   });
 
-  const messages = buildMessages(query, chunks, history);
+  const llmMessages = buildLlmMessages(userQuery, contextChunks, chatHistory);
 
-  const result = await generateText({
+  const generationResult = await generateText({
     model: CHAT_CONFIG.answerModel,
     system: CHAT_CONFIG.answerSystemPrompt,
-    messages,
+    messages: llmMessages,
     temperature: 0.9,
   });
 
-  const answer = {
-    text: result.text,
+  const finalAnswer: AnswerResult = {
+    text: generationResult.text,
     model: CHAT_CONFIG.answerModel,
     usage: {
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
+      inputTokens: generationResult.usage.inputTokens,
+      outputTokens: generationResult.usage.outputTokens,
     },
   };
 
-  log.info("generation", "Answer generated successfully", {
-    inputTokens: result.usage.inputTokens,
-    outputTokens: result.usage.outputTokens,
+  logger.info("generation", "Answer generated successfully", {
+    inputTokens: generationResult.usage.inputTokens,
+    outputTokens: generationResult.usage.outputTokens,
   });
 
-  return answer;
+  return finalAnswer;
 }
 
 /**
- * Streams an answer to the user's question based on retrieved book chunks
- * and conversation history.
- *
- * Returns the `streamText` result object — use `.toUIMessageStream()` to
- * pipe it into a `createUIMessageStream` writer.
- *
- * @param query - The user's current question.
- * @param chunks - Retrieved text chunks providing context.
- * @param history - Previous messages in the conversation.
+ * Запускает потоковую генерацию (стриминг) ответа на вопрос пользователя.
+ * 
+ * @param {string} userQuery Вопрос пользователя.
+ * @param {RetrievedChunk[]} contextChunks Релевантные фрагменты книг.
+ * @param {ChatMessage[]} chatHistory История чата.
+ * @returns Возвращает объект потока от AI SDK.
  */
 export function streamAnswer(
-  query: string,
-  chunks: RetrievedChunk[],
-  history: ChatMessage[] = [],
+  userQuery: string,
+  contextChunks: RetrievedChunk[],
+  chatHistory: ChatMessage[] = [],
 ) {
-  log.info("generation", "Starting answer stream", {
-    queryLength: query.length,
-    chunksCount: chunks.length,
-    historyLength: history.length,
+  logger.info("generation", "Starting answer stream", {
+    queryLength: userQuery.length,
+    chunksCount: contextChunks.length,
+    historyLength: chatHistory.length,
     model: CHAT_CONFIG.answerModel,
   });
 
-  const messages = buildMessages(query, chunks, history);
+  const llmMessages = buildLlmMessages(userQuery, contextChunks, chatHistory);
 
   return streamText({
     model: CHAT_CONFIG.answerModel,
     system: CHAT_CONFIG.answerSystemPrompt,
-    messages,
+    messages: llmMessages,
     temperature: 0.9,
   });
 }

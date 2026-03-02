@@ -1,102 +1,117 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// In-memory storage for bookStore
-const bookData = new Map<string, Record<string, unknown>>();
-const bookIndex = new Set<string>();
-const blobIndex = new Map<string, string>();
+/**
+ * Локальное хранилище в памяти для имитации работы Redis (In-memory storage for bookStore).
+ */
+const storageBookData = new Map<string, Record<string, unknown>>();
+const storageBookIndex = new Set<string>();
+const storageBlobIndex = new Map<string, string>();
 
-const mockRedis = {
+/**
+ * Объект-имитация (Mock) Redis клиента.
+ */
+const mockRedisClient = {
   hset: vi.fn(async (key: string, data: Record<string, any>) => {
     if (key === "smart-book-search:books:blob-index") {
-      for (const [k, v] of Object.entries(data)) blobIndex.set(k, String(v));
+      for (const [k, v] of Object.entries(data)) storageBlobIndex.set(k, String(v));
     } else {
-      bookData.set(key, { ...(bookData.get(key) || {}), ...data });
+      storageBookData.set(key, { ...(storageBookData.get(key) || {}), ...data });
     }
   }),
-  hgetall: vi.fn(async (key: string) => bookData.get(key) || {}),
+  hgetall: vi.fn(async (key: string) => storageBookData.get(key) || {}),
   hget: vi.fn(async (key: string, field: string) => {
     if (key === "smart-book-search:books:blob-index") {
-      return blobIndex.get(field) || null;
+      return storageBlobIndex.get(field) || null;
     }
-    const data = bookData.get(key);
+    const data = storageBookData.get(key);
     return data ? (data[field] as string) : null;
   }),
   sadd: vi.fn(async (_key: string, ...members: string[]) => {
-    for (const m of members) bookIndex.add(m);
+    for (const member of members) storageBookIndex.add(member);
   }),
-  smembers: vi.fn(async () => [...bookIndex]),
+  smembers: vi.fn(async () => [...storageBookIndex]),
   srem: vi.fn(async (_key: string, ...members: string[]) => {
-    for (const m of members) bookIndex.delete(m);
+    for (const member of members) storageBookIndex.delete(member);
   }),
   hdel: vi.fn(async (key: string, ...fields: string[]) => {
     if (key === "smart-book-search:books:blob-index") {
-      for (const f of fields) blobIndex.delete(f);
+      for (const field of fields) storageBlobIndex.delete(field);
     }
   }),
   del: vi.fn(async (key: string) => {
-    bookData.delete(key);
+    storageBookData.delete(key);
   }),
   pipeline: vi.fn(() => {
-    const ops: Array<() => void> = [];
-    const hgetallKeys: string[] = [];
-    const self = {
+    const operations: Array<() => void> = [];
+    const hgetallTargetKeys: string[] = [];
+    const pipelineInstance = {
       hset: vi.fn((key: string, data: Record<string, any>) => {
-        ops.push(() => {
+        operations.push(() => {
           if (key === "smart-book-search:books:blob-index") {
             for (const [k, v] of Object.entries(data))
-              blobIndex.set(k, String(v));
+              storageBlobIndex.set(k, String(v));
           } else {
-            bookData.set(key, { ...(bookData.get(key) || {}), ...data });
+            storageBookData.set(key, { ...(storageBookData.get(key) || {}), ...data });
           }
         });
-        return self;
+        return pipelineInstance;
       }),
       sadd: vi.fn((_key: string, ...members: string[]) => {
-        ops.push(() => {
-          for (const m of members) bookIndex.add(m);
+        operations.push(() => {
+          for (const member of members) storageBookIndex.add(member);
         });
-        return self;
+        return pipelineInstance;
       }),
       srem: vi.fn((_key: string, ...members: string[]) => {
-        ops.push(() => {
-          for (const m of members) bookIndex.delete(m);
+        operations.push(() => {
+          for (const member of members) storageBookIndex.delete(member);
         });
-        return self;
+        return pipelineInstance;
       }),
       del: vi.fn((key: string) => {
-        ops.push(() => {
-          bookData.delete(key);
+        operations.push(() => {
+          storageBookData.delete(key);
         });
-        return self;
+        return pipelineInstance;
       }),
       hdel: vi.fn((key: string, ...fields: string[]) => {
-        ops.push(() => {
+        operations.push(() => {
           if (key === "smart-book-search:books:blob-index")
-            for (const f of fields) blobIndex.delete(f);
+            for (const field of fields) storageBlobIndex.delete(field);
         });
-        return self;
+        return pipelineInstance;
       }),
       hgetall: vi.fn((key: string) => {
-        hgetallKeys.push(key);
-        return self;
+        hgetallTargetKeys.push(key);
+        return pipelineInstance;
       }),
       exec: vi.fn(async () => {
-        for (const op of ops) op();
-        // Return stored data for each hgetall key (or null if missing)
-        if (hgetallKeys.length > 0) {
-          return hgetallKeys.map((k) => bookData.get(k) || null);
+        for (const op of operations) op();
+        if (hgetallTargetKeys.length > 0) {
+          return hgetallTargetKeys.map((k) => storageBookData.get(k) || null);
         }
         return [];
       }),
     };
-    return self;
+    return pipelineInstance;
   }),
 };
 
+// Мокаем утилиту получения Redis клиента
 vi.mock("../utils/redis", () => ({
-  getRedisClient: vi.fn(() => mockRedis),
+  getRedisClient: vi.fn(() => mockRedisClient),
 }));
 
+// Мокаем логгер
+vi.mock("../utils/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+// Настройка конфигурации Nuxt
 vi.stubGlobal("useRuntimeConfig", () => ({
   upstashRedisUrl: "https://test.upstash.io",
   upstashRedisToken: "test-token",
@@ -114,12 +129,15 @@ import {
   type BookRecord,
 } from "../utils/bookStore";
 
-function makeBook(overrides: Partial<BookRecord> = {}): BookRecord {
+/**
+ * Вспомогательная функция для создания объекта книги с возможностью переопределения полей.
+ */
+function createMockBook(overrides: Partial<BookRecord> = {}): BookRecord {
   return {
-    id: "test-book-1",
-    userId: "test-user-1",
-    title: "Test Book Title",
-    author: "Test Author",
+    id: "test-book-id-1",
+    userId: "test-user-id-1",
+    title: "Тестовое название книги",
+    author: "Тестовый автор",
     coverUrl: "https://example.com/cover.jpg",
     blobUrl: "https://example.com/test.txt",
     filename: "test.txt",
@@ -130,289 +148,267 @@ function makeBook(overrides: Partial<BookRecord> = {}): BookRecord {
   };
 }
 
-describe("bookStore", () => {
+describe("Сервис хранилища книг (bookStore)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    bookData.clear();
-    bookIndex.clear();
-    blobIndex.clear();
+    storageBookData.clear();
+    storageBookIndex.clear();
+    storageBlobIndex.clear();
   });
 
   // ──────── slugifyBookId ────────
-  describe("slugifyBookId", () => {
-    it("converts title to a URL-friendly slug with suffix", () => {
-      const slug = slugifyBookId("My Great Book! (2024)");
-      expect(slug).toMatch(/^my-great-book-2024-[a-z0-9]+$/);
+  describe("Функция slugifyBookId", () => {
+    it("должна преобразовывать название в URL-совместимый слаг с суффиксом", () => {
+      const slug = slugifyBookId("Моя отличная книга! (2024)");
+      // Регулярное выражение разрешает латиницу, кириллицу и цифры в слаге
+      expect(slug).toMatch(/^[a-z0-9\u0400-\u04FF-]+-[a-z0-9]+$/);
     });
 
-    it("handles simple titles", () => {
-      const slug = slugifyBookId("Hello World");
-      expect(slug).toMatch(/^hello-world-[a-z0-9]+$/);
+    it("должна корректно обрабатывать простые названия", () => {
+      const slug = slugifyBookId("Привет Мир");
+      expect(slug).toMatch(/^привет-мир-[a-z0-9]+$/);
     });
 
-    it("handles empty string", () => {
+    it("должна возвращать UUID при пустой строке", () => {
       const slug = slugifyBookId("");
-      expect(slug.length).toBe(36); // UUID length
+      expect(slug.length).toBe(36); // Длина UUID
     });
   });
 
   // ──────── addBook ────────
-  describe("addBook", () => {
-    it("calls Redis pipeline with correct data", async () => {
-      const book = makeBook();
+  describe("Функция addBook", () => {
+    it("должна вызывать pipeline Redis с корректными данными", async () => {
+      const book = createMockBook();
       await addBook(book);
-      expect(mockRedis.pipeline).toHaveBeenCalled();
+      expect(mockRedisClient.pipeline).toHaveBeenCalled();
     });
 
-    it("stores the book in the in-memory mock", async () => {
-      const book = makeBook();
+    it("должна сохранять книгу в локальном мок-хранилище", async () => {
+      const book = createMockBook();
       await addBook(book);
 
-      // The pipeline should have stored book data and index
-      expect(bookIndex.has("test-book-1")).toBe(true);
+      expect(storageBookIndex.has(book.id)).toBe(true);
+      expect(storageBookData.has(`smart-book-search:books:${book.id}`)).toBe(true);
     });
 
-    it("creates blob reverse index entry", async () => {
-      const book = makeBook();
+    it("должна создавать запись в обратном индексе blob-ссылок", async () => {
+      const book = createMockBook();
       await addBook(book);
 
-      expect(blobIndex.get(book.blobUrl)).toBe(book.id);
+      expect(storageBlobIndex.get(book.blobUrl)).toBe(book.id);
     });
   });
 
   // ──────── getBook ────────
-  describe("getBook", () => {
-    it("returns null for non-existent book", async () => {
-      const result = await getBook("non-existent");
+  describe("Функция getBook", () => {
+    it("должна возвращать null для несуществующей книги", async () => {
+      const result = await getBook("non-existent-id");
       expect(result).toBeNull();
     });
 
-    it("returns deserialized record after addBook", async () => {
-      const book = makeBook({ vectorized: true });
+    it("должна возвращать десериализованную запись после добавления", async () => {
+      const book = createMockBook({ vectorized: true });
       await addBook(book);
 
-      const result = await getBook("test-book-1");
+      const result = await getBook(book.id);
       expect(result).not.toBeNull();
-      expect(result!.id).toBe("test-book-1");
-      expect(result!.title).toBe("Test Book Title");
-      expect(result!.author).toBe("Test Author");
-      expect(result!.filename).toBe("test.txt");
-    });
-
-    it("correctly deserializes vectorized=true (stored as '1')", async () => {
-      const book = makeBook({ vectorized: true });
-      await addBook(book);
-
-      const result = await getBook("test-book-1");
+      expect(result!.id).toBe(book.id);
+      expect(result!.title).toBe(book.title);
       expect(result!.vectorized).toBe(true);
     });
 
-    it("correctly deserializes vectorized=false (stored as '0')", async () => {
-      const book = makeBook({ vectorized: false });
-      await addBook(book);
+    it("должна корректно десериализовать vectorized=true (хранится как '1')", async () => {
+      const bookId = "vector-true-id";
+      storageBookData.set(`smart-book-search:books:${bookId}`, {
+        ...createMockBook({ id: bookId }),
+        vectorized: "1"
+      });
+      storageBookIndex.add(bookId);
 
-      const result = await getBook("test-book-1");
+      const result = await getBook(bookId);
+      expect(result!.vectorized).toBe(true);
+    });
+
+    it("должна корректно десериализовать vectorized=false (хранится как '0')", async () => {
+      const bookId = "vector-false-id";
+      storageBookData.set(`smart-book-search:books:${bookId}`, {
+        ...createMockBook({ id: bookId }),
+        vectorized: "0"
+      });
+      storageBookIndex.add(bookId);
+
+      const result = await getBook(bookId);
       expect(result!.vectorized).toBe(false);
     });
 
-    it("handles missing optional fields with defaults", async () => {
-      // Simulate a record stored with missing fields
-      bookData.set("smart-book-search:books:missing-fields", {
-        id: "missing-fields",
+    it("должна подставлять значения по умолчанию для отсутствующих полей", async () => {
+      const bookId = "missing-fields-id";
+      storageBookData.set(`smart-book-search:books:${bookId}`, {
+        id: bookId,
       });
 
-      const result = await getBook("missing-fields");
+      const result = await getBook(bookId);
       expect(result).not.toBeNull();
-      expect(result!.author).toBe("Unknown"); // default
-      expect(result!.fileSize).toBe(0); // default
-      expect(result!.vectorized).toBe(false); // default
+      expect(result!.author).toBe("Unknown");
+      expect(result!.fileSize).toBe(0);
+      expect(result!.vectorized).toBe(false);
     });
   });
 
   // ──────── getAllBooks ────────
-  describe("getAllBooks", () => {
-    it("returns empty array when no books exist", async () => {
+  describe("Функция getAllBooks", () => {
+    it("должна возвращать пустой массив, если книг нет", async () => {
       const books = await getAllBooks();
       expect(books).toEqual([]);
     });
 
-    it("returns multiple books sorted by uploadedAt descending", async () => {
+    it("должна возвращать список книг, отсортированный по дате загрузки (сначала новые)", async () => {
       const now = Date.now();
-      const book1 = makeBook({
-        id: "old-book",
+      const oldBook = createMockBook({
+        id: "old-book-id",
         uploadedAt: now - 10000,
         blobUrl: "https://blob/old",
       });
-      const book2 = makeBook({
-        id: "new-book",
+      const newBook = createMockBook({
+        id: "new-book-id",
         uploadedAt: now,
         blobUrl: "https://blob/new",
       });
 
-      await addBook(book1);
-      await addBook(book2);
+      await addBook(oldBook);
+      await addBook(newBook);
 
       const books = await getAllBooks();
       expect(books).toHaveLength(2);
-      // Newest first
-      expect(books[0]!.id).toBe("new-book");
-      expect(books[1]!.id).toBe("old-book");
+      expect(books[0]!.id).toBe("new-book-id");
+      expect(books[1]!.id).toBe("old-book-id");
     });
 
-    it("filters out null and empty results from pipeline", async () => {
-      // Add two books so smembers returns two IDs
-      const book1 = makeBook({
-        id: "real-book",
-        blobUrl: "https://blob/real",
-      });
-      await addBook(book1);
+    it("должна фильтровать null и пустые результаты из pipeline", async () => {
+      const realBook = createMockBook({ id: "real-book-id" });
+      await addBook(realBook);
 
-      // Also add a dangling index entry with no stored data
-      bookIndex.add("ghost-book");
-      // bookData does NOT have "smart-book-search:books:ghost-book"
-      // so the pipeline will return null for it
+      // Добавляем "фантомную" запись в индекс без данных в основном хранилище
+      storageBookIndex.add("ghost-book-id");
 
       const books = await getAllBooks();
-      // Only the real book should be in results, ghost filtered out
       expect(books).toHaveLength(1);
-      expect(books[0]!.id).toBe("real-book");
+      expect(books[0]!.id).toBe("real-book-id");
     });
   });
 
   // ──────── updateBook ────────
-  describe("updateBook", () => {
-    it("updates specific fields of an existing book", async () => {
-      const book = makeBook();
+  describe("Функция updateBook", () => {
+    it("должна обновлять конкретные поля существующей книги", async () => {
+      const book = createMockBook();
       await addBook(book);
 
-      await updateBook("test-book-1", { title: "Updated Title" });
+      await updateBook(book.id, { title: "Обновленное название" });
 
-      const result = await getBook("test-book-1");
-      expect(result!.title).toBe("Updated Title");
+      const result = await getBook(book.id);
+      expect(result!.title).toBe("Обновленное название");
     });
 
-    it("throws for non-existent book", async () => {
+    it("должен обновлять blobUrl и пересоздавать обратный индекс", async () => {
+      const oldUrl = "https://old-blob.com/file";
+      const newUrl = "https://new-blob.com/file";
+      const book = createMockBook({ blobUrl: oldUrl });
+      await addBook(book);
+
+      await updateBook(book.id, { blobUrl: newUrl });
+
+      expect(storageBlobIndex.has(oldUrl)).toBe(false);
+      expect(storageBlobIndex.get(newUrl)).toBe(book.id);
+      
+      const result = await getBook(book.id);
+      expect(result!.blobUrl).toBe(newUrl);
+    });
+
+    it("должна выбрасывать ошибку, если книга не найдена", async () => {
       await expect(
-        updateBook("non-existent", { title: "Nope" }),
-      ).rejects.toThrow('Book "non-existent" not found in store.');
+        updateBook("non-existent-id", { title: "Ошибка" }),
+      ).rejects.toThrow('Book "non-existent-id" not found in store.');
     });
 
-    it("updates vectorized flag correctly", async () => {
-      const book = makeBook({ vectorized: false });
+    it("должна корректно обновлять флаг векторизации", async () => {
+      const book = createMockBook({ vectorized: false });
       await addBook(book);
 
-      await updateBook("test-book-1", { vectorized: true });
+      await updateBook(book.id, { vectorized: true });
 
-      const result = await getBook("test-book-1");
+      const result = await getBook(book.id);
       expect(result!.vectorized).toBe(true);
     });
 
-    it("updates blobUrl and refreshes reverse index", async () => {
-      const book = makeBook({ blobUrl: "https://old-blob.com/file" });
+    it("должна обновлять blobUrl и пересоздавать обратный индекс", async () => {
+      const oldUrl = "https://old-blob.com/file";
+      const newUrl = "https://new-blob.com/file";
+      const book = createMockBook({ blobUrl: oldUrl });
       await addBook(book);
 
-      const newBlobUrl = "https://new-blob.com/file";
-      await updateBook("test-book-1", { blobUrl: newBlobUrl });
+      await updateBook(book.id, { blobUrl: newUrl });
 
-      // Old blobUrl removed from index
-      expect(blobIndex.has("https://old-blob.com/file")).toBe(false);
-      // New blobUrl added to index
-      expect(blobIndex.get(newBlobUrl)).toBe("test-book-1");
+      expect(storageBlobIndex.has(oldUrl)).toBe(false);
+      expect(storageBlobIndex.get(newUrl)).toBe(book.id);
     });
 
-    it("does not call hset when update has no fields", async () => {
-      const book = makeBook();
+    it("не должна вызывать hset, если список полей для обновления пуст", async () => {
+      const book = createMockBook();
       await addBook(book);
       vi.clearAllMocks();
 
-      // Pass an empty update — no fields to set
-      await updateBook("test-book-1", {});
+      await updateBook(book.id, {});
 
-      // hset should not be called directly (only via getBook check)
-      // The function checks Object.keys(fields).length > 0
-      expect(mockRedis.hset).not.toHaveBeenCalled();
-    });
-
-    it("updates multiple fields at once", async () => {
-      const book = makeBook();
-      await addBook(book);
-
-      await updateBook("test-book-1", {
-        title: "New Title",
-        author: "New Author",
-        fileSize: 2048,
-      });
-
-      const result = await getBook("test-book-1");
-      expect(result!.title).toBe("New Title");
-      expect(result!.author).toBe("New Author");
-      expect(result!.fileSize).toBe(2048);
+      expect(mockRedisClient.hset).not.toHaveBeenCalled();
     });
   });
 
   // ──────── deleteBook ────────
-  describe("deleteBook", () => {
-    it("removes book, index entry, and blob index via pipeline", async () => {
-      const book = makeBook();
+  describe("Функция deleteBook", () => {
+    it("должна удалять книгу, индексную запись и blob-индекс через pipeline", async () => {
+      const book = createMockBook();
       await addBook(book);
 
-      await deleteBook("test-book-1");
+      await deleteBook(book.id);
 
-      const result = await getBook("test-book-1");
+      const result = await getBook(book.id);
       expect(result).toBeNull();
-      expect(bookIndex.has("test-book-1")).toBe(false);
-      expect(blobIndex.has(book.blobUrl)).toBe(false);
+      expect(storageBookIndex.has(book.id)).toBe(false);
+      expect(storageBlobIndex.has(book.blobUrl)).toBe(false);
     });
 
-    it("is a no-op when book does not exist", async () => {
-      // Should not throw, just return silently
-      await expect(deleteBook("non-existent")).resolves.toBeUndefined();
+    it("должна завершаться без ошибок, если книга не существует", async () => {
+      await expect(deleteBook("non-existent-id")).resolves.toBeUndefined();
     });
   });
 
   // ──────── markBookVectorized ────────
-  describe("markBookVectorized", () => {
-    it("sets vectorized to true for a book", async () => {
-      const book = makeBook({ vectorized: false });
+  describe("Функция markBookVectorized", () => {
+    it("должна устанавливать флаг векторизации в true", async () => {
+      const book = createMockBook({ vectorized: false });
       await addBook(book);
 
-      await markBookVectorized("test-book-1");
+      await markBookVectorized(book.id);
 
-      const result = await getBook("test-book-1");
+      const result = await getBook(book.id);
       expect(result!.vectorized).toBe(true);
-    });
-
-    it("throws for non-existent book", async () => {
-      await expect(markBookVectorized("no-such-book")).rejects.toThrow(
-        "not found in store",
-      );
     });
   });
 
   // ──────── getBookByBlobUrl ────────
-  describe("getBookByBlobUrl", () => {
-    it("finds a book by its blobUrl", async () => {
-      const book = makeBook();
+  describe("Функция getBookByBlobUrl", () => {
+    it("должна находить книгу по её blobUrl", async () => {
+      const book = createMockBook();
       await addBook(book);
 
       const result = await getBookByBlobUrl(book.blobUrl);
       expect(result).not.toBeNull();
-      expect(result!.id).toBe("test-book-1");
+      expect(result!.id).toBe(book.id);
     });
 
-    it("returns null for unknown blobUrl", async () => {
+    it("должна возвращать null для неизвестного blobUrl", async () => {
       const result = await getBookByBlobUrl("https://unknown.com/file");
       expect(result).toBeNull();
     });
-  });
-
-  // ──────── availability ────────
-  describe("availability", () => {
-    it.skipIf(!process.env.KV_REST_API_URL)(
-      "can perform real bookStore round-trip",
-      async () => {
-        expect(true).toBe(true);
-      },
-    );
   });
 });

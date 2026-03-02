@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock useRuntimeConfig (Nuxt auto-import)
+/**
+ * Имитация конфигурации времени выполнения Nuxt (Nuxt Runtime Config Mock).
+ * Используется для проверки корректности загрузки переменных окружения,
+ * необходимых для работы с AI Gateway.
+ */
 const mockConfig = {
   aiGatewayApiKey: "test-ai-gateway-key",
   blobToken: "test-blob-token",
@@ -11,26 +15,29 @@ const mockConfig = {
   upstashRedisToken: "test-token",
 };
 
+// Глобальная имитация функции useRuntimeConfig
 vi.stubGlobal("useRuntimeConfig", () => mockConfig);
 
-describe("aiGateway", () => {
+describe("Конфигурация AI Gateway (AI Gateway Configuration)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns success when AI Gateway key is loaded", () => {
-    const config = useRuntimeConfig();
-    expect(config.aiGatewayApiKey).toBeTruthy();
-    expect(config.aiGatewayApiKey).toBe("test-ai-gateway-key");
+  it("должен успешно возвращать ключ AI Gateway, если он загружен", () => {
+    const configuration = useRuntimeConfig();
+    expect(configuration.aiGatewayApiKey).toBeTruthy();
+    expect(configuration.aiGatewayApiKey).toBe("test-ai-gateway-key");
   });
 
-  it("detects missing AI Gateway configuration", () => {
+  it("должен определять отсутствие конфигурации AI Gateway", () => {
+    // Переопределяем мок для этого теста, имитируя отсутствие ключа
     vi.stubGlobal("useRuntimeConfig", () => ({
       ...mockConfig,
       aiGatewayApiKey: "",
     }));
 
-    const config = useRuntimeConfig();
-    expect(config.aiGatewayApiKey).toBeFalsy();
+    const configuration = useRuntimeConfig();
+    expect(configuration.aiGatewayApiKey).toBeFalsy();
+    expect(configuration.aiGatewayApiKey).toBe("");
   });
 });

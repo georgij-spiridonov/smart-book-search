@@ -1,26 +1,27 @@
 import { defineEventHandler } from "h3";
 import { db, schema } from "hub:db";
 
+/**
+ * Промежуточное ПО для управления сессиями пользователей.
+ * Обеспечивает наличие стабильного ID для каждого посетителя и определяет права администратора.
+ */
 export default defineEventHandler(async (event) => {
-  const session = await getUserSession(event);
+  const userSession = await getUserSession(event);
 
-  // If there's no stable identity ID, we must create one.
-  if (!session.id) {
-    const newId = crypto.randomUUID();
+  // Если у пользователя нет постоянного идентификатора, генерируем новый и сохраняем в БД
+  if (!userSession.id) {
+    const newUserId = crypto.randomUUID();
 
-    // Create a database record for this identity
-    await db.insert(schema.users).values({ id: newId });
+    // Регистрируем нового пользователя в базе данных
+    await db.insert(schema.users).values({ id: newUserId });
 
-    // Set the new identity in the session while preserving existing user metadata
+    // Сохраняем идентификатор в зашифрованной сессии
     await setUserSession(event, {
-      ...session,
-      id: newId,
+      ...userSession,
+      id: newUserId,
     });
-    
-    // Update local context for the current request
-    event.context.isAdmin = session.user?.isAdmin === true;
-  } else {
-    // Identity is stable, just populate context
-    event.context.isAdmin = session.user?.isAdmin === true;
   }
+
+  // Устанавливаем флаг администратора в контекст запроса для последующего использования в API
+  event.context.isAdmin = !!userSession.user?.isAdmin;
 });

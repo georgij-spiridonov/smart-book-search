@@ -1,53 +1,90 @@
 <script setup lang="ts">
 import type { Book } from "../../shared/types/book";
 
+/**
+ * Главная страница приложения для инициации нового чата с выбранной книгой.
+ */
+
 const { t } = useI18n();
 const route = useRoute();
 const toast = useToast();
 
-const input = ref("");
-const loading = ref(false);
+// Текст текущего запроса пользователя
+const chatPrompt = ref("");
+// Состояние загрузки (создание чата)
+const isProcessing = ref(false);
 
-const { data: booksData } = await useFetch<{ books: Book[] }>("/api/books", {
-  key: "books",
+// Получение списка всех доступных книг
+const { data: rawBooksResponse } = await useFetch<{ books: Book[] }>("/api/books", {
+  key: "available-books-list",
 });
-const books = computed(() => (booksData.value?.books || []).map((b) => ({
-  ...b,
-  label: b.author ? `${b.author} / ${b.title}` : b.title,
-})));
-const selectedBook = ref(books.value.find((b) => b.id === route.query.bookId));
 
-async function createChat(prompt: string) {
-  if (!selectedBook.value) {
+// Форматированный список книг для выпадающего меню
+const availableBooks = computed(() => {
+  const books = rawBooksResponse.value?.books ?? [];
+  return books.map((book) => ({
+    ...book,
+    label: book.author ? `${book.author} / ${book.title}` : book.title,
+  }));
+});
+
+// Текущая выбранная книга (инициализируется из query-параметра bookId, если он есть)
+const currentSelectedBook = ref(
+  availableBooks.value.find((book) => book.id === route.query.bookId)
+);
+
+/**
+ * Создает новый чат и перенаправляет пользователя на страницу чата.
+ * @param prompt Текст первого сообщения в чате.
+ */
+async function initiateNewChat(prompt: string) {
+  if (!currentSelectedBook.value) {
     toast.add({
-      title: t("chat.selectBookError"),
+      title: t("chat.selectBookRequired"),
       icon: "i-lucide-alert-circle",
       color: "error",
     });
     return;
   }
 
-  input.value = prompt;
-  loading.value = true;
+  chatPrompt.value = prompt;
+  isProcessing.value = true;
 
-  const chat = await $fetch("/api/chats", {
-    method: "POST",
-    body: {
-      bookIds: selectedBook.value ? [selectedBook.value.id] : [],
-    },
-  }).catch(() => null);
+  try {
+    const createdChat = await $fetch<{ id: string }>("/api/chats", {
+      method: "POST",
+      body: {
+        bookIds: [currentSelectedBook.value.id],
+      },
+    });
 
-  if (chat) {
-    refreshNuxtData("chats");
-    navigateTo(`/chat/${chat.id}?prompt=${encodeURIComponent(prompt)}`);
-  } else {
-    loading.value = false;
+    if (createdChat?.id) {
+      // Обновляем данные чатов в фоне и переходим к новому чату
+      refreshNuxtData("chats");
+      await navigateTo(`/chat/${createdChat.id}?prompt=${encodeURIComponent(prompt)}`);
+    } else {
+      throw new Error("Failed to create chat: no ID returned");
+    }
+  } catch (error) {
+    console.error("Error while creating a new chat session:", error);
+    toast.add({
+      title: t("error.unexpectedError"),
+      icon: "i-lucide-x-circle",
+      color: "error",
+    });
+  } finally {
+    isProcessing.value = false;
   }
 }
 
-async function onSubmit() {
-  if (!input.value.trim()) return;
-  await createChat(input.value);
+/**
+ * Обработчик отправки формы.
+ */
+async function onPromptSubmit() {
+  const trimmedPrompt = chatPrompt.value.trim();
+  if (!trimmedPrompt) return;
+  
+  await initiateNewChat(trimmedPrompt);
 }
 </script>
 
@@ -63,26 +100,26 @@ async function onSubmit() {
           class="flex-1 flex flex-col justify-center gap-4 sm:gap-6 py-8"
         >
           <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">
-            {{ t("chat.welcome") }}
+            {{ t("chat.welcomeMessage") }}
           </h1>
 
           <UChatPrompt
-            v-model="input"
-            :placeholder="t('chat.placeholder')"
-            :status="loading ? 'streaming' : 'ready'"
+            v-model="chatPrompt"
+            :placeholder="t('chat.inputPlaceholder')"
+            :status="isProcessing ? 'streaming' : 'ready'"
             class="[view-transition-name:chat-prompt]"
             variant="subtle"
             :ui="{ base: 'px-1.5' }"
-            @submit="onSubmit"
+            @submit="onPromptSubmit"
           >
             <template #footer>
               <div class="flex items-center gap-1 flex-1 min-w-0">
                 <USelectMenu
-                  v-model="selectedBook"
-                  :items="books"
+                  v-model="currentSelectedBook"
+                  :items="availableBooks"
                   label-key="label"
-                  :placeholder="t('chat.selectBook')"
-                  :search-input="{ placeholder: t('chat.searchBooks') }"
+                  :placeholder="t('chat.selectBookLabel')"
+                  :search-input="{ placeholder: t('chat.searchBooksPlaceholder') }"
                   class="w-full"
                   variant="ghost"
                   size="sm"
@@ -100,7 +137,7 @@ async function onSubmit() {
                     <span v-if="searchTerm">{{
                       t("chat.noMatchingBooks")
                     }}</span>
-                    <span v-else>{{ t("chat.noBooks") }}</span>
+                    <span v-else>{{ t("chat.noBooksFound") }}</span>
                   </template>
                 </USelectMenu>
               </div>

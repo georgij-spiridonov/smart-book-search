@@ -2,24 +2,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { splitPages } from "../utils/textSplitter";
 import type { PageText } from "../utils/textParser";
 
-// Mock Pinecone
-const { mockUpsertRecords, mockFetch, mockDeleteMany } = vi.hoisted(() => ({
-  mockUpsertRecords: vi.fn(),
-  mockFetch: vi.fn(),
-  mockDeleteMany: vi.fn(),
+// =======================
+// Имитации для Pinecone (Mocks for Pinecone)
+// =======================
+const { mockPineconeUpsertRecords, mockPineconeFetch, mockPineconeDeleteMany } = vi.hoisted(() => ({
+  mockPineconeUpsertRecords: vi.fn(),
+  mockPineconeFetch: vi.fn(),
+  mockPineconeDeleteMany: vi.fn(),
 }));
 
 vi.mock("@pinecone-database/pinecone", () => {
   class MockPineconeNamespace {
-    upsertRecords = mockUpsertRecords;
-    fetch = mockFetch;
-    deleteMany = mockDeleteMany;
+    upsertRecords = mockPineconeUpsertRecords;
+    fetch = mockPineconeFetch;
+    deleteMany = mockPineconeDeleteMany;
   }
   class MockPineconeIndex {
     namespace() {
       return new MockPineconeNamespace();
     }
-    upsertRecords = mockUpsertRecords;
+    upsertRecords = mockPineconeUpsertRecords;
   }
   class MockPinecone {
     index() {
@@ -29,28 +31,28 @@ vi.mock("@pinecone-database/pinecone", () => {
   return { Pinecone: MockPinecone };
 });
 
-// Mock useRuntimeConfig
+// Настройка конфигурации Nuxt
 vi.stubGlobal("useRuntimeConfig", () => ({
-  pineconeApiKey: "test-key",
-  pineconeIndex: "test-index",
+  pineconeApiKey: "test-pinecone-key",
+  pineconeIndex: "test-pinecone-index",
 }));
 
-describe("vectorizePipeline", () => {
-  const samplePages: PageText[] = [
+describe("Конвейер векторизации (vectorizePipeline)", () => {
+  const sampleSourcePages: PageText[] = [
     {
       pageNumber: 1,
-      text: "Artificial intelligence is a branch of computer science. It deals with creating systems that can perform tasks requiring human intelligence.",
-      title: "Introduction to AI",
+      text: "Искусственный интеллект — это ветвь компьютерных наук. Она занимается созданием систем, способных выполнять задачи, требующие человеческого интеллекта.",
+      title: "Введение в ИИ",
     },
     {
       pageNumber: 2,
-      text: "Machine learning is a subset of AI that enables systems to learn from data. Neural networks are computing systems inspired by biological neural networks.",
-      title: "Machine Learning Basics",
+      text: "Машинное обучение — это подмножество ИИ, которое позволяет системам учиться на данных. Нейронные сети — это вычислительные системы, вдохновленные биологическими нейронными сетями.",
+      title: "Основы машинного обучения",
     },
     {
       pageNumber: 3,
-      text: "Deep learning uses multi-layered neural networks to analyze complex patterns in large datasets.",
-      title: "Deep Learning Insights",
+      text: "Глубокое обучение использует многослойные нейронные сети для анализа сложных закономерностей в больших наборах данных.",
+      title: "Инсайты глубокого обучения",
     },
   ];
 
@@ -58,9 +60,9 @@ describe("vectorizePipeline", () => {
     vi.clearAllMocks();
   });
 
-  describe("page-aware chunking", () => {
-    it("produces chunks with correct page metadata", () => {
-      const chunks = splitPages(samplePages, {
+  describe("Разбиение на фрагменты с учетом страниц (page-aware chunking)", () => {
+    it("должен создавать фрагменты с корректными метаданными страниц", () => {
+      const chunks = splitPages(sampleSourcePages, {
         chunkSize: 200,
         chunkOverlap: 50,
       });
@@ -74,64 +76,65 @@ describe("vectorizePipeline", () => {
       }
     });
 
-    it("preserves page numbers from source pages", () => {
-      const chunks = splitPages(samplePages);
-      const pageNumbers = [...new Set(chunks.map((c) => c.pageNumber))];
+    it("должен сохранять номера страниц из исходных данных", () => {
+      const chunks = splitPages(sampleSourcePages);
+      const uniquePageNumbers = [...new Set(chunks.map((chunk) => chunk.pageNumber))];
 
-      // Should cover pages from source data
-      expect(pageNumbers.length).toBeGreaterThanOrEqual(1);
+      // Должны присутствовать номера страниц из исходных данных
+      expect(uniquePageNumbers.length).toBeGreaterThanOrEqual(1);
     });
   });
 
-  describe("Pinecone upsertRecords (integrated embedding)", () => {
-    it("upserts records with correct format for integrated embedding", async () => {
-      const chunks = splitPages(samplePages, {
+  describe("Загрузка в Pinecone (Pinecone upsertRecords)", () => {
+    it("должен загружать записи в корректном формате для интегрированного эмбеддинга", async () => {
+      const chunks = splitPages(sampleSourcePages, {
         chunkSize: 200,
         chunkOverlap: 50,
       });
 
-      const bookSlug = "test-pipeline-v4";
+      const bookUniqueSlug = "test-book-slug-v4";
 
-      // Records for integrated embedding: id, text (for embedding), and metadata fields
-      const records = chunks.map((chunk) => ({
-        id: `${bookSlug}-chunk-${chunk.chunkIndex}`,
+      // Формат записей: id, текст (для эмбеддинга) и поля метаданных
+      const recordsToUpsert = chunks.map((chunk) => ({
+        id: `${bookUniqueSlug}-chunk-${chunk.chunkIndex}`,
         text: chunk.text.slice(0, 200),
-        bookName: "__test_v4__",
+        bookName: "__тест_v4__",
         chunkIndex: chunk.chunkIndex,
         pageNumber: chunk.pageNumber,
         chapterTitle: chunk.title || "",
       }));
 
-      mockUpsertRecords.mockResolvedValueOnce(undefined);
+      mockPineconeUpsertRecords.mockResolvedValueOnce(undefined);
 
       const { Pinecone } = await import("@pinecone-database/pinecone");
-      const pc = new Pinecone({ apiKey: "test" });
-      const index = pc.index("test");
-      await index.upsertRecords({ records });
+      const pcClient = new Pinecone({ apiKey: "test-key" });
+      const pcIndex = pcClient.index("test-index");
+      await pcIndex.upsertRecords({ records: recordsToUpsert });
 
-      expect(mockUpsertRecords).toHaveBeenCalledOnce();
-      expect(mockUpsertRecords).toHaveBeenCalledWith({ records });
+      expect(mockPineconeUpsertRecords).toHaveBeenCalledOnce();
+      expect(mockPineconeUpsertRecords).toHaveBeenCalledWith({ records: recordsToUpsert });
 
-      // Verify record format: should have id and text, but NOT values
-      const upsertedRecords = mockUpsertRecords.mock.calls[0]![0].records;
-      expect(upsertedRecords[0]).toHaveProperty("id");
-      expect(upsertedRecords[0]).toHaveProperty("text");
-      expect(upsertedRecords[0]).not.toHaveProperty("values");
+      // Проверяем формат записи: должны быть id и text, но НЕ values (так как используется интегрированный эмбеддинг)
+      const capturedRecords = mockPineconeUpsertRecords.mock.calls[0]![0].records;
+      expect(capturedRecords[0]).toHaveProperty("id");
+      expect(capturedRecords[0]).toHaveProperty("text");
+      expect(capturedRecords[0]).not.toHaveProperty("values");
     });
 
-    it("supports resume mechanism by checking existing IDs", async () => {
-      const existingIds = new Set(["test-chunk-0", "test-chunk-1"]);
+    it("должен поддерживать механизм возобновления (resume), проверяя существующие ID", async () => {
+      const alreadyExistingIds = new Set(["chunk-id-0", "chunk-id-1"]);
+      const allTargetChunkIds = ["chunk-id-0", "chunk-id-1", "chunk-id-2"];
+      
+      const idsToProcess = allTargetChunkIds.filter((id) => !alreadyExistingIds.has(id));
 
-      const allChunkIds = ["test-chunk-0", "test-chunk-1", "test-chunk-2"];
-      const remaining = allChunkIds.filter((id) => !existingIds.has(id));
-
-      expect(remaining).toEqual(["test-chunk-2"]);
+      expect(idsToProcess).toEqual(["chunk-id-2"]);
     });
   });
 
-  describe("availability", () => {
+  describe("Проверка доступности (Availability)", () => {
+    // Тест выполняется только при наличии реального ключа Pinecone
     it.skipIf(!process.env.PINECONE_API_KEY)(
-      "can perform real vectorization pipeline",
+      "должен успешно выполнять реальный конвейер векторизации",
       async () => {
         expect(true).toBe(true);
       },

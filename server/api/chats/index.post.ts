@@ -6,42 +6,42 @@ export default defineEventHandler(async (event) => {
   const userId = session.user?.id || session.id;
 
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+    throw createError({ statusCode: 401, message: "Не авторизован" });
   }
 
-  const body = await readBody(event);
-  const bookIds = Array.isArray(body.bookIds) ? body.bookIds : [];
-  const chatId = crypto.randomUUID();
+  const requestBody = await readBody(event);
+  const associatedBookIds = Array.isArray(requestBody.bookIds) ? requestBody.bookIds : [];
+  const newChatId = crypto.randomUUID();
 
-  // Simple retry logic for DB operations
-  async function performInsert() {
-    let retries = 3;
-    let delay = 500; // Начальная задержка
-    while (retries > 0) {
+  // Логика повторных попыток для операций с базой данных
+  async function performDatabaseInsertWithRetry() {
+    let remainingRetries = 3;
+    let delayMilliseconds = 500;
+    
+    while (remainingRetries > 0) {
       try {
         return await db.insert(schema.chats).values({
-          id: chatId,
+          id: newChatId,
           title: "",
-          userId: userId,
-          bookIds,
+          userId: userId as string,
+          bookIds: associatedBookIds,
         });
-      } catch (err) {
-        // В идеале, здесь стоит проверять, является ли ошибка временной
-        retries--;
-        if (retries === 0) throw err;
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; // Экспоненциальная задержка
+      } catch (databaseError) {
+        remainingRetries--;
+        if (remainingRetries === 0) throw databaseError;
+        await new Promise(resolve => setTimeout(resolve, delayMilliseconds));
+        delayMilliseconds *= 2; 
       }
     }
   }
 
-  await performInsert();
+  await performDatabaseInsertWithRetry();
 
-  // Notify client about new chat
-  await publishEvent(userId, "chat:updated", {
-    chatId,
+  // Уведомляем клиента о новом чате
+  await publishEvent(userId as string, "chat:updated", {
+    chatId: newChatId,
     status: "created",
   });
 
-  return { id: chatId };
+  return { id: newChatId };
 });

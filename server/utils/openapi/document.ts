@@ -1,13 +1,13 @@
 /**
- * OpenAPI 3.1.1 Document — generated from Zod schemas.
- *
- * This is the SINGLE SOURCE OF TRUTH for the API specification.
- * All schemas imported here carry `.meta()` annotations that
- * `zod-openapi` transforms into proper OpenAPI components.
- *
- * To view the rendered result:
- *   • JSON spec — GET /api/openapi
- *   • Interactive UI — GET /api/docs  (Scalar)
+ * Документ OpenAPI 3.1.1 — генерируется на основе схем Zod.
+ * 
+ * Этот файл является ЕДИНЫМ ИСТОЧНИКОМ ИСТИНЫ для спецификации API.
+ * Все импортированные схемы содержат аннотации `.meta()`, которые
+ * `zod-openapi` преобразует в соответствующие компоненты OpenAPI.
+ * 
+ * Чтобы просмотреть результат:
+ *   • JSON спецификация — GET /api/openapi
+ *   • Интерактивный интерфейс — GET /api/docs (Scalar)
  */
 
 import { z } from "zod";
@@ -193,7 +193,7 @@ export const openApiDocument = createDocument({
               schema: z.object({
                 file: z.string().meta({
                   description:
-                    "Файл книги (.txt, .pdf, .epub). Отправляется как binary.",
+                    "Файл книги (.txt, .pdf, .epub). Отправляется как двоичные данные (binary).",
                   override: { type: "string", format: "binary" },
                 }),
                 author: z.string().optional().meta({
@@ -441,18 +441,18 @@ export const openApiDocument = createDocument({
           "",
           "### Протокол SSE-ответа",
           "",
-          "Поток содержит следующие custom data parts:",
+          "Поток содержит следующие пользовательские части данных (data parts):",
           "",
-          "1. **`data-meta`** — метаинформация (bookIds, hasContext, notVectorized)",
+          "1. **`data-meta`** — метаинформация (ID книг, наличие контекста, неиндексированные книги)",
           "2. **`data-chunks`** — массив найденных текстовых фрагментов с метаданными источника",
-          "3. **`text-start` / `text-delta` / `text-end`** — стриминг ответа LLM",
-          "4. **`data-error`** (при ошибке) — сообщение об ошибке генерации",
+          "3. **`text-start` / `text-delta` / `text-end`** — потоковая передача ответа LLM",
+          "4. **`data-error`** (при сбое) — сообщение об ошибке генерации",
           "",
-          "Если `hasContext: false` — стрим содержит только `data-meta` и пустой `data-chunks` (без LLM).",
+          "Если `hasContext: false` — поток содержит только `data-meta` и пустой `data-chunks` (без вызова LLM).",
           "",
           "### Интеграция с фронтендом",
           "",
-          "Рекомендуется использовать хук `useChat` из `@ai-sdk/react` для автоматической обработки стрима.",
+          "Рекомендуется использовать хук `useChat` из `@ai-sdk/react` или эквивалентный для автоматической обработки потока.",
         ].join("\n"),
         tags: ["Chat"],
         requestBody: {
@@ -464,9 +464,9 @@ export const openApiDocument = createDocument({
         responses: {
           "200": {
             description: [
-              "SSE-стрим (UI Message Stream).",
+              "SSE-поток (UI Message Stream).",
               "Первые два события: `data-meta` и `data-chunks` содержат метаинформацию и найденные фрагменты.",
-              "Далее стримится ответ LLM.",
+              "Далее передается текст ответа LLM.",
             ].join(" "),
             content: {
               "text/event-stream": {
@@ -475,15 +475,14 @@ export const openApiDocument = createDocument({
                     description: "Первое событие — метаинформация о запросе.",
                   }),
                   "data-chunks": z.array(ChunkItemSchema).meta({
-                    description:
-                      "Второе событие — найденные текстовые фрагменты.",
+                    description: "Второе событие — найденные релевантные фрагменты текста.",
                   }),
                 }),
               },
             },
           },
           "400": {
-            description: "Невалидный запрос (Zod-валидация не пройдена).",
+            description: "Невалидный запрос (ошибка валидации Zod).",
             content: {
               "application/json": { schema: Error400Schema },
             },
@@ -495,7 +494,7 @@ export const openApiDocument = createDocument({
             },
           },
           "404": {
-            description: "Одна из указанных книг не найдена.",
+            description: "Одна или несколько указанных книг не найдены.",
             content: {
               "application/json": { schema: Error404Schema },
             },
@@ -511,7 +510,7 @@ export const openApiDocument = createDocument({
     },
   },
 
-  // Register reusable components
+  // Регистрация переиспользуемых компонентов
   components: {
     schemas: {
       BookItem: BookItemSchema,

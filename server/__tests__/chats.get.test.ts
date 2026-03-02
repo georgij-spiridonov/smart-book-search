@@ -1,27 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock Nuxt auto-imports
+// =======================
+// Имитации для Nuxt (Mocks for Nuxt Imports)
+// =======================
 const { mockedGetUserSession } = vi.hoisted(() => {
   const sessionMock = vi.fn();
 
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
-  (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
-    (error as any).statusCode = err.statusCode;
+  (globalThis as any).createError = vi.fn((errorData: { statusCode: number; message: string }) => {
+    const error = new Error(errorData.message || "Ошибка сервера");
+    (error as any).statusCode = errorData.statusCode;
     return error;
   });
-  (globalThis as any).getUserSession = sessionMock as any;
+  (globalThis as any).getUserSession = sessionMock;
 
   return { mockedGetUserSession: sessionMock };
 });
 
-// Mock DB
-const mockFindMany = vi.fn();
+// =======================
+// Имитация базы данных (Mocks for DB)
+// =======================
+const mockDbFindManyChats = vi.fn();
 vi.mock("hub:db", () => ({
   db: {
     query: {
       chats: {
-        findMany: (...args: any[]) => mockFindMany(...args),
+        findMany: (...args: any[]) => mockDbFindManyChats(...args),
       },
     },
   },
@@ -40,55 +44,59 @@ vi.mock("drizzle-orm", () => ({
 
 import chatsGetHandler from "../api/chats.get";
 
-describe("GET /api/chats", () => {
+describe("Получение списка чатов: GET /api/chats", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("should throw 401 Unauthorized if user is not logged in", async () => {
-    mockedGetUserSession.mockResolvedValueOnce({}); // No user, no id
+  it("должен возвращать ошибку 401, если пользователь не авторизован", async () => {
+    // Имитируем отсутствие данных пользователя и сессии
+    mockedGetUserSession.mockResolvedValueOnce({}); 
 
     await expect(chatsGetHandler({} as any)).rejects.toThrowError(
-      "Unauthorized",
+      "Не авторизован",
     );
   });
 
-  it("should return a list of chats for the logged-in user", async () => {
-    const mockDbChats = [
-      { id: "chat-1", title: "Test Chat 1", userId: "user-123" },
-      { id: "chat-2", title: "Test Chat 2", userId: "user-123" },
+  it("должен возвращать список чатов для авторизованного пользователя", async () => {
+    const mockChatsFromDb = [
+      { id: "chat-id-1", title: "Тестовый чат 1", userId: "user-id-123" },
+      { id: "chat-id-2", title: "Тестовый чат 2", userId: "user-id-123" },
     ];
 
     mockedGetUserSession.mockResolvedValueOnce({
-      user: { id: "user-123" },
+      user: { id: "user-id-123" },
     });
-    mockFindMany.mockImplementationOnce((args: any) => {
+
+    mockDbFindManyChats.mockImplementationOnce((args: any) => {
+      // Имитируем выполнение внутренних условий Drizzle
       if (typeof args?.where === "function") args.where();
       if (typeof args?.orderBy === "function") args.orderBy();
-      return Promise.resolve(mockDbChats);
+      return Promise.resolve(mockChatsFromDb);
     });
+
     const result = await chatsGetHandler({} as any);
 
     expect(mockedGetUserSession).toHaveBeenCalledOnce();
-    expect(mockFindMany).toHaveBeenCalledOnce();
-    expect(result).toEqual(mockDbChats);
+    expect(mockDbFindManyChats).toHaveBeenCalledOnce();
+    expect(result).toEqual(mockChatsFromDb);
   });
 
-  it("should use session id fallback if user.id is not available", async () => {
-    const mockDbChats = [
-      { id: "chat-3", title: "Fallback Session Chat", userId: "session-456" },
+  it("должен использовать ID сессии в качестве запасного варианта, если user.id отсутствует", async () => {
+    const mockChatsWithSessionId = [
+      { id: "chat-id-3", title: "Чат по ID сессии", userId: "session-id-456" },
     ];
 
-    // Auth-utils gives us a session.id even if not logged in via oauth
+    // Nuxt auth-utils предоставляет ID сессии, даже если вход через OAuth не выполнен
     mockedGetUserSession.mockResolvedValueOnce({
-      id: "session-456",
+      id: "session-id-456",
     });
-    mockFindMany.mockResolvedValueOnce(mockDbChats);
+    mockDbFindManyChats.mockResolvedValueOnce(mockChatsWithSessionId);
 
     const result = await chatsGetHandler({} as any);
 
     expect(mockedGetUserSession).toHaveBeenCalledOnce();
-    expect(mockFindMany).toHaveBeenCalledOnce();
-    expect(result).toEqual(mockDbChats);
+    expect(mockDbFindManyChats).toHaveBeenCalledOnce();
+    expect(result).toEqual(mockChatsWithSessionId);
   });
 });

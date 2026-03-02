@@ -1,21 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /**
- * Tests for getRedisClient singleton initialization.
- *
- * We test the actual module (not the mock) to cover lines 10-19 of redis.ts.
- * We mock `useRuntimeConfig` (Nuxt global) and the `@upstash/redis` module.
+ * Тестирование инициализации синглтона getRedisClient (redis.ts).
+ * Мы тестируем фактический модуль (не мок), чтобы покрыть логику инициализации клиента.
+ * Используем vi.stubGlobal для имитации useRuntimeConfig (Nuxt global) и мокаем библиотеку @upstash/redis.
  */
 
-// Track constructor calls manually
-const constructorCalls: any[] = [];
+// Массив для отслеживания вызовов конструктора
+const redisConstructorCalls: any[] = [];
 
 vi.mock("@upstash/redis", () => {
-  // Return a class that can be used with `new`
   return {
     Redis: class MockRedis {
-      constructor(opts: any) {
-        constructorCalls.push(opts);
+      constructor(options: any) {
+        redisConstructorCalls.push(options);
       }
       ping() {
         return "PONG";
@@ -24,57 +22,86 @@ vi.mock("@upstash/redis", () => {
   };
 });
 
-// Provide the Nuxt global
+// Глобальная имитация функции useRuntimeConfig
 vi.stubGlobal("useRuntimeConfig", () => ({
   upstashRedisUrl: "https://fake-redis.upstash.io",
   upstashRedisToken: "fake-token-12345",
 }));
 
-// We need to reset the module singleton between tests
+// Переменная для хранения функции получения клиента
 let getRedisClient: typeof import("../utils/redis").getRedisClient;
 
-describe("redis", () => {
+describe("Сервис Redis (redis)", () => {
   beforeEach(async () => {
-    constructorCalls.length = 0;
+    // Очищаем историю вызовов конструктора
+    redisConstructorCalls.length = 0;
 
-    // Reset the module so _redisClient is null again
+    // Сбрасываем модуль, чтобы _redisClient снова стал null
     vi.resetModules();
 
-    // Re-setup mocks after resetModules
+    // Повторно настраиваем глобальные моки после сброса модулей
     vi.stubGlobal("useRuntimeConfig", () => ({
       upstashRedisUrl: "https://fake-redis.upstash.io",
       upstashRedisToken: "fake-token-12345",
     }));
 
-    // Re-import to get a fresh module with _redisClient = null
+    // Импортируем модуль заново для получения "чистого" состояния
     const redisModule = await import("../utils/redis");
     getRedisClient = redisModule.getRedisClient;
   });
 
-  it("creates a Redis client using useRuntimeConfig on first call", () => {
-    const client = getRedisClient();
+  it("должен создавать клиент Redis, используя useRuntimeConfig при первом вызове", () => {
+    const redisClient = getRedisClient();
 
-    expect(client).toBeDefined();
-    expect(constructorCalls).toHaveLength(1);
-    expect(constructorCalls[0]).toEqual({
+    expect(redisClient).toBeDefined();
+    expect(redisConstructorCalls).toHaveLength(1);
+    expect(redisConstructorCalls[0]).toEqual({
       url: "https://fake-redis.upstash.io",
       token: "fake-token-12345",
     });
   });
 
-  it("returns the same instance on subsequent calls (singleton)", () => {
-    const client1 = getRedisClient();
-    const client2 = getRedisClient();
+  it("должен возвращать один и тот же экземпляр при последующих вызовах (синглтон)", () => {
+    const firstClient = getRedisClient();
+    const secondClient = getRedisClient();
 
-    expect(client1).toBe(client2);
-    // Constructor should only be called once
-    expect(constructorCalls).toHaveLength(1);
+    expect(firstClient).toBe(secondClient);
+    // Конструктор должен быть вызван только один раз
+    expect(redisConstructorCalls).toHaveLength(1);
   });
 
-  it("reads url and token from runtimeConfig", () => {
+  it("должен корректно считывать URL и токен из runtimeConfig", () => {
     getRedisClient();
 
-    expect(constructorCalls[0]!.url).toBe("https://fake-redis.upstash.io");
-    expect(constructorCalls[0]!.token).toBe("fake-token-12345");
+    expect(redisConstructorCalls[0]!.url).toBe("https://fake-redis.upstash.io");
+    expect(redisConstructorCalls[0]!.token).toBe("fake-token-12345");
+  });
+
+  it("должен выбрасывать ошибку, если конфигурация Redis полностью отсутствует", () => {
+    // Удаляем глобальный мок
+    (globalThis as any).useRuntimeConfig = undefined;
+    
+    // Очищаем переменные окружения (в vitest они могут сохраняться)
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const originalKvUrl = process.env.KV_REST_API_URL;
+    const originalKvToken = process.env.KV_REST_API_TOKEN;
+    
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+
+    try {
+      expect(() => getRedisClient()).toThrow(
+        "Redis configuration is missing. Provide UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN env vars.",
+      );
+    } finally {
+      // Восстанавливаем окружение
+      process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+      process.env.KV_REST_API_URL = originalKvUrl;
+      process.env.KV_REST_API_TOKEN = originalKvToken;
+    }
   });
 });

@@ -1,27 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock $fetch (Nuxt global)
-const mock$fetch = vi.fn();
-vi.stubGlobal("$fetch", mock$fetch);
+// Имитация функции $fetch (глобальный Nuxt $fetch)
+const mocked$fetch = vi.fn();
+vi.stubGlobal("$fetch", mocked$fetch);
 
-describe("inngestCheck", () => {
+describe("Проверка Inngest (inngestCheck)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("unit (mocked)", () => {
-    it("detects reachable Inngest endpoint with registered functions", async () => {
-      mock$fetch.mockResolvedValueOnce({
+  describe("Юнит-тесты (Unit tests - mocked)", () => {
+    it("должен успешно обнаруживать доступный эндпоинт Inngest с зарегистрированными функциями", async () => {
+      mocked$fetch.mockResolvedValueOnce({
         function_count: 3,
       });
 
       const response = (await $fetch("/api/inngest")) as any;
+      
       expect(response).toBeDefined();
       expect(response.function_count).toBe(3);
     });
 
-    it("handles Inngest endpoint returning zero functions", async () => {
-      mock$fetch.mockResolvedValueOnce({
+    it("должен корректно обрабатывать случай с отсутствием функций в Inngest", async () => {
+      mocked$fetch.mockResolvedValueOnce({
         function_count: 0,
       });
 
@@ -29,11 +30,11 @@ describe("inngestCheck", () => {
       expect(response.function_count).toBe(0);
     });
 
-    it("handles Inngest endpoint failure", async () => {
-      mock$fetch.mockRejectedValueOnce(new Error("Cannot reach endpoint"));
+    it("должен выбрасывать ошибку при недоступности эндпоинта Inngest", async () => {
+      mocked$fetch.mockRejectedValueOnce(new Error("Не удалось связаться с эндпоинтом (Cannot reach endpoint)"));
 
       await expect($fetch("/api/inngest")).rejects.toThrow(
-        "Cannot reach endpoint",
+        "Не удалось связаться с эндпоинтом (Cannot reach endpoint)",
       );
     });
   });

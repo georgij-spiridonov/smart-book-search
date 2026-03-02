@@ -1,48 +1,57 @@
 <script setup lang="ts">
+/**
+ * Компонент модального окна для загрузки новых книг в библиотеку.
+ * Поддерживает форматы .pdf, .txt, .epub и автоматически запускает процесс векторизации после загрузки.
+ */
 import { useMediaQuery } from "@vueuse/core";
+
 const { t } = useI18n();
 const toast = useToast();
 
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ 
+  /** Событие закрытия модального окна */
+  close: [] 
+}>();
 
-const file = ref<File | null>(null);
-const title = ref("");
-const author = ref("");
-const coverUrl = ref("");
-const loading = ref(false);
+/** Состояние формы загрузки */
+const selectedFile = ref<File | null>(null);
+const bookTitle = ref("");
+const bookAuthor = ref("");
+const bookCoverUrl = ref("");
+const isUploading = ref(false);
 
 const isMobile = useMediaQuery("(max-width: 640px)");
 
-// Auto-fill title from filename if nothing is typed yet
-watch(file, (newFile) => {
-  const actualFile =
-    Array.isArray(newFile) || newFile instanceof FileList
-      ? newFile[0]
-      : newFile;
-  if (actualFile && !title.value) {
-    title.value = actualFile.name.replace(/\.[^/.]+$/, "");
+// Автоматическое заполнение названия книги из имени файла
+watch(selectedFile, (newFile) => {
+  const file = Array.isArray(newFile) ? newFile[0] : newFile;
+  if (file && !bookTitle.value) {
+    // Удаляем расширение файла для названия
+    bookTitle.value = file.name.replace(/\.[^/.]+$/, "");
   }
 });
 
-async function uploadFile() {
-  if (!file.value) return;
-  // Handle both single File and Array/FileList cases correctly
-  const currentFile =
-    Array.isArray(file.value) || file.value instanceof FileList
-      ? file.value[0]
-      : file.value;
+/**
+ * Выполняет загрузку файла и метаданных на сервер.
+ */
+async function handleFileUpload(): Promise<void> {
+  const fileToUpload = Array.isArray(selectedFile.value) 
+    ? selectedFile.value[0] 
+    : selectedFile.value;
 
-  if (!currentFile) return;
+  if (!fileToUpload) return;
 
-  loading.value = true;
+  isUploading.value = true;
   const formData = new FormData();
-  formData.append("file", currentFile);
-  if (title.value) formData.append("title", title.value);
-  if (author.value) formData.append("author", author.value);
-  if (coverUrl.value) formData.append("coverUrl", coverUrl.value);
+  formData.append("file", fileToUpload);
+  
+  if (bookTitle.value) formData.append("title", bookTitle.value);
+  if (bookAuthor.value) formData.append("author", bookAuthor.value);
+  if (bookCoverUrl.value) formData.append("coverUrl", bookCoverUrl.value);
 
   try {
-    const uploadRes = await $fetch<{ status: string; blob: { url: string } }>(
+    // 1. Загрузка файла
+    const uploadResponse = await $fetch<{ status: string; blob: { url: string } }>(
       "/api/books/upload",
       {
         method: "POST",
@@ -50,83 +59,85 @@ async function uploadFile() {
       },
     );
 
-    // Trigger vectorization immediately after successful upload
     toast.add({
-      title: t("library.uploadSuccess"),
+      title: t("library.uploadSuccessMessage"),
       icon: "i-lucide-check-circle",
+      color: "success"
     });
 
-    // We send to vectorize API. Background job will handle the rest.
+    // 2. Запуск процесса векторизации (извлечение текста и создание эмбеддингов)
     toast.add({
-      title: t("library.vectorizing"),
-      description: currentFile.name,
+      title: t("library.statusVectorizing"),
+      description: fileToUpload.name,
       icon: "i-lucide-loader-2",
     });
+
     await $fetch("/api/books/vectorize", {
       method: "POST",
       body: {
-        blobUrl: uploadRes.blob.url,
-        bookName: title.value || currentFile.name,
-        author: author.value,
+        blobUrl: uploadResponse.blob.url,
+        bookName: bookTitle.value || fileToUpload.name,
+        author: bookAuthor.value,
       },
     });
 
     emit("close");
   } catch (err: unknown) {
     const error = err as { message?: string };
+    console.error("Upload or vectorization failed:", err);
     toast.add({
-      title: t("library.error"),
+      title: t("library.statusError"),
       description: error.message || "Upload failed",
       color: "error",
       icon: "i-lucide-alert-circle",
     });
   } finally {
-    loading.value = false;
+    isUploading.value = false;
   }
 }
 </script>
 
 <template>
-  <UModal :title="t('library.uploadNew')" :fullscreen="isMobile">
+  <UModal :title="t('library.uploadModalTitle')" :fullscreen="isMobile">
     <template #body>
-      <form class="flex flex-col gap-4" @submit.prevent="uploadFile">
-        <UFormField :label="t('library.file')" required>
+      <form class="flex flex-col gap-4" @submit.prevent="handleFileUpload">
+        <UFormField :label="t('library.fileLabel')" required>
           <UFileUpload
-            v-model="file"
+            v-model="selectedFile"
             accept=".pdf,.txt,.epub"
-            :label="t('library.dropzoneLabel')"
+            :label="t('library.dropzoneMainLabel')"
             :description="t('library.dropzoneDescription')"
             icon="i-lucide-upload-cloud"
             class="w-full"
             :max-files="1"
-            :disabled="loading"
+            :disabled="isUploading"
           />
         </UFormField>
 
-        <UFormField :label="t('library.uploadTitle')">
+        <UFormField :label="t('library.bookTitleLabel')">
           <UInput
-            v-model="title"
-            :placeholder="t('library.uploadTitle')"
-            :disabled="loading"
+            v-model="bookTitle"
+            :placeholder="t('library.bookTitleLabel')"
+            :disabled="isUploading"
             class="w-full"
           />
         </UFormField>
 
-        <UFormField :label="t('library.author')">
+        <UFormField :label="t('library.columnAuthor')">
           <UInput
-            v-model="author"
-            :placeholder="t('library.author')"
-            :disabled="loading"
+            v-model="bookAuthor"
+            :placeholder="t('library.columnAuthor')"
+            :disabled="isUploading"
             class="w-full"
           />
         </UFormField>
 
-        <UFormField :label="t('library.coverUrl')">
+        <UFormField :label="t('library.coverUrlLabel')">
           <UInput
-            v-model="coverUrl"
+            v-model="bookCoverUrl"
             type="url"
-            :placeholder="t('library.coverUrl')"
-            :disabled="loading"
+            :placeholder="t('library.coverUrlLabel')"
+            :disabled="isUploading"
             class="w-full"
           />
         </UFormField>
@@ -139,17 +150,17 @@ async function uploadFile() {
           type="button"
           color="neutral"
           variant="ghost"
-          :label="t('library.close')"
-          :disabled="loading"
+          :label="t('library.closeButton')"
+          :disabled="isUploading"
           @click="emit('close')"
         />
         <UButton
           type="button"
-          :label="t('library.uploadButton')"
+          :label="t('library.uploadSubmitButton')"
           icon="i-lucide-upload"
-          :loading="loading"
-          :disabled="!file"
-          @click="uploadFile"
+          :loading="isUploading"
+          :disabled="!selectedFile"
+          @click="handleFileUpload"
         />
       </div>
     </template>

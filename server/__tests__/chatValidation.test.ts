@@ -2,38 +2,38 @@ import { describe, it, expect } from "vitest";
 import { ChatRequestSchema } from "../utils/chatConfig";
 
 /**
- * Chat validation tests — verifies Zod schema validation for /api/chat
- * without needing to call the real API endpoint.
+ * Тесты валидации чата (Chat validation tests).
+ * Проверяют корректность работы схемы Zod для запросов к /api/chat.
  */
-describe("chatValidation", () => {
-  it("accepts a valid request", () => {
-    const result = ChatRequestSchema.safeParse({
-      query: "Test query",
-      bookIds: ["book-1"],
+describe("Валидация запросов чата (chatValidation)", () => {
+  it("должен принимать корректный запрос", () => {
+    const validationResult = ChatRequestSchema.safeParse({
+      query: "Тестовый вопрос",
+      bookIds: ["book-id-1"],
     });
-    expect(result.success).toBe(true);
+    expect(validationResult.success).toBe(true);
   });
 
-  it("rejects missing query", () => {
-    const result = ChatRequestSchema.safeParse({
-      bookIds: ["book-1"],
+  it("должен отклонять запрос без поля query", () => {
+    const validationResult = ChatRequestSchema.safeParse({
+      bookIds: ["book-id-1"],
     });
-    expect(result.success).toBe(false);
+    expect(validationResult.success).toBe(false);
   });
 
-  it("rejects empty query", () => {
-    const result = ChatRequestSchema.safeParse({
+  it("должен отклонять запрос с пустой строкой в query", () => {
+    const validationResult = ChatRequestSchema.safeParse({
       query: "",
-      bookIds: ["book-1"],
+      bookIds: ["book-id-1"],
     });
-    expect(result.success).toBe(false);
+    expect(validationResult.success).toBe(false);
   });
 
-  it("rejects empty bookIds array", () => {
-    const result = ChatRequestSchema.safeParse({
-      query: "Test",
+  it("должен отклонять запрос с пустым массивом bookIds", () => {
+    const validationResult = ChatRequestSchema.safeParse({
+      query: "Тест",
       bookIds: [],
     });
-    expect(result.success).toBe(false);
+    expect(validationResult.success).toBe(false);
   });
 });

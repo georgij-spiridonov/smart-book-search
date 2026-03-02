@@ -1,132 +1,158 @@
 import type { PageText } from "./textParser";
 
+/** Фрагмент текста после разделения (чанк) */
 export interface TextChunk {
+  /** Текстовое содержимое фрагмента */
   text: string;
+  /** Глобальный индекс фрагмента в документе */
   chunkIndex: number;
+  /** Номер страницы или главы, из которой взят текст */
   pageNumber: number;
+  /** Заголовок раздела (если есть) */
   title?: string;
 }
 
+/** Параметры разделения текста */
+interface SplitOptions {
+  /** Целевой размер фрагмента в символах (по умолчанию 800) */
+  chunkSize?: number;
+  /** Размер перекрытия между соседними фрагментами в символах (по умолчанию 200) */
+  chunkOverlap?: number;
+}
+
 /**
- * Split an array of pages into smaller, overlapping chunks,
- * preserving the source page number and metadata in each chunk.
- *
- * Each PageText usually represents a chapter (EPUB) or a page (PDF).
- * To avoid "splitting the meaning of a block", we process each page/chapter
- * independently, so chunks never span across chapter boundaries.
+ * Разделяет массив страниц на мелкие перекрывающиеся фрагменты (чанки),
+ * сохраняя номер страницы и метаданные для каждого фрагмента.
+ * 
+ * Каждая запись PageText обычно представляет главу (EPUB) или страницу (PDF).
+ * Чтобы избежать "разрыва смысла", каждая страница/глава обрабатывается независимо —
+ * фрагменты никогда не пересекают границы глав.
+ * 
+ * @param {PageText[]} pages Массив страниц/глав для разделения.
+ * @param {SplitOptions} [options] Параметры разделения.
+ * @returns {TextChunk[]} Массив готовых для индексации фрагментов.
  */
 export function splitPages(
   pages: PageText[],
-  options?: {
-    chunkSize?: number;
-    chunkOverlap?: number;
-  },
+  options?: SplitOptions,
 ): TextChunk[] {
-  const allChunks: TextChunk[] = [];
-  let globalIndex = 0;
+  const resultChunks: TextChunk[] = [];
+  let globalChunkCounter = 0;
 
   for (const page of pages) {
-    const rawChunks = splitText(page.text, options);
-    for (const chunk of rawChunks) {
-      allChunks.push({
+    const pageChunks = splitText(page.text, options);
+    
+    for (const chunk of pageChunks) {
+      resultChunks.push({
         text: chunk.text,
-        chunkIndex: globalIndex++,
+        chunkIndex: globalChunkCounter++,
         pageNumber: page.pageNumber,
         title: page.title,
       });
     }
   }
 
-  return allChunks;
+  return resultChunks;
 }
 
 /**
- * Split a single text string into chunks based on sentences.
- *
- * Key features:
- * 1. Always starts a chunk with the beginning of a sentence.
- * 2. If a sentence is longer than chunkSize, it's taken whole as one chunk.
- * 3. Preserves original line breaks, spaces, and punctuation.
- * 4. Supports sentence-aware overlap.
+ * Разделяет одну строку текста на фрагменты, основываясь на границах предложений.
+ * 
+ * Ключевые особенности:
+ * 1. Фрагмент всегда начинается с начала предложения.
+ * 2. Если предложение длиннее chunkSize, оно берется целиком как один фрагмент.
+ * 3. Сохраняются оригинальные разрывы строк, пробелы и пунктуация.
+ * 4. Поддерживается "умное" перекрытие на основе предложений.
+ * 
+ * @param {string} text Исходный текст для разделения.
+ * @param {SplitOptions} [options] Параметры разделения.
+ * @returns {Omit<TextChunk, "pageNumber">[]} Массив фрагментов без привязки к странице.
  */
 export function splitText(
   text: string,
-  options?: {
-    chunkSize?: number;
-    chunkOverlap?: number;
-  },
+  options?: SplitOptions,
 ): Omit<TextChunk, "pageNumber">[] {
-  const chunkSize = options?.chunkSize ?? 800;
-  const chunkOverlap = options?.chunkOverlap ?? 200;
+  const targetChunkSize = options?.chunkSize ?? 800;
+  const targetChunkOverlap = options?.chunkOverlap ?? 200;
 
-  if (!text.trim()) return [];
+  if (!text.trim()) {
+    return [];
+  }
 
-  // Use Intl.Segmenter for robust sentence splitting across different languages.
-  // Using 'undefined' as locale lets it use the environment default or best-guess.
-  const segmenter = new Intl.Segmenter(undefined, { granularity: "sentence" });
-  const segments = segmenter.segment(text);
-  const sentences = Array.from(segments).map((s) => s.segment);
+  /** 
+   * Используем Intl.Segmenter для надежного разделения на предложения.
+   * Это работает корректно для разных языков, включая русский и английский.
+   */
+  const sentenceSegmenter = new Intl.Segmenter(undefined, { granularity: "sentence" });
+  const segments = sentenceSegmenter.segment(text);
+  const sentencesList = Array.from(segments).map((s) => s.segment);
 
-  const chunks: string[] = [];
-  let currentChunkSentences: string[] = [];
-  let currentChunkLength = 0;
+  const finalChunks: string[] = [];
+  let currentAccumulatedSentences: string[] = [];
+  let currentAccumulatedLength = 0;
 
-  for (let i = 0; i < sentences.length; i++) {
-    const sentence = sentences[i]!;
+  for (let i = 0; i < sentencesList.length; i++) {
+    const currentSentence = sentencesList[i]!;
 
-    // Case 1: The sentence itself is longer than the desired chunk size.
-    // Requirement: "Если предложение больше длины чанка - брать его целиком и переходить к следующему."
-    if (sentence.length >= chunkSize) {
-      // Flush current accumulated chunk if any
-      if (currentChunkSentences.length > 0) {
-        chunks.push(currentChunkSentences.join(""));
-        currentChunkSentences = [];
-        currentChunkLength = 0;
+    // Случай 1: Само предложение длиннее целевого размера фрагмента.
+    // Берем его целиком, чтобы не разрывать смысл в случайном месте.
+    if (currentSentence.length >= targetChunkSize) {
+      // Сначала "сбрасываем" текущий накопленный фрагмент, если он есть
+      if (currentAccumulatedSentences.length > 0) {
+        finalChunks.push(currentAccumulatedSentences.join(""));
+        currentAccumulatedSentences = [];
+        currentAccumulatedLength = 0;
       }
-      // Add the long sentence as its own standalone chunk
-      chunks.push(sentence);
+      // Добавляем длинное предложение как отдельный чанк
+      finalChunks.push(currentSentence);
       continue;
     }
 
-    // Case 2: Adding this sentence would exceed the chunkSize.
-    if (currentChunkLength + sentence.length > chunkSize) {
-      // Finalize the current chunk
-      const finishedChunkText = currentChunkSentences.join("");
-      chunks.push(finishedChunkText);
+    // Случай 2: Добавление этого предложения превысит лимит размера фрагмента.
+    if (currentAccumulatedLength + currentSentence.length > targetChunkSize) {
+      // Завершаем текущий фрагмент
+      const finishedChunk = currentAccumulatedSentences.join("");
+      finalChunks.push(finishedChunk);
 
-      // Implement sentence-aware overlap.
-      // We want to include previous sentences that fit within the chunkOverlap limit.
+      /**
+       * Реализация перекрытия (Overlap):
+       * Мы берем несколько предыдущих предложений, которые помещаются в лимит перекрытия,
+       * чтобы сохранить контекст в следующем фрагменте.
+       */
       const overlapSentences: string[] = [];
-      let overlapLength = 0;
-      for (let j = currentChunkSentences.length - 1; j >= 0; j--) {
-        const prevS = currentChunkSentences[j]!;
-        // Ensure overlap doesn't exceed the limit and doesn't consume the whole next chunk
-        if (overlapLength + prevS.length <= chunkOverlap) {
-          overlapSentences.unshift(prevS);
-          overlapLength += prevS.length;
+      let overlapLengthCounter = 0;
+      
+      for (let j = currentAccumulatedSentences.length - 1; j >= 0; j--) {
+        const previousSentence = currentAccumulatedSentences[j]!;
+        if (overlapLengthCounter + previousSentence.length <= targetChunkOverlap) {
+          overlapSentences.unshift(previousSentence);
+          overlapLengthCounter += previousSentence.length;
         } else {
           break;
         }
       }
 
-      // Start new chunk with the overlap and the current sentence
-      currentChunkSentences = [...overlapSentences, sentence];
-      currentChunkLength = overlapLength + sentence.length;
+      // Начинаем новый фрагмент с "хвоста" предыдущего и текущего предложения
+      currentAccumulatedSentences = [...overlapSentences, currentSentence];
+      currentAccumulatedLength = overlapLengthCounter + currentSentence.length;
     } else {
-      // Case 3: Sentence fits within the current chunk
-      currentChunkSentences.push(sentence);
-      currentChunkLength += sentence.length;
+      // Случай 3: Предложение помещается в текущий фрагмент
+      currentAccumulatedSentences.push(currentSentence);
+      currentAccumulatedLength += currentSentence.length;
     }
   }
 
-  // Push the last remaining chunk
-  if (currentChunkSentences.length > 0) {
-    const lastChunkText = currentChunkSentences.join("");
-    // Avoid redundant chunks (e.g. if the last chunk is identical to overlap from previous)
-    if (chunks.length === 0 || chunks[chunks.length - 1] !== lastChunkText) {
-      chunks.push(lastChunkText);
+  // Добавляем последний оставшийся фрагмент
+  if (currentAccumulatedSentences.length > 0) {
+    const lastChunkText = currentAccumulatedSentences.join("");
+    // Избегаем дублирования, если последний фрагмент полностью совпадает с перекрытием
+    if (finalChunks.length === 0 || finalChunks[finalChunks.length - 1] !== lastChunkText) {
+      finalChunks.push(lastChunkText);
     }
   }
 
-  return chunks.map((t, i) => ({ text: t, chunkIndex: i }));
+  return finalChunks.map((chunkText, index) => ({ 
+    text: chunkText, 
+    chunkIndex: index 
+  }));
 }

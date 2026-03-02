@@ -6,18 +6,18 @@ export default defineEventHandler(async (event) => {
   const userId = session.user?.id || session.id;
 
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+    throw createError({ statusCode: 401, message: "Не авторизован" });
   }
 
   const { id } = getRouterParams(event);
 
-  // If admin, we search by ID only; otherwise we require ownership.
-  const whereClause = session.user?.isAdmin
+  // Если пользователь является администратором, ищем только по ID; иначе требуем совпадения владельца
+  const chatSearchCondition = session.user?.isAdmin
     ? eq(schema.chats.id, id as string)
     : and(eq(schema.chats.id, id as string), eq(schema.chats.userId, userId));
 
-  const chat = await db.query.chats.findFirst({
-    where: whereClause,
+  const targetChat = await db.query.chats.findFirst({
+    where: chatSearchCondition,
     with: {
       messages: {
         orderBy: () => asc(schema.messages.createdAt),
@@ -25,9 +25,9 @@ export default defineEventHandler(async (event) => {
     },
   });
 
-  if (!chat) {
-    throw createError({ statusCode: 404, statusMessage: "Chat not found" });
+  if (!targetChat) {
+    throw createError({ statusCode: 404, message: "Чат не найден" });
   }
 
-  return chat;
+  return targetChat;
 });

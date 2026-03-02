@@ -1,87 +1,93 @@
 /**
- * PDF text normalizer — reconstructs broken lines from PDF extraction.
- *
- * pdfjs-dist extracts text line-by-line as laid out on the page.
- * This causes mid-sentence line breaks that hurt embedding quality.
+ * Нормализатор текста PDF — восстанавливает разорванные строки после извлечения из PDF.
+ * 
+ * Библиотека pdfjs-dist извлекает текст построчно, как он расположен на странице.
+ * Это приводит к разрывам строк в середине предложения, что ухудшает качество эмбеддингов.
  */
+
+/** Набор символов, завершающих предложение */
+const SENTENCE_TERMINATORS = new Set([
+  ".", "!", "?", ":", ";", '"', "'", ")", "]", "»", "…", "”"
+]);
+
+/** Набор символов переноса или тире */
+const DASH_SYMBOLS = new Set(["-", "–", "—"]);
 
 /**
- * Merge lines that were broken by PDF layout.
- * If a line does not end with a sentence terminator, merge it with the next line.
+ * Объединяет строки, которые были разорваны при верстке PDF.
+ * Если строка не заканчивается знаком препинания, она объединяется со следующей.
+ * 
+ * @param {string} rawText "Сырой" текст страницы с разрывами строк.
+ * @returns {string} Нормализованный текст с восстановленной структурой предложений.
  */
 export function normalizePageText(rawText: string): string {
-  const lines = rawText.split("\n");
-  const merged: string[] = [];
-  let buffer = "";
+  const sourceLines = rawText.split("\n");
+  const normalizedLines: string[] = [];
+  let currentBuffer = "";
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      // Empty line = paragraph break
-      if (buffer) {
-        merged.push(buffer);
-        buffer = "";
+  for (const rawLine of sourceLines) {
+    const trimmedLine = rawLine.trim();
+    
+    if (!trimmedLine) {
+      // Пустая строка означает разрыв абзаца
+      if (currentBuffer) {
+        normalizedLines.push(currentBuffer);
+        currentBuffer = "";
       }
-      merged.push(""); // preserve paragraph boundary
+      normalizedLines.push(""); // Сохраняем пустую строку для обозначения границы абзаца
       continue;
     }
 
-    if (buffer) {
-      // Check if previous buffer ended mid-sentence
-      if (isMidSentence(buffer)) {
-        // Merge: broken line continuation
-        buffer += " " + trimmed;
+    if (currentBuffer) {
+      // Проверяем, закончилось ли предыдущее предложение в буфере
+      if (checkIfEndsMidSentence(currentBuffer)) {
+        // Если это продолжение разорванной строки — объединяем через пробел
+        currentBuffer += " " + trimmedLine;
       } else {
-        // Previous line was complete sentence, start new
-        merged.push(buffer);
-        buffer = trimmed;
+        // Если предыдущая строка была полным предложением — сбрасываем буфер и начинаем новую
+        normalizedLines.push(currentBuffer);
+        currentBuffer = trimmedLine;
       }
     } else {
-      buffer = trimmed;
+      currentBuffer = trimmedLine;
     }
   }
 
-  if (buffer) {
-    merged.push(buffer);
+  // Добавляем остаток из буфера
+  if (currentBuffer) {
+    normalizedLines.push(currentBuffer);
   }
 
-  return merged
+  return normalizedLines
     .join("\n")
-    .replace(/\n{3,}/g, "\n\n") // collapse excessive newlines
+    .replace(/\n{3,}/g, "\n\n") // Убираем избыточные пустые строки (максимум две подряд)
     .trim();
 }
 
 /**
- * Check if text ends mid-sentence (no sentence terminator at the end).
+ * Проверяет, заканчивается ли текст на середине предложения (отсутствует терминатор).
+ * 
+ * @param {string} text Текст для проверки.
+ * @returns {boolean} true, если предложение, скорее всего, не закончено.
  */
-function isMidSentence(text: string): boolean {
-  const trimmed = text.trimEnd();
-  if (!trimmed) return false;
-
-  const lastChar = trimmed[trimmed.length - 1]!;
-  const terminators = new Set([
-    ".",
-    "!",
-    "?",
-    ":",
-    ";",
-    '"',
-    "'",
-    ")",
-    "]",
-    "»",
-  ]);
-
-  // Ends with a terminator → probably a complete sentence
-  if (terminators.has(lastChar)) {
+function checkIfEndsMidSentence(text: string): boolean {
+  const trimmedText = text.trimEnd();
+  if (!trimmedText) {
     return false;
   }
 
-  // Ends with a dash or hyphen → word was hyphenated across lines
-  if (lastChar === "-" || lastChar === "–" || lastChar === "—") {
+  const lastCharacter = trimmedText[trimmedText.length - 1]!;
+
+  // Если заканчивается на терминатор — предложение закончено
+  if (SENTENCE_TERMINATORS.has(lastCharacter)) {
+    return false;
+  }
+
+  // Если заканчивается на дефис или тире — слово было перенесено
+  if (DASH_SYMBOLS.has(lastCharacter)) {
     return true;
   }
 
-  // Ends with a letter, digit, or comma → likely mid-sentence
+  // Если заканчивается на букву, цифру или запятую — скорее всего, это середина предложения
   return true;
 }

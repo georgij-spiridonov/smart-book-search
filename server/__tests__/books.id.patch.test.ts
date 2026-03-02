@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { H3Event } from "h3";
 
+/**
+ * Глобальные имитации (Mocks) для окружения Nuxt/H3.
+ */
 const { mockedGetRouterParam, mockedReadBody } = vi.hoisted(() => {
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
-  (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
-    (error as any).statusCode = err.statusCode;
-    (error as any).data = err.data;
+  (globalThis as any).createError = vi.fn((errorData: { statusCode: number; message: string; data?: any }) => {
+    const error = new Error(errorData.message || "Ошибка сервера");
+    (error as any).statusCode = errorData.statusCode;
+    (error as any).data = errorData.data;
     return error;
   });
 
@@ -16,7 +20,7 @@ const { mockedGetRouterParam, mockedReadBody } = vi.hoisted(() => {
   (globalThis as any).readBody = readBodyMock;
 
   (globalThis as any).getUserSession = vi.fn(async () => ({
-    user: { id: "test-user" },
+    user: { id: "test-user-id" },
   }));
 
   return {
@@ -25,15 +29,18 @@ const { mockedGetRouterParam, mockedReadBody } = vi.hoisted(() => {
   };
 });
 
-const { mockGetBook, mockUpdateBook, mockPublishEvent } = vi.hoisted(() => ({
-  mockGetBook: vi.fn(),
-  mockUpdateBook: vi.fn(),
+/**
+ * Имитации внутренних сервисов: хранилище книг и события.
+ */
+const { mockGetBookFromStore, mockUpdateBookInStore, mockPublishEvent } = vi.hoisted(() => ({
+  mockGetBookFromStore: vi.fn(),
+  mockUpdateBookInStore: vi.fn(),
   mockPublishEvent: vi.fn(),
 }));
 
 vi.mock("../utils/bookStore", () => ({
-  getBook: mockGetBook,
-  updateBook: mockUpdateBook,
+  getBook: mockGetBookFromStore,
+  updateBook: mockUpdateBookInStore,
 }));
 
 vi.mock("../utils/events", () => ({
@@ -41,7 +48,7 @@ vi.mock("../utils/events", () => ({
 }));
 
 vi.mock("../utils/logger", () => ({
-  log: {
+  logger: {
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
@@ -50,108 +57,111 @@ vi.mock("../utils/logger", () => ({
 
 import patchBookHandler from "../api/books/[id].patch";
 
-describe("PATCH /api/books/[id]", () => {
+describe("Обновление метаданных книги: PATCH /api/books/[id]", () => {
+  const dummyEvent = {} as unknown as H3Event;
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("should throw 400 if ID is missing", async () => {
+  it("должен возвращать 400, если ID книги отсутствует", async () => {
     mockedGetRouterParam.mockReturnValueOnce(undefined);
 
-    await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Book ID is required",
+    await expect(patchBookHandler(dummyEvent)).rejects.toThrowError(
+      "Требуется ID книги",
     );
   });
 
-  it("should throw 400 if body is invalid", async () => {
+  it("должен возвращать 400, если тело запроса некорректно", async () => {
     mockedGetRouterParam.mockReturnValueOnce("valid-id");
-    mockedReadBody.mockResolvedValueOnce({ title: "" }); // Title cannot be empty if provided
+    // Пустое название книги, если оно передано, считается невалидным согласно Zod схеме в обработчике
+    mockedReadBody.mockResolvedValueOnce({ title: "" }); 
 
-    await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Invalid request body",
+    await expect(patchBookHandler(dummyEvent)).rejects.toThrowError(
+      "Неверное тело запроса",
     );
   });
 
-  it("should throw 404 if book is not found", async () => {
-    mockedGetRouterParam.mockReturnValueOnce("unknown-book");
-    mockedReadBody.mockResolvedValueOnce({ title: "New Title" });
-    mockGetBook.mockResolvedValueOnce(null);
+  it("должен возвращать 404, если книга не найдена", async () => {
+    mockedGetRouterParam.mockReturnValueOnce("unknown-book-id");
+    mockedReadBody.mockResolvedValueOnce({ title: "Новое название" });
+    mockGetBookFromStore.mockResolvedValueOnce(null);
 
-    await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Book not found",
+    await expect(patchBookHandler(dummyEvent)).rejects.toThrowError(
+      "Книга не найдена",
     );
   });
 
-  it("should successfully update book metadata and publish event", async () => {
-    const mockBook = {
-      id: "valid-book",
-      userId: "test-user",
-      title: "Old Title",
-      author: "Old Author",
+  it("должен успешно обновлять метаданные и публиковать событие", async () => {
+    const mockBookData = {
+      id: "valid-book-id",
+      userId: "test-user-id",
+      title: "Старое название",
+      author: "Старый автор",
     };
 
-    mockedGetRouterParam.mockReturnValueOnce("valid-book");
+    mockedGetRouterParam.mockReturnValueOnce("valid-book-id");
     mockedReadBody.mockResolvedValueOnce({
-      title: "New Title",
-      author: "New Author",
+      title: "Новое название",
+      author: "Новый автор",
     });
-    mockGetBook.mockResolvedValueOnce(mockBook);
-    mockUpdateBook.mockResolvedValueOnce(undefined);
+    mockGetBookFromStore.mockResolvedValueOnce(mockBookData);
+    mockUpdateBookInStore.mockResolvedValueOnce(undefined);
     mockPublishEvent.mockResolvedValueOnce(undefined);
 
-    const result = await patchBookHandler({} as any);
+    const result = await patchBookHandler(dummyEvent);
 
-    expect(mockGetBook).toHaveBeenCalledWith("valid-book");
-    expect(mockUpdateBook).toHaveBeenCalledWith("valid-book", {
-      title: "New Title",
-      author: "New Author",
+    expect(mockGetBookFromStore).toHaveBeenCalledWith("valid-book-id");
+    expect(mockUpdateBookInStore).toHaveBeenCalledWith("valid-book-id", {
+      title: "Новое название",
+      author: "Новый автор",
     });
     expect(mockPublishEvent).toHaveBeenCalledWith(
-      "test-user",
+      "test-user-id",
       "book:updated",
       expect.objectContaining({
-        bookId: "valid-book",
+        bookId: "valid-book-id",
         status: "updated",
-        title: "New Title",
-        author: "New Author",
+        title: "Новое название",
+        author: "Новый автор",
       }),
     );
 
     expect(result).toEqual({
       status: "success",
-      message: "Book metadata updated.",
+      message: "Метаданные книги обновлены.",
     });
   });
 
-  it("should throw 403 if user is not the owner", async () => {
-    const mockBook = {
-      id: "other-book",
-      userId: "other-user",
-      title: "Other Title",
+  it("должен возвращать 403, если пользователь не является владельцем", async () => {
+    const mockBookData = {
+      id: "other-user-book-id",
+      userId: "someone-else-id",
+      title: "Чужая книга",
     };
 
-    mockedGetRouterParam.mockReturnValueOnce("other-book");
-    mockedReadBody.mockResolvedValueOnce({ title: "New Title" });
-    mockGetBook.mockResolvedValueOnce(mockBook);
+    mockedGetRouterParam.mockReturnValueOnce("other-user-book-id");
+    mockedReadBody.mockResolvedValueOnce({ title: "Попытка изменения" });
+    mockGetBookFromStore.mockResolvedValueOnce(mockBookData);
 
-    await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Forbidden: You can only edit books you uploaded.",
+    await expect(patchBookHandler(dummyEvent)).rejects.toThrowError(
+      "Отказано в доступе: Вы можете редактировать только загруженные вами книги.",
     );
   });
 
-  it("should throw 500 if updateBook fails", async () => {
-    const mockBook = {
-      id: "error-book",
-      userId: "test-user",
-      title: "Title",
+  it("должен возвращать 500, если обновление в хранилище завершилось ошибкой", async () => {
+    const mockBookData = {
+      id: "error-book-id",
+      userId: "test-user-id",
+      title: "Книга",
     };
-    mockedGetRouterParam.mockReturnValueOnce("error-book");
-    mockedReadBody.mockResolvedValueOnce({ title: "New Title" });
-    mockGetBook.mockResolvedValueOnce(mockBook);
-    mockUpdateBook.mockRejectedValueOnce(new Error("Redis error"));
+    mockedGetRouterParam.mockReturnValueOnce("error-book-id");
+    mockedReadBody.mockResolvedValueOnce({ title: "Новое название" });
+    mockGetBookFromStore.mockResolvedValueOnce(mockBookData);
+    mockUpdateBookInStore.mockRejectedValueOnce(new Error("Ошибка Redis"));
 
-    await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Failed to update book metadata",
+    await expect(patchBookHandler(dummyEvent)).rejects.toThrowError(
+      "Не удалось обновить метаданные книги",
     );
   });
 });

@@ -1,146 +1,149 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// We need to test both production and development branches of the logger.
-// The logger checks `process.env.NODE_ENV === "production"` at module load time
-// (const IS_PRODUCTION), so we use vi.resetModules() + dynamic import.
-
-describe("logger", () => {
-  let originalNodeEnv: string | undefined;
+/**
+ * Тестирование логгера (logger).
+ * Нам необходимо протестировать ветки кода как для режима разработки (development),
+ * так и для режима продакшена (production). Логгер проверяет `process.env.NODE_ENV`
+ * во время загрузки модуля, поэтому мы используем vi.resetModules() и динамический импорт.
+ */
+describe("Сервис логирования (logger)", () => {
+  let originalNodeEnvValue: string | undefined;
 
   beforeEach(() => {
-    originalNodeEnv = process.env.NODE_ENV;
+    originalNodeEnvValue = process.env.NODE_ENV;
     vi.resetModules();
   });
 
   afterEach(() => {
-    process.env.NODE_ENV = originalNodeEnv;
+    process.env.NODE_ENV = originalNodeEnvValue;
     vi.restoreAllMocks();
   });
 
-  // ──────── Development mode (default) ────────
-  describe("development mode", () => {
-    let log: typeof import("../utils/logger").log;
+  // ──────── Режим разработки (Development mode) ────────
+  describe("Режим разработки (Development)", () => {
+    let loggerInstance: typeof import("../utils/logger").logger;
 
     beforeEach(async () => {
       process.env.NODE_ENV = "development";
-      const mod = await import("../utils/logger");
-      log = mod.log;
+      const loggerModule = await import("../utils/logger");
+      loggerInstance = loggerModule.logger;
     });
 
-    it("log.info calls console.log with prefix and message", () => {
-      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    it("logger.info должен вызывать console.log с префиксом и сообщением", () => {
+      const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-      log.info("test-module", "Hello info");
+      loggerInstance.info("test-module", "Информационное сообщение");
 
-      expect(spy).toHaveBeenCalledOnce();
-      const args = spy.mock.calls[0]!;
-      expect(args[0]).toContain("[INFO ]");
-      expect(args[0]).toContain("[test-module]");
-      expect(args[1]).toBe("Hello info");
+      expect(consoleLogSpy).toHaveBeenCalledOnce();
+      const spyArguments = consoleLogSpy.mock.calls[0]!;
+      expect(spyArguments[0]).toContain("[INFO ]");
+      expect(spyArguments[0]).toContain("[test-module]");
+      expect(spyArguments[1]).toBe("Информационное сообщение");
     });
 
-    it("log.warn calls console.warn with prefix and message", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("logger.warn должен вызывать console.warn с префиксом и сообщением", () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      log.warn("test-module", "Hello warn");
+      loggerInstance.warn("test-module", "Предупреждение");
 
-      expect(spy).toHaveBeenCalledOnce();
-      const args = spy.mock.calls[0]!;
-      expect(args[0]).toContain("[WARN ]");
-      expect(args[0]).toContain("[test-module]");
-      expect(args[1]).toBe("Hello warn");
+      expect(consoleWarnSpy).toHaveBeenCalledOnce();
+      const spyArguments = consoleWarnSpy.mock.calls[0]!;
+      expect(spyArguments[0]).toContain("[WARN ]");
+      expect(spyArguments[0]).toContain("[test-module]");
+      expect(spyArguments[1]).toBe("Предупреждение");
     });
 
-    it("log.error calls console.error with prefix and message", () => {
-      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    it("logger.error должен вызывать console.error с префиксом и сообщением", () => {
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      log.error("test-module", "Hello error");
+      loggerInstance.error("test-module", "Ошибка");
 
-      expect(spy).toHaveBeenCalledOnce();
-      const args = spy.mock.calls[0]!;
-      expect(args[0]).toContain("[ERROR]");
-      expect(args[0]).toContain("[test-module]");
-      expect(args[1]).toBe("Hello error");
+      expect(consoleErrorSpy).toHaveBeenCalledOnce();
+      const spyArguments = consoleErrorSpy.mock.calls[0]!;
+      expect(spyArguments[0]).toContain("[ERROR]");
+      expect(spyArguments[0]).toContain("[test-module]");
+      expect(spyArguments[1]).toBe("Ошибка");
     });
 
-    it("log.info includes data object when provided", () => {
-      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    it("logger.info должен включать объект данных, если он предоставлен", () => {
+      const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const additionalData = { key: "value", count: 42 };
 
-      log.info("mod", "with data", { key: "value", count: 42 });
+      loggerInstance.info("mod", "сообщение с данными", additionalData);
 
-      expect(spy).toHaveBeenCalledOnce();
-      const args = spy.mock.calls[0]!;
-      expect(args[2]).toEqual({ key: "value", count: 42 });
+      expect(consoleLogSpy).toHaveBeenCalledOnce();
+      const spyArguments = consoleLogSpy.mock.calls[0]!;
+      expect(spyArguments[2]).toEqual(additionalData);
     });
 
-    it("log.info omits data argument when data is empty", () => {
-      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    it("logger.info должен опускать аргумент данных, если они отсутствуют", () => {
+      const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-      log.info("mod", "no data");
+      loggerInstance.info("mod", "без данных");
 
-      expect(spy).toHaveBeenCalledOnce();
-      // Should only have prefix and message, no third argument
-      expect(spy.mock.calls[0]).toHaveLength(2);
+      expect(consoleLogSpy).toHaveBeenCalledOnce();
+      // Должно быть только 2 аргумента: префикс и сообщение
+      expect(consoleLogSpy.mock.calls[0]).toHaveLength(2);
     });
   });
 
-  // ──────── Production mode ────────
-  describe("production mode", () => {
-    let log: typeof import("../utils/logger").log;
+  // ──────── Режим продакшена (Production mode) ────────
+  describe("Режим продакшена (Production)", () => {
+    let loggerInstance: typeof import("../utils/logger").logger;
 
     beforeEach(async () => {
       process.env.NODE_ENV = "production";
-      const mod = await import("../utils/logger");
-      log = mod.log;
+      const loggerModule = await import("../utils/logger");
+      loggerInstance = loggerModule.logger;
     });
 
-    it("log.info outputs structured JSON to console.log", () => {
-      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    it("logger.info должен выводить структурированный JSON в console.log", () => {
+      const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-      log.info("chat", "Pipeline started", { queryLen: 42 });
+      loggerInstance.info("chat", "Запуск конвейера", { queryLen: 42 });
 
-      expect(spy).toHaveBeenCalledOnce();
-      const jsonLine = spy.mock.calls[0]![0] as string;
-      const parsed = JSON.parse(jsonLine);
+      expect(consoleLogSpy).toHaveBeenCalledOnce();
+      const jsonOutput = consoleLogSpy.mock.calls[0]![0] as string;
+      const parsedOutput = JSON.parse(jsonOutput);
 
-      expect(parsed.level).toBe("info");
-      expect(parsed.module).toBe("chat");
-      expect(parsed.message).toBe("Pipeline started");
-      expect(parsed.queryLen).toBe(42);
-      expect(parsed.timestamp).toBeDefined();
+      expect(parsedOutput.level).toBe("info");
+      expect(parsedOutput.module).toBe("chat");
+      expect(parsedOutput.message).toBe("Запуск конвейера");
+      expect(parsedOutput.queryLen).toBe(42);
+      expect(parsedOutput.timestamp).toBeDefined();
     });
 
-    it("log.warn outputs structured JSON to console.warn", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("logger.warn должен выводить структурированный JSON в console.warn", () => {
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      log.warn("upload", "File too large");
+      loggerInstance.warn("upload", "Файл слишком велик");
 
-      expect(spy).toHaveBeenCalledOnce();
-      const parsed = JSON.parse(spy.mock.calls[0]![0] as string);
-      expect(parsed.level).toBe("warn");
-      expect(parsed.module).toBe("upload");
+      expect(consoleWarnSpy).toHaveBeenCalledOnce();
+      const parsedOutput = JSON.parse(consoleWarnSpy.mock.calls[0]![0] as string);
+      expect(parsedOutput.level).toBe("warn");
+      expect(parsedOutput.module).toBe("upload");
     });
 
-    it("log.error outputs structured JSON to console.error", () => {
-      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    it("logger.error должен выводить структурированный JSON в console.error", () => {
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      log.error("api", "Internal server error", { status: 500 });
+      loggerInstance.error("api", "Внутренняя ошибка сервера", { status: 500 });
 
-      expect(spy).toHaveBeenCalledOnce();
-      const parsed = JSON.parse(spy.mock.calls[0]![0] as string);
-      expect(parsed.level).toBe("error");
-      expect(parsed.module).toBe("api");
-      expect(parsed.status).toBe(500);
+      expect(consoleErrorSpy).toHaveBeenCalledOnce();
+      const parsedOutput = JSON.parse(consoleErrorSpy.mock.calls[0]![0] as string);
+      expect(parsedOutput.level).toBe("error");
+      expect(parsedOutput.module).toBe("api");
+      expect(parsedOutput.status).toBe(500);
     });
 
-    it("production JSON includes ISO timestamp", () => {
-      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    it("JSON в режиме продакшена должен включать ISO метку времени", () => {
+      const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-      log.info("test", "timestamp check");
+      loggerInstance.info("test", "проверка метки времени");
 
-      const parsed = JSON.parse(spy.mock.calls[0]![0] as string);
-      // Should be a valid ISO date string
-      expect(new Date(parsed.timestamp).toISOString()).toBe(parsed.timestamp);
+      const parsedOutput = JSON.parse(consoleLogSpy.mock.calls[0]![0] as string);
+      // Должна быть валидная ISO строка даты
+      expect(new Date(parsedOutput.timestamp).toISOString()).toBe(parsedOutput.timestamp);
     });
   });
 });

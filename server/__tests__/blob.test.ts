@@ -1,27 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock @vercel/blob
+// Имитация библиотеки @vercel/blob
 vi.mock("@vercel/blob", () => ({
   list: vi.fn(),
 }));
 
-// Mock useRuntimeConfig
+// Имитация конфигурации Nuxt
 vi.stubGlobal("useRuntimeConfig", () => ({
   blobToken: "test-blob-token",
 }));
 
 import { list } from "@vercel/blob";
 
-const mockedList = vi.mocked(list);
+const mockedBlobList = vi.mocked(list);
 
-describe("blob", () => {
+describe("Тестирование хранилища Vercel Blob", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("unit (mocked)", () => {
-    it("succeeds when Vercel Blob is accessible", async () => {
-      mockedList.mockResolvedValueOnce({
+  describe("Юнит-тесты (имитация/mocked)", () => {
+    it("должен успешно работать, когда хранилище Vercel Blob доступно", async () => {
+      mockedBlobList.mockResolvedValueOnce({
         blobs: [],
         cursor: undefined,
         hasMore: false,
@@ -29,28 +29,30 @@ describe("blob", () => {
 
       const result = await list({ token: "test-blob-token" });
       expect(result).toBeDefined();
-      expect(mockedList).toHaveBeenCalledWith({ token: "test-blob-token" });
+      expect(mockedBlobList).toHaveBeenCalledWith({ token: "test-blob-token" });
     });
 
-    it("throws an error when Blob token is invalid", async () => {
-      mockedList.mockRejectedValueOnce(new Error("Invalid token"));
+    it("должен выбрасывать ошибку при неверном токене", async () => {
+      mockedBlobList.mockRejectedValueOnce(new Error("Неверный токен (Invalid token)"));
 
       await expect(list({ token: "bad-token" })).rejects.toThrow(
-        "Invalid token",
+        "Неверный токен (Invalid token)",
       );
     });
   });
 
-  describe("availability", () => {
+  describe("Проверка доступности (Availability)", () => {
+    // Тест пропускается, если нет реальных учетных данных в окружении
     it.skipIf(!process.env.BOOKS_BLOB_READ_WRITE_TOKEN)(
-      "can connect to real Vercel Blob",
+      "должен подключаться к реальному Vercel Blob хранилищу",
       async () => {
-        // This test only runs when real credentials are available
-        const { list: realList } =
+        const { list: realBlobList } =
           await vi.importActual<typeof import("@vercel/blob")>("@vercel/blob");
-        const result = await realList({
+        
+        const result = await realBlobList({
           token: process.env.BOOKS_BLOB_READ_WRITE_TOKEN!,
         });
+        
         expect(result).toBeDefined();
       },
     );

@@ -1,19 +1,19 @@
 import { getJob } from "../../../utils/jobStore";
-import { log } from "../../../utils/logger";
+import { logger } from "../../../utils/logger";
 
 /**
  * GET /api/books/jobs/:id
  *
- * Returns the current status and progress of a vectorization job.
+ * Возвращает текущий статус и прогресс задачи векторизации.
  */
 export default defineEventHandler(async (event) => {
-  const id = getRouterParam(event, "id");
+  const jobId = getRouterParam(event, "id");
 
-  if (!id) {
-    log.warn("jobs-api", "Job status requested without ID");
+  if (!jobId) {
+    logger.warn("jobs-api", "Job status requested without ID");
     throw createError({
       statusCode: 400,
-      statusMessage: "Missing job ID.",
+      message: "Отсутствует ID задачи.",
     });
   }
 
@@ -21,42 +21,42 @@ export default defineEventHandler(async (event) => {
   const userId = session.user?.id || session.id;
 
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+    throw createError({ statusCode: 401, message: "Не авторизован" });
   }
 
-  const job = await getJob(id);
+  const vectorizationJob = await getJob(jobId);
 
-  if (!job) {
-    log.warn("jobs-api", "Requested job not found", { jobId: id });
+  if (!vectorizationJob) {
+    logger.warn("jobs-api", "Requested job not found", { jobId });
     throw createError({
       statusCode: 404,
-      statusMessage: `Job "${id}" not found.`,
+      message: `Задача "${jobId}" не найдена.`,
     });
   }
 
-  // Ownership check: only the user who started the job can see its status
-  if (job.userId !== userId) {
-    log.warn("jobs-api", "Unauthorized job status request", {
-      jobId: id,
+  // Проверка прав владения: только пользователь, запустивший задачу, может видеть её статус
+  if (vectorizationJob.userId !== userId) {
+    logger.warn("jobs-api", "Unauthorized job status request", {
+      jobId,
       attemptBy: userId,
-      ownedBy: job.userId,
+      ownedBy: vectorizationJob.userId,
     });
     throw createError({
       statusCode: 403,
-      statusMessage: "Forbidden: You can only see status of your own jobs.",
+      message: "Отказано в доступе: Вы можете просматривать статус только своих задач.",
     });
   }
 
-  log.info("jobs-api", "Job status fetched", { jobId: id, status: job.status });
+  logger.info("jobs-api", "Job status fetched", { jobId, status: vectorizationJob.status });
 
   return {
-    id: job.id,
-    bookName: job.bookName,
-    status: job.status,
-    progress: job.progress,
-    result: job.result,
-    error: job.error,
-    createdAt: new Date(job.createdAt).toISOString(),
-    updatedAt: new Date(job.updatedAt).toISOString(),
+    id: vectorizationJob.id,
+    bookName: vectorizationJob.bookName,
+    status: vectorizationJob.status,
+    progress: vectorizationJob.progress,
+    result: vectorizationJob.result,
+    error: vectorizationJob.error,
+    createdAt: new Date(vectorizationJob.createdAt).toISOString(),
+    updatedAt: new Date(vectorizationJob.updatedAt).toISOString(),
   };
 });

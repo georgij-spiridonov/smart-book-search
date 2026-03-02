@@ -1,81 +1,80 @@
 import { getAllBooks } from "../../utils/bookStore";
 import { getUserJobs, type JobState } from "../../utils/jobStore";
-import { log } from "../../utils/logger";
+import { logger } from "../../utils/logger";
 
 /**
  * GET /api/books
  *
- * Returns a list of all uploaded books with their metadata:
- * title, author, coverUrl, blobUrl, filename, fileSize,
- * uploadedAt, and vectorized status.
- *
- * Books are sorted by upload date (newest first).
+ * Возвращает список всех загруженных книг с их метаданными.
+ * Книги отсортированы по дате загрузки (сначала новые).
  */
 export default defineEventHandler(async (event) => {
   try {
     const session = await getUserSession(event);
     const userId = session.user?.id || session.id;
 
-    const books = await getAllBooks();
+    const allBooksList = await getAllBooks();
     
-    // Fetch jobs: admins see jobs for all books, regular users only their own.
-    let jobs: JobState[] = [];
+    // Получаем задачи: администраторы видят задачи для всех книг, обычные пользователи - только свои.
+    let userJobs: JobState[] = [];
     if (session.user?.isAdmin) {
-      const uniqueUserIds = [...new Set(books.map((b) => b.userId))];
-      const jobResults = await Promise.all(uniqueUserIds.map((id) => getUserJobs(id)));
-      jobs = jobResults.flat();
+      const uniqueUserIdentifiers = [...new Set(allBooksList.map((book) => book.userId))];
+      const multipleUserJobResults = await Promise.all(
+        uniqueUserIdentifiers.map((identifier) => getUserJobs(identifier))
+      );
+      userJobs = multipleUserJobResults.flat();
     } else if (userId) {
-      jobs = await getUserJobs(userId);
+      userJobs = await getUserJobs(userId);
     }
 
-    log.info("books-api", "Fetched books list", {
-      count: books.length,
-      jobsCount: jobs.length,
+    logger.info("books-api", "Fetched books list", {
+      count: allBooksList.length,
+      jobsCount: userJobs.length,
       isAdmin: !!session.user?.isAdmin,
     });
 
     return {
       status: "success",
-      count: books.length,
+      count: allBooksList.length,
       currentUserId: userId,
       isAdmin: !!session.user?.isAdmin,
-      books: books.map((book) => {
-        // Find active job for this book
-        const job = jobs.find(
-          (j) =>
-            j.bookId === book.id &&
-            (j.status === "processing" || j.status === "pending"),
+      books: allBooksList.map((currentBook) => {
+        // Находим активную задачу для этой книги
+        const activeJobForBook = userJobs.find(
+          (jobState) =>
+            jobState.bookId === currentBook.id &&
+            (jobState.status === "processing" || jobState.status === "pending"),
         );
 
         return {
-          id: book.id,
-          userId: book.userId,
-          title: book.title,
-          author: book.author,
-          coverUrl: book.coverUrl,
-          blobUrl: book.blobUrl,
-          filename: book.filename,
-          fileSize: book.fileSize,
-          uploadedAt: new Date(book.uploadedAt).toISOString(),
-          vectorized: book.vectorized,
-          job: job
+          id: currentBook.id,
+          userId: currentBook.userId,
+          title: currentBook.title,
+          author: currentBook.author,
+          coverUrl: currentBook.coverUrl,
+          blobUrl: currentBook.blobUrl,
+          filename: currentBook.filename,
+          fileSize: currentBook.fileSize,
+          uploadedAt: new Date(currentBook.uploadedAt).toISOString(),
+          vectorized: currentBook.vectorized,
+          job: activeJobForBook
             ? {
-                id: job.id,
-                status: job.status,
-                progress: job.progress,
+                id: activeJobForBook.id,
+                status: activeJobForBook.status,
+                progress: activeJobForBook.progress,
               }
             : null,
         };
       }),
     };
-  } catch (error: unknown) {
-    log.error("books-api", "Failed to fetch books list", {
-      error: error instanceof Error ? error.message : String(error),
+  } catch (fetchError: unknown) {
+    logger.error("books-api", "Failed to fetch books list", {
+      error: fetchError instanceof Error ? fetchError.message : String(fetchError),
     });
     throw createError({
       statusCode: 500,
-      statusMessage: "Failed to fetch books list",
-      data: { error: error instanceof Error ? error.message : String(error) },
+      message: "Не удалось получить список книг",
+      data: { error: fetchError instanceof Error ? fetchError.message : String(fetchError) },
     });
   }
 });

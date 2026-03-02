@@ -1,64 +1,112 @@
 import crypto from "crypto";
 import { getRedisClient } from "./redis";
-import { log } from "./logger";
+import { logger } from "./logger";
 
-const BLOBS_HASH_KEY = "smart-book-search:blobs";
-const VECTORIZED_SET_KEY = "smart-book-search:vectorized";
+/** Ключ в Redis для хранения соответствия хэша файла и его URL в хранилище (Blob Storage) */
+const REDIS_KEY_FILE_HASH_TO_URL = "smart-book-search:blobs";
+/** Ключ в Redis для хранения набора хэшей файлов, которые уже были векторизованы */
+const REDIS_KEY_VECTORIZED_HASHES = "smart-book-search:vectorized";
 
-export function getFileHash(buffer: Buffer): string {
-  return crypto.createHash("sha256").update(buffer).digest("hex");
+/**
+ * Генерирует SHA-256 хэш контента файла.
+ * 
+ * @param {Buffer} fileBuffer Бинарное содержимое файла.
+ * @returns {string} Хэш в формате hex.
+ */
+export function getFileHash(fileBuffer: Buffer): string {
+  return crypto.createHash("sha256").update(fileBuffer).digest("hex");
 }
 
+/**
+ * Ищет существующий URL файла по его хэшу.
+ * Позволяет избежать повторной загрузки идентичных файлов.
+ * 
+ * @param {string} fileHash Хэш файла для поиска.
+ * @returns {Promise<string | undefined>} URL файла, если он найден, иначе undefined.
+ */
 export async function getExistingBlobUrl(
-  hash: string,
+  fileHash: string,
 ): Promise<string | undefined> {
-  const redis = getRedisClient();
-  const url = await redis.hget(BLOBS_HASH_KEY, hash);
-  const result = (url as string) || undefined;
+  const redisClient = getRedisClient();
+  const existingUrl = await redisClient.hget(REDIS_KEY_FILE_HASH_TO_URL, fileHash);
+  const resultUrl = (existingUrl as string) || undefined;
 
-  if (result) {
-    log.info("hash-store", "Duplicate file detected by hash", { hash });
+  if (resultUrl) {
+    logger.info("hash-store", "Duplicate file detected by hash", { fileHash });
   }
 
-  return result;
+  return resultUrl;
 }
 
+/**
+ * Сохраняет информацию о загруженном файле в Redis.
+ * 
+ * @param {string} fileHash Хэш файла.
+ * @param {string} blobUrl URL загруженного файла в хранилище.
+ */
 export async function markFileAsUploaded(
-  hash: string,
-  url: string,
+  fileHash: string,
+  blobUrl: string,
 ): Promise<void> {
-  const redis = getRedisClient();
-  await redis.hset(BLOBS_HASH_KEY, { [hash]: url });
+  const redisClient = getRedisClient();
+  await redisClient.hset(REDIS_KEY_FILE_HASH_TO_URL, { [fileHash]: blobUrl });
 }
 
-export async function isFileVectorized(hash: string): Promise<boolean> {
-  const redis = getRedisClient();
-  const result = await redis.sismember(VECTORIZED_SET_KEY, hash);
-  return result === 1;
+/**
+ * Проверяет, был ли файл с данным хэшем уже векторизован (обработан ИИ).
+ * 
+ * @param {string} fileHash Хэш файла.
+ * @returns {Promise<boolean>} true, если файл уже векторизован.
+ */
+export async function isFileVectorized(fileHash: string): Promise<boolean> {
+  const redisClient = getRedisClient();
+  const exists = await redisClient.sismember(REDIS_KEY_VECTORIZED_HASHES, fileHash);
+  return exists === 1;
 }
 
-export async function markFileAsVectorized(hash: string): Promise<void> {
-  const redis = getRedisClient();
-  await redis.sadd(VECTORIZED_SET_KEY, hash);
-  log.info("hash-store", "Marked file as vectorized by hash", { hash });
+/**
+ * Помечает файл как векторизованный.
+ * 
+ * @param {string} fileHash Хэш векторизованного файла.
+ */
+export async function markFileAsVectorized(fileHash: string): Promise<void> {
+  const redisClient = getRedisClient();
+  await redisClient.sadd(REDIS_KEY_VECTORIZED_HASHES, fileHash);
+  logger.info("hash-store", "Marked file as vectorized by hash", { fileHash });
 }
 
-export async function deleteHashesByBlobUrl(blobUrl: string): Promise<void> {
-  const redis = getRedisClient();
+/**
+ * Удаляет все связанные с данным URL хэши.
+ * Используется при удалении книги для очистки кэша.
+ * 
+ * Примечание: hgetall может быть медленным при огромном количестве файлов,
+ * но в рамках данного проекта это допустимо.
+ * 
+ * @param {string} targetBlobUrl URL файла, записи о котором нужно удалить.
+ */
+export async function deleteHashesByBlobUrl(targetBlobUrl: string): Promise<void> {
+  const redisClient = getRedisClient();
 
-  // As Upstash Redis HSCAN isn't always fully exposed via simplistic typed clients without cursors,
-  // extracting all fields for a single lookup if hash keys are relatively small in number
-  // (which is typical for smart-book-search scope) is practical.
-  const allBlobs = await redis.hgetall(BLOBS_HASH_KEY);
-  if (!allBlobs) return;
+  // Получаем все записи хэшей, чтобы найти те, что ссылаются на данный URL
+  const allHashEntries = await redisClient.hgetall(REDIS_KEY_FILE_HASH_TO_URL);
+  if (!allHashEntries) {
+    return;
+  }
 
-  const targetHashes = Object.entries(allBlobs)
-    .filter(([_, url]) => url === blobUrl)
+  const hashesToDelete = Object.entries(allHashEntries)
+    .filter(([_, currentUrl]) => currentUrl === targetBlobUrl)
     .map(([hash, _]) => hash);
 
-  for (const hash of targetHashes) {
-    await redis.hdel(BLOBS_HASH_KEY, hash);
-    await redis.srem(VECTORIZED_SET_KEY, hash);
-    log.info("hash-store", "Deleted file hash mappings", { hash, blobUrl });
+  for (const hashToDelete of hashesToDelete) {
+    // Выполняем удаление параллельно для ускорения
+    await Promise.all([
+      redisClient.hdel(REDIS_KEY_FILE_HASH_TO_URL, hashToDelete),
+      redisClient.srem(REDIS_KEY_VECTORIZED_HASHES, hashToDelete)
+    ]);
+    
+    logger.info("hash-store", "Deleted file hash mappings", { 
+      hash: hashToDelete, 
+      blobUrl: targetBlobUrl 
+    });
   }
 }

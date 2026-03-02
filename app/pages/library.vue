@@ -4,108 +4,137 @@ import { useMediaQuery } from "@vueuse/core";
 import { formatBytes } from "~/utils/formatBytes";
 import { LazyModalBookDetails, LazyModalBookUpload } from "#components";
 
-const { t } = useI18n();
-const overlay = useOverlay();
+/**
+ * Страница библиотеки книг пользователя.
+ * Позволяет просматривать список загруженных книг, их статус обработки и загружать новые.
+ */
 
-const { data: booksData, refresh } = await useFetch<{
+const { t } = useI18n();
+const modalOverlay = useOverlay();
+
+// Получение данных о книгах и текущем пользователе
+const { data: libraryData, refresh: refreshLibrary } = await useFetch<{
   books: Book[];
   currentUserId: string;
   isAdmin: boolean;
 }>("/api/books", {
-  key: "books",
+  key: "library-books-data",
 });
-const books = computed(() => booksData.value?.books || []);
-const currentUserId = computed(() => booksData.value?.currentUserId);
-const isAdminUser = computed(() => booksData.value?.isAdmin === true);
 
-// Adaptive polling for book status/progress updates
-const pollingActive = ref(false);
-let timer: NodeJS.Timeout | null = null;
+const allBooks = computed(() => libraryData.value?.books ?? []);
+const authenticatedUserId = computed(() => libraryData.value?.currentUserId);
+const hasAdminPrivileges = computed(() => libraryData.value?.isAdmin === true);
 
-function startPolling(interval: number) {
-  if (timer) clearInterval(timer);
-  timer = setInterval(() => {
+// Состояние активного опроса для обновления прогресса векторизации
+const isFastPollingActive = ref(false);
+let libraryUpdateTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Настраивает интервальный опрос API для получения свежего списка книг.
+ * @param intervalMs Интервал опроса в миллисекундах.
+ */
+function setupLibraryPolling(intervalMs: number) {
+  if (!import.meta.client) return;
+
+  if (libraryUpdateTimer) {
+    clearInterval(libraryUpdateTimer);
+  }
+
+  libraryUpdateTimer = setInterval(() => {
+    // Опрашиваем только если вкладка активна
     if (document.visibilityState === "visible") {
-      refresh();
+      refreshLibrary();
     }
-  }, interval);
+  }, intervalMs);
 }
 
-// Watch for books that need active monitoring (processing or pending)
+// Константы интервалов опроса
+const POLLING_INTERVAL_FAST = 5000;   // 5 секунд при активной обработке
+const POLLING_INTERVAL_SLOW = 30000;  // 30 секунд в обычном режиме
+
+// Отслеживание необходимости ускоренного опроса (если есть книги в процессе обработки)
 watch(
-  () => books.value,
-  (newBooks) => {
-    const hasActiveJobs = newBooks.some(
-      (b) =>
-        !b.vectorized &&
-        b.job &&
-        (b.job.status === "processing" || b.job.status === "pending"),
+  () => allBooks.value,
+  (books) => {
+    const hasActiveJobs = books.some(
+      (book) =>
+        !book.vectorized &&
+        book.job &&
+        (book.job.status === "processing" || book.job.status === "pending"),
     );
 
-    if (hasActiveJobs) {
-      // If there are active jobs, poll every 5 seconds
-      startPolling(5000);
-      pollingActive.value = true;
-    } else if (pollingActive.value) {
-      // If no active jobs, but we were in "fast mode", slow down to 30s
-      startPolling(30000);
-      pollingActive.value = false;
+    if (hasActiveJobs && !isFastPollingActive.value) {
+      // Переключаемся на быстрый опрос, если появились активные задачи
+      setupLibraryPolling(POLLING_INTERVAL_FAST);
+      isFastPollingActive.value = true;
+    } else if (!hasActiveJobs && isFastPollingActive.value) {
+      // Возвращаемся к медленному опросу, если все задачи завершены
+      setupLibraryPolling(POLLING_INTERVAL_SLOW);
+      isFastPollingActive.value = false;
     }
   },
   { immediate: true, deep: true },
 );
 
 onMounted(() => {
-  // Initial slow poll for background updates
-  if (!pollingActive.value) {
-    startPolling(30000);
+  // Инициализация фонового опроса при загрузке страницы
+  if (!isFastPollingActive.value) {
+    setupLibraryPolling(POLLING_INTERVAL_SLOW);
   }
 });
 
 onUnmounted(() => {
-  if (timer) clearInterval(timer);
+  if (libraryUpdateTimer) {
+    clearInterval(libraryUpdateTimer);
+  }
 });
 
-function openUploadModal() {
-  const modal = overlay.create(LazyModalBookUpload, {
+/**
+ * Открывает модальное окно для загрузки новой книги.
+ */
+function showUploadModal() {
+  const uploadModal = modalOverlay.create(LazyModalBookUpload, {
     props: {
       onClose: () => {
-        modal.close();
-        refresh(); // refresh list after potential upload
+        uploadModal.close();
+        refreshLibrary();
       },
     },
   });
-  modal.open();
+  uploadModal.open();
 }
 
-function openBookDetails(book: Book) {
-  const modal = overlay.create(LazyModalBookDetails, {
+/**
+ * Открывает модальное окно с детальной информацией о книге.
+ * @param targetBook Объект книги для отображения.
+ */
+function showBookDetailsModal(targetBook: Book) {
+  const detailsModal = modalOverlay.create(LazyModalBookDetails, {
     props: {
-      book,
-      isOwner: isAdminUser.value || book.userId === currentUserId.value,
-      onClose: () => modal.close(),
+      book: targetBook,
+      isOwner: hasAdminPrivileges.value || targetBook.userId === authenticatedUserId.value,
+      onClose: () => detailsModal.close(),
       onDeleted: () => {
-        modal.close();
-        refresh();
+        detailsModal.close();
+        refreshLibrary();
       },
       onUpdated: () => {
-        refresh();
+        refreshLibrary();
       },
     },
   });
-  modal.open();
+  detailsModal.open();
 }
 </script>
 
 <template>
   <UDashboardPanel id="library" class="min-h-0" :ui="{ body: 'p-0 sm:p-0' }">
     <template #header>
-      <!-- We can use the DashboardNavbar and add a specific title or actions -->
       <DashboardNavbar>
         <template #left-aligned>
           <div class="flex items-center gap-2">
             <h1 class="text-xl font-bold text-highlighted">
-              {{ t("library.title") }}
+              {{ t("library.mainTitle") }}
             </h1>
           </div>
         </template>
@@ -113,9 +142,9 @@ function openBookDetails(book: Book) {
         <template #right-aligned>
           <UButton
             v-if="!useMediaQuery('(max-width: 1024px)').value"
-            :label="t('library.uploadBook')"
+            :label="t('library.uploadBookButton')"
             icon="i-lucide-upload"
-            @click="openUploadModal"
+            @click="showUploadModal"
           />
         </template>
       </DashboardNavbar>
@@ -128,15 +157,15 @@ function openBookDetails(book: Book) {
         >
           <div class="sm:hidden flex justify-end items-center mb-2">
             <UButton
-              :label="t('library.uploadBook')"
+              :label="t('library.uploadBookButton')"
               icon="i-lucide-upload"
               size="sm"
-              @click="openUploadModal"
+              @click="showUploadModal"
             />
           </div>
 
           <div
-            v-if="books.length === 0"
+            v-if="allBooks.length === 0"
             class="flex flex-col items-center justify-center py-20 text-center"
           >
             <UIcon
@@ -144,13 +173,13 @@ function openBookDetails(book: Book) {
               class="size-16 text-muted mb-4 opacity-50"
             />
             <h3 class="text-lg font-medium text-highlighted mb-1">
-              {{ t("chat.noBooks") }}
+              {{ t("chat.noBooksFound") }}
             </h3>
-            <p class="text-muted mb-4">{{ t("library.description") }}</p>
+            <p class="text-muted mb-4">{{ t("library.mainDescription") }}</p>
             <UButton
-              :label="t('library.uploadNew')"
+              :label="t('library.uploadModalTitle')"
               icon="i-lucide-upload"
-              @click="openUploadModal"
+              @click="showUploadModal"
             />
           </div>
 
@@ -159,12 +188,12 @@ function openBookDetails(book: Book) {
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6"
           >
             <UPageCard
-              v-for="book in books"
+              v-for="book in allBooks"
               :key="book.id"
               :title="book.title"
               :description="book.author"
               class="cursor-pointer hover:ring-2 hover:ring-primary transition-all overflow-hidden flex flex-col"
-              @click="openBookDetails(book)"
+              @click="showBookDetailsModal(book)"
             >
               <template #header>
                 <div
@@ -191,7 +220,7 @@ function openBookDetails(book: Book) {
                     class="w-full space-y-1"
                   >
                     <div class="flex justify-between text-[10px] text-muted">
-                      <span>{{ t("library.processing") }}</span>
+                      <span>{{ t("library.statusProcessing") }}</span>
                       <span>{{
                         Math.round(
                           (book.job.progress.chunksProcessed /
@@ -229,12 +258,12 @@ function openBookDetails(book: Book) {
                     >
                       {{
                         book.vectorized
-                          ? t("library.processed")
+                          ? t("library.statusProcessed")
                           : book.job?.status === "processing"
-                            ? t("library.processing")
+                            ? t("library.statusProcessing")
                             : book.job?.status === "pending"
-                              ? t("library.pending")
-                              : t("library.waiting")
+                              ? t("library.statusPending")
+                              : t("library.statusWaiting")
                       }}
                     </UBadge>
                   </div>

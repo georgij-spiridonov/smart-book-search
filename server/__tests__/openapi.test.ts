@@ -1,72 +1,70 @@
-/**
- * Tests for the OpenAPI document generation.
- *
- * Verifies that zod-openapi produces a valid OpenAPI 3.1.1 document
- * with all expected paths, schemas, and metadata.
- */
-
 import { describe, it, expect } from "vitest";
 import { openApiDocument } from "../utils/openapi/document";
 
-describe("OpenAPI document", () => {
-  it("should have correct OpenAPI version and info", () => {
+/**
+ * Тестирование генерации документа OpenAPI.
+ * Проверяет, что zod-openapi формирует корректный документ OpenAPI 3.1.1
+ * со всеми ожидаемыми путями, схемами и метаданными.
+ */
+describe("Документация OpenAPI (openapi)", () => {
+  it("должен иметь корректную версию OpenAPI и информацию о проекте", () => {
     expect(openApiDocument.openapi).toBe("3.1.1");
     expect(openApiDocument.info.title).toContain("Smart Book Search");
     expect(openApiDocument.info.version).toBe("1.0.0");
   });
 
-  it("should contain all expected API paths", () => {
-    const paths = Object.keys(openApiDocument.paths ?? {});
+  it("должен содержать все ожидаемые пути API", () => {
+    const apiPaths = Object.keys(openApiDocument.paths ?? {});
 
-    expect(paths).toContain("/api/books");
-    expect(paths).toContain("/api/books/upload");
-    expect(paths).toContain("/api/books/vectorize");
-    expect(paths).toContain("/api/books/jobs/{id}");
-    expect(paths).toContain("/api/chat");
+    expect(apiPaths).toContain("/api/books");
+    expect(apiPaths).toContain("/api/books/upload");
+    expect(apiPaths).toContain("/api/books/vectorize");
+    expect(apiPaths).toContain("/api/books/jobs/{id}");
+    expect(apiPaths).toContain("/api/chat");
   });
 
-  it("should NOT expose internal Inngest route", () => {
-    const paths = Object.keys(openApiDocument.paths ?? {});
-    expect(paths).not.toContain("/api/inngest");
+  it("не должен содержать внутренний маршрут Inngest", () => {
+    const apiPaths = Object.keys(openApiDocument.paths ?? {});
+    expect(apiPaths).not.toContain("/api/inngest");
   });
 
-  it("should have correct HTTP methods for each path", () => {
-    const paths = openApiDocument.paths as Record<
+  it("должен иметь правильные HTTP-методы для каждого пути", () => {
+    const apiPaths = openApiDocument.paths as Record<
       string,
       Record<string, unknown>
     >;
 
-    expect(paths["/api/books"]).toHaveProperty("get");
-    expect(paths["/api/books/upload"]).toHaveProperty("post");
-    expect(paths["/api/books/vectorize"]).toHaveProperty("post");
-    expect(paths["/api/books/jobs/{id}"]).toHaveProperty("get");
-    expect(paths["/api/chat"]).toHaveProperty("post");
+    expect(apiPaths["/api/books"]).toHaveProperty("get");
+    expect(apiPaths["/api/books/upload"]).toHaveProperty("post");
+    expect(apiPaths["/api/books/vectorize"]).toHaveProperty("post");
+    expect(apiPaths["/api/books/jobs/{id}"]).toHaveProperty("get");
+    expect(apiPaths["/api/chat"]).toHaveProperty("post");
   });
 
-  it("should have tags for all operations", () => {
-    const tags = openApiDocument.tags?.map((t) => t.name);
-    expect(tags).toContain("Books");
-    expect(tags).toContain("Jobs");
-    expect(tags).toContain("Chat");
+  it("должен содержать теги для всех операций", () => {
+    const documentTags = openApiDocument.tags?.map((tag) => tag.name);
+    expect(documentTags).toContain("Books");
+    expect(documentTags).toContain("Jobs");
+    expect(documentTags).toContain("Chat");
   });
 
-  it("should register reusable component schemas", () => {
-    const schemaNames = Object.keys(
+  it("должен регистрировать переиспользуемые схемы компонентов", () => {
+    const componentSchemaNames = Object.keys(
       (openApiDocument.components as Record<string, Record<string, unknown>>)
         ?.schemas ?? {},
     );
 
-    // At minimum, schemas with id in .meta() should be registered
-    expect(schemaNames.length).toBeGreaterThan(0);
+    // Как минимум, должны быть зарегистрированы схемы, у которых вызван .meta({ id: '...' })
+    expect(componentSchemaNames.length).toBeGreaterThan(0);
   });
 
-  it("should have operationId for each operation", () => {
-    const paths = openApiDocument.paths as Record<
+  it("каждая операция должна иметь уникальный operationId", () => {
+    const apiPaths = openApiDocument.paths as Record<
       string,
       Record<string, Record<string, unknown>>
     >;
 
-    for (const [, methods] of Object.entries(paths)) {
+    for (const [, methods] of Object.entries(apiPaths)) {
       for (const [, operation] of Object.entries(methods)) {
         if (typeof operation === "object" && operation !== null) {
           expect(operation).toHaveProperty("operationId");

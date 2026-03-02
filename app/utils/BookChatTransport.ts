@@ -1,35 +1,50 @@
-import { DefaultChatTransport } from "ai";
-import type { UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
+import { toValue, type Ref } from "vue";
 
 /**
- * Custom ChatTransport that bridges AI SDK's Chat class format
- * with our /api/chat endpoint which expects {query, bookIds, chatId}.
+ * Кастомный транспорт для чата, который адаптирует формат сообщений AI SDK
+ * к специфическим требованиям нашего API (/api/chat).
  *
- * Extends DefaultChatTransport so we get proper SSE/UIMessageStream
- * parsing for free. We only customize the request body via
- * prepareSendMessagesRequest.
+ * Мы расширяем функционал через DefaultChatTransport, что позволяет 
+ * автоматически обрабатывать Server-Sent Events (SSE) и корректно 
+ * десериализовать поток сообщений UIMessageStream.
  */
 export function createBookChatTransport(bookIds: string[] | Ref<string[]>) {
   return new DefaultChatTransport<UIMessage>({
+    // Основной эндпоинт для отправки сообщений
     api: "/api/chat",
-    prepareSendMessagesRequest({ messages, id }) {
-      // Extract the last user message text as the query
-      const lastUserMessage = [...messages]
-        .reverse()
-        .find((m) => m.role === "user");
-      const query =
-        lastUserMessage?.parts
-          ?.filter(
-            (p): p is { type: "text"; text: string } => p.type === "text",
-          )
-          .map((p) => p.text)
-          .join("") || "";
 
+    /**
+     * Преобразует текущий стек сообщений и метаданные в формат тела запроса,
+     * который ожидает наш серверный обработчик.
+     * 
+     * @param messages - Текущий список сообщений в чате.
+     * @param id - Уникальный идентификатор чата.
+     * @returns Объект с телом запроса для отправки на сервер.
+     */
+    prepareSendMessagesRequest({ messages, id: chatId }) {
+      // Ищем последнее сообщение пользователя, чтобы использовать его текст как поисковый запрос.
+      // Метод findLast работает эффективнее, так как обходит массив с конца без создания копии.
+      const lastUserMessage = messages.findLast((message) => message.role === "user");
+      
+      if (!lastUserMessage) {
+        // Внутреннее предупреждение для разработчиков на английском языке
+        console.warn("[BookChatTransport] No user message found to extract query from current message stack.");
+      }
+
+      // Извлекаем все текстовые части (parts) из сообщения и объединяем их в одну строку.
+      // Это гарантирует корректную работу, даже если сообщение состоит из нескольких фрагментов текста.
+      const queryText = lastUserMessage?.parts
+        ?.filter((part): part is { type: "text"; text: string } => part.type === "text")
+        .map((part) => part.text)
+        .join("") ?? "";
+
+      // Возвращаем сформированное тело запроса согласно схеме API
       return {
         body: {
-          query,
+          query: queryText,
           bookIds: toValue(bookIds),
-          chatId: id,
+          chatId,
         },
       };
     },

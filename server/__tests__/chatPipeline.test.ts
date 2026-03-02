@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock AI SDK
+// =======================
+// Имитации внешних сервисов (Mocks for External Services)
+// =======================
+
+// Имитация AI SDK
 vi.mock("ai", () => ({
   generateText: vi.fn(),
   streamText: vi.fn(),
 }));
 
-// Mock Pinecone
+// Имитация Pinecone
 vi.mock("@pinecone-database/pinecone", () => ({
   Pinecone: vi.fn(() => ({
     index: vi.fn(() => ({
@@ -15,7 +19,7 @@ vi.mock("@pinecone-database/pinecone", () => ({
   })),
 }));
 
-// Mock Redis
+// Имитация Redis
 vi.mock("../utils/redis", () => ({
   getRedisClient: vi.fn(() => ({
     hset: vi.fn(),
@@ -37,17 +41,17 @@ vi.mock("../utils/redis", () => ({
   })),
 }));
 
-// Mock logger
+// Имитация логгера
 vi.mock("../utils/logger", () => ({
-  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-// Mock useRuntimeConfig
+// Настройка конфигурации времени выполнения Nuxt
 vi.stubGlobal("useRuntimeConfig", () => ({
-  pineconeApiKey: "test-key",
+  pineconeApiKey: "test-pinecone-key",
   pineconeIndex: "test-index",
   upstashRedisUrl: "https://test.upstash.io",
-  upstashRedisToken: "token",
+  upstashRedisToken: "test-token",
 }));
 
 import { generateText, streamText } from "ai";
@@ -56,107 +60,111 @@ import { generateAnswer, streamAnswer } from "../utils/generateAnswer";
 
 const mockedGenerateText = vi.mocked(generateText);
 const mockedStreamText = vi.mocked(streamText);
-describe("chatPipeline", () => {
+
+describe("Конвейер чата (chatPipeline)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  describe("config validation", () => {
-    it("has all required config keys", () => {
-      const requiredKeys = [
+  describe("Валидация конфигурации (Config Validation)", () => {
+    it("должен содержать все необходимые ключи конфигурации", () => {
+      const requiredConfigurationKeys = [
         "answerModel",
         "retrievalLimit",
         "maxHistoryMessages",
         "answerSystemPrompt",
       ] as const;
 
-      for (const key of requiredKeys) {
+      for (const key of requiredConfigurationKeys) {
         expect(CHAT_CONFIG[key]).toBeTruthy();
       }
     });
   });
 
-  describe("answer generation (mocked)", () => {
-    it("generates an answer from mock chunks", async () => {
+  describe("Генерация ответов (Answer Generation - Mocked)", () => {
+    it("должен успешно генерировать ответ на основе предоставленных фрагментов", async () => {
       mockedGenerateText.mockResolvedValueOnce({
-        text: "AI is a field of computer science focused on creating intelligent machines.",
+        text: "Искусственный интеллект — это область компьютерных наук, занимающаяся созданием интеллектуальных машин.",
         usage: { inputTokens: 100, outputTokens: 20 },
       } as any);
 
-      const mockChunks = [
+      const mockContextChunks = [
         {
-          text: "Artificial intelligence is a field of computer science.",
+          text: "Искусственный интеллект является областью компьютерных наук.",
           pageNumber: 1,
-          chapterTitle: "Introduction",
+          chapterTitle: "Введение",
           score: 0.95,
-          bookId: "test-book",
+          bookId: "test-book-id",
         },
       ];
 
-      const answer = await generateAnswer(
-        "What is artificial intelligence?",
-        mockChunks,
+      const response = await generateAnswer(
+        "Что такое искусственный интеллект?",
+        mockContextChunks,
         [],
       );
 
-      expect(answer.text).toBeTruthy();
-      expect(answer.text.length).toBeGreaterThan(0);
+      expect(response.text).toBeTruthy();
+      expect(response.text.length).toBeGreaterThan(0);
       expect(mockedGenerateText).toHaveBeenCalledOnce();
     });
 
-    it("handles empty chunks gracefully", async () => {
+    it("должен корректно обрабатывать ситуацию с отсутствием фрагментов контекста", async () => {
       mockedGenerateText.mockResolvedValueOnce({
-        text: "No relevant information found.",
+        text: "Соответствующая информация не найдена.",
         usage: { inputTokens: 50, outputTokens: 10 },
       } as any);
 
-      const answer = await generateAnswer("test question", [], []);
-      expect(answer.text).toBeTruthy();
+      const response = await generateAnswer("тестовый вопрос", [], []);
+      expect(response.text).toBeTruthy();
+      expect(response.text).toBe("Соответствующая информация не найдена.");
     });
 
-    it("includes history in the prompt", async () => {
+    it("должен включать историю сообщений в запрос к LLM", async () => {
       mockedGenerateText.mockResolvedValueOnce({
-        text: "History response",
+        text: "Ответ с учетом истории",
         usage: { inputTokens: 50, outputTokens: 10 },
       } as any);
 
-      const answer = await generateAnswer(
-        "question",
+      const response = await generateAnswer(
+        "текущий вопрос",
         [],
         [
-          { role: "user", content: "prev q" },
-          { role: "assistant", content: "prev a" },
+          { role: "user", content: "предыдущий вопрос" },
+          { role: "assistant", content: "предыдущий ответ" },
         ],
       );
-      expect(answer.text).toBe("History response");
+      
+      expect(response.text).toBe("Ответ с учетом истории");
       expect(mockedGenerateText).toHaveBeenCalledOnce();
     });
 
-    it("supports streamAnswer with history and chunks", () => {
-      mockedStreamText.mockReturnValueOnce("mock-stream" as any);
+    it("должен поддерживать потоковую генерацию ответов (streamAnswer)", () => {
+      mockedStreamText.mockReturnValueOnce("mock-stream-object" as any);
 
       const result = streamAnswer(
-        "question",
+        "вопрос",
         [
           {
-            text: "ctx",
+            text: "контекст",
             score: 1,
             bookId: "1",
             pageNumber: 1,
-            chapterTitle: "1",
+            chapterTitle: "Глава 1",
           },
         ],
-        [{ role: "user", content: "hello" }],
+        [{ role: "user", content: "привет" }],
       );
 
-      expect(result).toBe("mock-stream");
+      expect(result).toBe("mock-stream-object");
       expect(mockedStreamText).toHaveBeenCalledOnce();
     });
   });
 
-  describe("availability", () => {
+  describe("Доступность внешних сервисов (Availability)", () => {
+    // Данный тест пропускается, если нет реального API ключа в окружении
     it.skipIf(!process.env.AI_GATEWAY_API_KEY)(
-      "can call real AI model",
+      "должен успешно вызывать реальную модель ИИ",
       async () => {
         expect(true).toBe(true);
       },

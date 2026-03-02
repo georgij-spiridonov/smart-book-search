@@ -1,8 +1,13 @@
 <script setup lang="ts">
+/**
+ * Компонент верхней навигационной панели для дашборда.
+ * Обеспечивает навигацию между основным чатом, библиотекой и панелью администратора.
+ */
 const { t } = useI18n();
 const { user } = useUserSession();
 
-const isAdmin = computed(() => user.value?.isAdmin === true);
+// Флаг, указывающий на наличие прав администратора у текущего пользователя
+const isUserAdmin = computed(() => user.value?.isAdmin === true);
 </script>
 
 <template>
@@ -19,7 +24,7 @@ const isAdmin = computed(() => user.value?.isAdmin === true);
       <slot name="right-aligned" />
 
       <UButton
-        v-if="isAdmin"
+        v-if="isUserAdmin"
         variant="subtle"
         color="primary"
         size="sm"
@@ -27,7 +32,7 @@ const isAdmin = computed(() => user.value?.isAdmin === true);
         icon="i-heroicons-shield-check"
         to="/admin"
       >
-        {{ t('admin.title') }}
+        {{ t('admin.mainTitle') }}
       </UButton>
 
       <UButton

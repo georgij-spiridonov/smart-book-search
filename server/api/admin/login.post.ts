@@ -1,47 +1,47 @@
 import { z } from "zod";
 
-const LoginSchema = z.object({
+const AdministratorLoginSchema = z.object({
   password: z.string(),
 });
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event);
-  const { password } = LoginSchema.parse(body);
-  const config = useRuntimeConfig(event);
+  const requestBody = await readBody(event);
+  const { password: providedPassword } = AdministratorLoginSchema.parse(requestBody);
+  const applicationConfig = useRuntimeConfig(event);
 
-  if (!config.adminPassword) {
+  if (!applicationConfig.adminPassword) {
     throw createError({
       statusCode: 500,
-      statusMessage: "Admin password not configured on server",
+      message: "Пароль администратора не настроен на сервере",
     });
   }
 
-  if (password !== config.adminPassword) {
+  if (providedPassword !== applicationConfig.adminPassword) {
     throw createError({
       statusCode: 401,
-      statusMessage: "Invalid password",
+      message: "Неверный пароль",
     });
   }
 
   const session = await getUserSession(event);
   
-  // Ensure we have an ID to persist identity even after login
-  let userId = session.id;
-  if (!userId) {
-    userId = crypto.randomUUID();
+  // Убеждаемся, что у нас есть ID для сохранения идентификации даже после входа
+  let userSessionId = session.id;
+  if (!userSessionId) {
+    userSessionId = crypto.randomUUID();
   }
 
-  // Explicitly set the session content, ensuring isAdmin is in user object.
+  // Явно устанавливаем содержимое сессии, гарантируя наличие isAdmin в объекте пользователя.
   await setUserSession(event, {
-    id: userId,
+    id: userSessionId,
     user: {
-      id: userId,
+      id: userSessionId,
       isAdmin: true,
     },
   });
 
   return { 
     status: "success",
-    message: "Admin access granted" 
+    message: "Доступ администратора предоставлен" 
   };
 });
