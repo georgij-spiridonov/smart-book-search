@@ -6,17 +6,27 @@ import { getTextFromMessage } from "@nuxt/ui/utils/ai";
 import { createBookChatTransport } from "~/utils/BookChatTransport";
 import type { Book } from "../../../shared/types/book";
 
-const { t } = useI18n();
+/**
+ * Страница конкретного чата.
+ * Обеспечивает интерфейс общения с ИИ на основе содержимого выбранной книги.
+ */
 
-const currentRoute = useRoute();
-const toastNotification = useToast();
+const { t } = useI18n();
+const route = useRoute();
+const router = useRouter();
+const toast = useToast();
 const { copy: copyToClipboard } = useClipboard();
 
-const { data: currentChatData } = await useFetch(() => `/api/chats/${currentRoute.params.id}`, {
-  key: `chat-${currentRoute.params.id}`,
+// Загрузка данных текущего чата
+const { data: chatData } = await useFetch<{
+  id: string;
+  bookIds: string[];
+  messages: UIMessage[];
+}>(() => `/api/chats/${route.params.id}`, {
+  key: `chat-session-${route.params.id}`,
 });
 
-if (!currentChatData.value) {
+if (!chatData.value) {
   throw createError({ statusCode: 404, statusMessage: t("chat.chatNotFound") });
 }
 
@@ -24,43 +34,56 @@ definePageMeta({
   key: (route) => route.params.id as string,
 });
 
-const { data: booksResponse } = await useFetch("/api/books");
+// Загрузка списка всех книг для возможности смены (если чат пустой) или отображения названия
+const { data: booksData } = await useFetch<{ books: Book[] }>("/api/books");
 const availableBooks = computed(() =>
-  (booksResponse.value?.books || []).map((book: Book) => ({
+  (booksData.value?.books || []).map((book) => ({
     ...book,
     label: book.author ? `${book.author} / ${book.title}` : book.title,
   })),
 );
-const selectedBookForChat = ref<(Book & { label: string }) | undefined>(undefined);
 
-// Синхронизируем выбранную книгу с данными чата
+// Текущая активная книга для этого чата
+const activeBook = ref<(Book & { label: string }) | undefined>(undefined);
+
+// Синхронизация выбранной книги с данными чата при загрузке
 watch(
-  [availableBooks, currentChatData],
-  ([newBooks, newData]) => {
-    if (newData?.bookIds && newBooks.length) {
-      selectedBookForChat.value =
-        newBooks.find((book) => newData.bookIds?.includes(book.id)) || undefined;
+  [availableBooks, chatData],
+  ([books, data]) => {
+    if (data?.bookIds && books.length) {
+      activeBook.value = books.find((book) => data.bookIds?.includes(book.id));
     }
   },
   { immediate: true },
 );
 
-const chatUserInput = ref("");
+// Текст в поле ввода сообщения
+const promptInput = ref("");
 
-const chatSession = new Chat({
-  id: currentChatData.value.id,
-  messages: (currentChatData.value.messages || []) as unknown as UIMessage[],
+// Инициализация сессии чата через AI SDK
+const chat = new Chat({
+  id: chatData.value.id,
+  messages: (chatData.value.messages || []) as unknown as UIMessage[],
   transport: createBookChatTransport(
-    computed(() => (selectedBookForChat.value ? [selectedBookForChat.value.id] : [])),
+    computed(() => (activeBook.value ? [activeBook.value.id] : [])),
   ),
-  onError(chatError) {
-    const { message: errorMessage } =
-      typeof chatError.message === "string" && chatError.message[0] === "{"
-        ? JSON.parse(chatError.message)
-        : chatError;
+  onError(error) {
+    console.error("Chat session error:", error);
+    
+    let message = t("error.unexpectedError");
+    try {
+      if (typeof error.message === "string" && error.message.startsWith("{")) {
+        const parsed = JSON.parse(error.message);
+        message = parsed.message || message;
+      } else {
+        message = error.message || message;
+      }
+    } catch (e) {
+      console.warn("Failed to parse error message:", e);
+    }
         
-    toastNotification.add({
-      description: errorMessage,
+    toast.add({
+      description: message,
       icon: "i-lucide-alert-circle",
       color: "error",
       duration: 0,
@@ -69,13 +92,13 @@ const chatSession = new Chat({
 });
 
 /**
- * Обрабатывает отправку сообщения в чат.
+ * Обработчик отправки сообщения.
  */
-async function handleChatSubmit(event: Event) {
+async function onChatSubmit(event: Event) {
   event.preventDefault();
   
-  if (!selectedBookForChat.value) {
-    toastNotification.add({
+  if (!activeBook.value) {
+    toast.add({
       title: t("chat.selectBookRequired"),
       icon: "i-lucide-alert-circle",
       color: "error",
@@ -83,56 +106,59 @@ async function handleChatSubmit(event: Event) {
     return;
   }
 
-  if (chatUserInput.value.trim()) {
-    chatSession.sendMessage({
-      text: chatUserInput.value,
+  const trimmedPrompt = promptInput.value.trim();
+  if (trimmedPrompt) {
+    chat.sendMessage({
+      text: trimmedPrompt,
     });
-    chatUserInput.value = "";
+    promptInput.value = "";
   }
 }
 
-const isMessageCopied = ref(false);
+const hasCopied = ref(false);
 
 /**
- * Копирует содержимое сообщения в буфер обмена.
+ * Копирует текст сообщения в буфер обмена.
+ * @param _event Событие клика.
+ * @param message Объект сообщения для копирования.
  */
-function handleMessageCopy(_event: MouseEvent, targetMessage: UIMessage) {
-  copyToClipboard(getTextFromMessage(targetMessage));
-
-  isMessageCopied.value = true;
-
+function copyMessageContent(_event: MouseEvent, message: UIMessage) {
+  copyToClipboard(getTextFromMessage(message));
+  hasCopied.value = true;
   setTimeout(() => {
-    isMessageCopied.value = false;
+    hasCopied.value = false;
   }, 2000);
 }
 
 /**
- * Извлекает текстовые фрагменты шагов выполнения из сообщения.
+ * Извлекает данные о промежуточных шагах выполнения (reasoning) из сообщения.
+ * @param message Объект сообщения.
  */
-function extractStepDetails(targetMessage: UIMessage) {
-  const stepParts = targetMessage.parts.filter((part) => part.type === "data-step");
+function getMessageSteps(message: UIMessage) {
+  const stepParts = message.parts.filter((part) => part.type === "data-step");
   if (!stepParts.length) return null;
 
   type StepPayload = { data: { text: string; state: string } };
-  const lastStepPayload = stepParts[stepParts.length - 1] as unknown as StepPayload;
+  const lastStep = stepParts[stepParts.length - 1] as unknown as StepPayload;
   
   return {
     combinedText: stepParts.map((part) => (part as unknown as StepPayload).data.text).join(""),
-    isCurrentlyStreaming: lastStepPayload.data.state === "active",
+    isStreaming: lastStep.data.state === "active",
   };
 }
 
 onMounted(() => {
-  if (!selectedBookForChat.value) return;
+  if (!activeBook.value) return;
 
-  // Если передан промпт через URL, отправляем его сразу
-  if (currentRoute.query.prompt) {
-    chatSession.sendMessage({ text: currentRoute.query.prompt as string });
-    const appRouter = useRouter();
-    appRouter.replace({ query: {} });
-  } else if (currentChatData.value?.messages.length === 1) {
-    // Регенерируем ответ, если в чате только приветствие/первое сообщение
-    chatSession.regenerate();
+  // Автоматическая отправка промпта, если он передан в URL
+  const initialPrompt = route.query.prompt as string;
+  if (initialPrompt) {
+    chat.sendMessage({ text: initialPrompt });
+    // Очищаем query-параметры после использования
+    router.replace({ query: {} });
+  } else if (chatData.value?.messages.length === 1) {
+    // Если чат только что создан (содержит только приветствие), генерируем первый ответ
+    chat.regenerate();
   }
 });
 </script>
@@ -150,18 +176,19 @@ onMounted(() => {
     <template #body>
       <div class="flex flex-1">
         <UContainer class="flex-1 flex flex-col gap-4 sm:gap-6">
+          <!-- Список сообщений -->
           <UChatMessages
             should-auto-scroll
-            :messages="chatSession.messages"
-            :status="chatSession.status"
+            :messages="chat.messages"
+            :status="chat.status"
             :assistant="
-              chatSession.status !== 'streaming'
+              chat.status !== 'streaming'
                 ? {
                     actions: [
                       {
                         label: t('chat.copyCitation'),
-                        icon: isMessageCopied ? 'i-lucide-copy-check' : 'i-lucide-copy',
-                        onClick: handleMessageCopy,
+                        icon: hasCopied ? 'i-lucide-copy-check' : 'i-lucide-copy',
+                        onClick: copyMessageContent,
                       },
                     ],
                   }
@@ -171,18 +198,19 @@ onMounted(() => {
             class="lg:pt-(--ui-header-height) pb-4 sm:pb-6"
           >
             <template #content="{ message }">
-              <!-- Отображаем все шаги конвейера в едином блоке размышлений -->
+              <!-- Отображение процесса размышления ИИ (reasoning) -->
               <AppReasoning
-                v-if="extractStepDetails(message)"
-                :text="extractStepDetails(message)!.combinedText"
-                :is-streaming="extractStepDetails(message)!.isCurrentlyStreaming"
+                v-if="getMessageSteps(message)"
+                :text="getMessageSteps(message)!.combinedText"
+                :is-streaming="getMessageSteps(message)!.isStreaming"
               />
 
+              <!-- Основное содержимое сообщения -->
               <template
                 v-for="(part, index) in message.parts"
-                :key="`${message.id}-${part.type}-${index}${'state' in part ? `-${(part as any).state}` : ''}`"
+                :key="`${message.id}-${part.type}-${index}`"
               >
-                <!-- Рендерим Markdown только для сообщений ассистента -->
+                <!-- Текст ассистента с поддержкой Markdown -->
                 <MDCCached
                   v-if="part.type === 'text' && message.role === 'assistant'"
                   :value="(part as any).text"
@@ -190,7 +218,7 @@ onMounted(() => {
                   :parser-options="{ highlight: false }"
                   class="*:first:mt-0 *:last:mb-0"
                 />
-                <!-- Сообщения пользователя рендерим как обычный текст -->
+                <!-- Текст пользователя как обычный текст -->
                 <p
                   v-else-if="part.type === 'text' && message.role === 'user'"
                   class="whitespace-pre-wrap"
@@ -199,10 +227,10 @@ onMounted(() => {
                 </p>
               </template>
 
-              <!-- Цитаты из первоисточников -->
+              <!-- Цитаты и источники -->
               <template
                 v-for="(part, index) in message.parts"
-                :key="`cit-${message.id}-${index}`"
+                :key="`citation-${message.id}-${index}`"
               >
                 <AppCitations
                   v-if="part.type === 'data-chunks'"
@@ -212,24 +240,26 @@ onMounted(() => {
             </template>
           </UChatMessages>
 
+          <!-- Поле ввода промпта -->
           <UChatPrompt
-            v-model="chatUserInput"
+            v-model="promptInput"
             :placeholder="t('chat.inputPlaceholder')"
-            :error="chatSession.error"
+            :error="chat.error"
             variant="subtle"
             class="sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10"
             :ui="{ base: 'px-1.5' }"
-            @submit="handleChatSubmit"
+            @submit="onChatSubmit"
           >
             <template #footer>
               <div class="flex items-center gap-1 flex-1 min-w-0">
+                <!-- Выбор книги (доступен только в начале чата) -->
                 <USelectMenu
-                  v-model="selectedBookForChat"
+                  v-model="activeBook"
                   :items="availableBooks"
                   label-key="label"
                   :placeholder="t('chat.selectBookLabel')"
                   :search-input="{ placeholder: t('chat.searchBooksPlaceholder') }"
-                  :disabled="chatSession.messages.length > 0"
+                  :disabled="chat.messages.length > 0"
                   class="w-full"
                   variant="ghost"
                   size="sm"
@@ -252,12 +282,13 @@ onMounted(() => {
                 </USelectMenu>
               </div>
 
+              <!-- Кнопки управления отправкой -->
               <UChatPromptSubmit
-                :status="chatSession.status"
+                :status="chat.status"
                 color="neutral"
                 size="sm"
-                @stop="chatSession.stop()"
-                @reload="chatSession.regenerate()"
+                @stop="chat.stop()"
+                @reload="chat.regenerate()"
               />
             </template>
           </UChatPrompt>

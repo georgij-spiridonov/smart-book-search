@@ -8,7 +8,8 @@ export default defineI18nLocale((): LocaleSchema => {
   return {
     seo: {
       pageTitle: "Умный поиск по книгам",
-      pageDescription: "Умный поиск по книгам с AI-ассистентом. Задавайте вопросы и получайте ответы на основе текста книг.",
+      pageDescription:
+        "Умный поиск по книгам с AI-ассистентом. Задавайте вопросы и получайте ответы на основе текста книг.",
     },
 
     chat: {
@@ -18,7 +19,8 @@ export default defineI18nLocale((): LocaleSchema => {
       searchChatsPlaceholder: "Поиск чатов...",
       untitledChat: "Без названия",
       deleteChatTitle: "Удалить чат",
-      deleteChatConfirm: "Вы уверены, что хотите удалить этот чат? Это действие нельзя отменить.",
+      deleteChatConfirm:
+        "Вы уверены, что хотите удалить этот чат? Это действие нельзя отменить.",
       deleteButton: "Удалить",
       cancelButton: "Отмена",
       chatDeletedSuccess: "Чат удалён",
@@ -32,7 +34,8 @@ export default defineI18nLocale((): LocaleSchema => {
       groupLastMonth: "В прошлом месяце",
       inputPlaceholder: "Введите сообщение...",
       selectBookLabel: "Выберите книгу",
-      selectBookRequired: "Пожалуйста, выберите книгу перед отправкой сообщения",
+      selectBookRequired:
+        "Пожалуйста, выберите книгу перед отправкой сообщения",
       searchBooksPlaceholder: "Поиск книг...",
       noBooksFound: "Нет книг",
       noMatchingBooks: "Книги не найдены",
@@ -48,10 +51,12 @@ export default defineI18nLocale((): LocaleSchema => {
     error: {
       backToHomeButton: "На главную",
       pageNotFoundTitle: "Страница не найдена",
-      pageNotFoundDetail: "Запрашиваемая страница не существует или была перемещена.",
+      pageNotFoundDetail:
+        "Запрашиваемая страница не существует или была перемещена.",
       internalServerErrorTitle: "Ошибка сервера",
       unexpectedError: "Произошла непредвиденная ошибка",
       internalServerErrorDetail: "На нашей стороне что-то пошло не так.",
+      required: "Поле обязательно для заполнения",
     },
 
     library: {
@@ -85,7 +90,8 @@ export default defineI18nLocale((): LocaleSchema => {
       unknownValue: "Неизвестен",
       deleteBookTitle: "Удалить книгу",
       deleteButton: "Удалить",
-      deleteBookConfirm: "Вы уверены, что хотите полностью удалить эту книгу? Это действие нельзя отменить.",
+      deleteBookConfirm:
+        "Вы уверены, что хотите полностью удалить эту книгу? Это действие нельзя отменить.",
       deleteBookSuccess: "Книга полностью удалена",
       editBookTitle: "Редактировать метаданные",
       editButton: "Редактировать",
@@ -95,7 +101,8 @@ export default defineI18nLocale((): LocaleSchema => {
 
     admin: {
       mainTitle: "Доступ администратора",
-      mainDescription: "Авторизуйтесь для получения расширенных прав по управлению контентом на платформе.",
+      mainDescription:
+        "Авторизуйтесь для получения расширенных прав по управлению контентом на платформе.",
       passwordField: "Пароль",
       loginButton: "Включить доступ",
       logoutButton: "Отключить доступ",

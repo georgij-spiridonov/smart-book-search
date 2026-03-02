@@ -2,38 +2,46 @@
 import { z } from 'zod'
 import type { FormSubmitEvent } from '#ui/types'
 
+/**
+ * Страница администратора для входа в систему управления.
+ */
+
 const { t } = useI18n()
 
-// Схема валидации для формы входа
-const administratorLoginSchema = z.object({
-  password: z.string().min(1, t('admin.passwordField') + ' обязателен')
+// Схема валидации для формы входа администратора
+const adminLoginSchema = z.object({
+  password: z.string().min(1, t('admin.passwordField') + ' ' + t('error.required'))
 })
 
-type AdministratorLoginFields = z.output<typeof administratorLoginSchema>
+type AdminLoginFields = z.output<typeof adminLoginSchema>
 
-const loginState = reactive({
+// Состояние формы входа
+const adminLoginForm = reactive({
   password: ''
 })
 
-const isSubmitting = ref(false)
-const submissionError = ref<string | undefined>(undefined)
-const isLoginSuccessful = ref(false)
+// Состояния процесса аутентификации
+const isPending = ref(false)
+const loginErrorMessage = ref<string | undefined>(undefined)
+const hasAuthenticated = ref(false)
 
 const { user: currentUser, fetch: refreshUserSession } = useUserSession()
 
-const isUserAdministrator = computed(() => currentUser.value?.isAdmin === true)
+// Проверка, является ли текущий пользователь администратором
+const isAdmin = computed(() => currentUser.value?.isAdmin === true)
 
-// Очищаем ошибку, когда пользователь начинает вводить пароль
-watch(() => loginState.password, () => {
-  if (submissionError.value) submissionError.value = undefined
+// Сброс ошибки при изменении пароля
+watch(() => adminLoginForm.password, () => {
+  if (loginErrorMessage.value) loginErrorMessage.value = undefined
 })
 
 /**
- * Обрабатывает отправку формы входа администратора.
+ * Обрабатывает попытку входа администратора.
+ * @param event Событие отправки формы с данными.
  */
-async function handleLoginSubmit(event: FormSubmitEvent<AdministratorLoginFields>) {
-  isSubmitting.value = true
-  submissionError.value = ''
+async function processAdminLogin(event: FormSubmitEvent<AdminLoginFields>) {
+  isPending.value = true
+  loginErrorMessage.value = undefined
   
   try {
     await $fetch('/api/admin/login', {
@@ -41,40 +49,43 @@ async function handleLoginSubmit(event: FormSubmitEvent<AdministratorLoginFields
       body: event.data
     })
     
+    // Обновляем сессию пользователя после успешного входа
     await refreshUserSession()
     
-    isLoginSuccessful.value = true
-    loginState.password = ''
+    hasAuthenticated.value = true
+    adminLoginForm.password = ''
     
-    // Перенаправляем на главную после успешного входа
+    // Перенаправляем на главную страницу через небольшую паузу
     setTimeout(() => {
       navigateTo('/')
     }, 1500)
   } catch (error: unknown) {
+    console.error('Admin login failed:', error)
     const fetchError = error as { data?: { message?: string; statusMessage?: string } }
-    submissionError.value = fetchError.data?.message || fetchError.data?.statusMessage || t('admin.loginErrorMessage')
+    loginErrorMessage.value = fetchError.data?.message || fetchError.data?.statusMessage || t('admin.loginErrorMessage')
   } finally {
-    isSubmitting.value = false
+    isPending.value = false
   }
 }
 
 /**
- * Обрабатывает выход из системы.
+ * Обрабатывает выход администратора из системы.
  */
-async function handleLogout() {
-  isSubmitting.value = true
+async function processAdminLogout() {
+  isPending.value = true
   
   try {
     await $fetch('/api/admin/logout', { method: 'POST' })
     
-    // Самый надежный способ очистить состояние клиента — полная перезагрузка страницы
+    // Полная перезагрузка страницы для сброса всех состояний клиента
     if (import.meta.client) {
       window.location.reload()
     }
-  } catch {
-    submissionError.value = t('error.unexpectedError')
+  } catch (error) {
+    console.error('Admin logout failed:', error)
+    loginErrorMessage.value = t('error.unexpectedError')
   } finally {
-    isSubmitting.value = false
+    isPending.value = false
   }
 }
 </script>
@@ -87,7 +98,7 @@ async function handleLogout() {
           <template #header>
             <div class="flex flex-col gap-1">
               <div class="flex items-center gap-2">
-                <UIcon :name="isUserAdministrator ? 'i-heroicons-shield-exclamation' : 'i-heroicons-shield-check'" class="w-5 h-5 text-primary" />
+                <UIcon :name="isAdmin ? 'i-heroicons-shield-exclamation' : 'i-heroicons-shield-check'" class="w-5 h-5 text-primary" />
                 <h1 class="text-xl font-bold">{{ t('admin.mainTitle') }}</h1>
               </div>
               <p class="text-sm text-neutral-500">
@@ -96,7 +107,8 @@ async function handleLogout() {
             </div>
           </template>
 
-          <div v-if="isUserAdministrator" class="space-y-4">
+          <!-- Интерфейс для уже авторизованного администратора -->
+          <div v-if="isAdmin" class="space-y-4">
             <div class="p-3 rounded-lg bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-800 flex items-center gap-3">
               <UIcon name="i-heroicons-information-circle" class="w-5 h-5 text-primary" />
               <p class="text-sm text-primary-700 dark:text-primary-300 font-medium">
@@ -106,26 +118,27 @@ async function handleLogout() {
 
             <UButton
               block
-              :loading="isSubmitting"
+              :loading="isPending"
               color="error"
               variant="solid"
               icon="i-heroicons-lock-open"
-              @click="handleLogout"
+              @click="processAdminLogout"
             >
               {{ t('admin.logoutButton') }}
             </UButton>
           </div>
 
+          <!-- Форма входа -->
           <UForm 
             v-else
-            :schema="administratorLoginSchema" 
-            :state="loginState" 
+            :schema="adminLoginSchema" 
+            :state="adminLoginForm" 
             class="space-y-4" 
-            @submit="handleLoginSubmit"
+            @submit="processAdminLogin"
           >
-            <UFormField :label="t('admin.passwordField')" name="password" :error="submissionError">
+            <UFormField :label="t('admin.passwordField')" name="password" :error="loginErrorMessage">
               <UInput
-                v-model="loginState.password"
+                v-model="adminLoginForm.password"
                 type="password"
                 placeholder="••••••••"
                 icon="i-lucide-lock"
@@ -133,22 +146,22 @@ async function handleLogout() {
                 variant="outline"
                 autocomplete="current-password"
                 class="w-full"
-                :disabled="isSubmitting || isLoginSuccessful"
+                :disabled="isPending || hasAuthenticated"
               />
             </UFormField>
 
             <UButton
               type="submit"
               block
-              :loading="isSubmitting"
-              :color="isLoginSuccessful ? 'success' : 'primary'"
-              :icon="isLoginSuccessful ? 'i-heroicons-check' : undefined"
-              :disabled="isLoginSuccessful"
+              :loading="isPending"
+              :color="hasAuthenticated ? 'success' : 'primary'"
+              :icon="hasAuthenticated ? 'i-heroicons-check' : undefined"
+              :disabled="hasAuthenticated"
             >
-              {{ isLoginSuccessful ? t('admin.accessGrantedMessage') : t('admin.loginButton') }}
+              {{ hasAuthenticated ? t('admin.accessGrantedMessage') : t('admin.loginButton') }}
             </UButton>
 
-            <p v-if="isLoginSuccessful" class="text-sm text-center text-success">
+            <p v-if="hasAuthenticated" class="text-sm text-center text-success">
               {{ t('admin.redirectingMessage') }}
             </p>
           </UForm>

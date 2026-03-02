@@ -8,7 +8,8 @@ export default defineI18nLocale((): LocaleSchema => {
   return {
     seo: {
       pageTitle: "Smart Book Search",
-      pageDescription: "Smart book search with AI assistant. Ask questions and get answers based on book text.",
+      pageDescription:
+        "Smart book search with AI assistant. Ask questions and get answers based on book text.",
     },
 
     chat: {
@@ -18,7 +19,8 @@ export default defineI18nLocale((): LocaleSchema => {
       searchChatsPlaceholder: "Search chats...",
       untitledChat: "Untitled",
       deleteChatTitle: "Delete Chat",
-      deleteChatConfirm: "Are you sure you want to delete this chat? This action cannot be undone.",
+      deleteChatConfirm:
+        "Are you sure you want to delete this chat? This action cannot be undone.",
       deleteButton: "Delete",
       cancelButton: "Cancel",
       chatDeletedSuccess: "Chat deleted",
@@ -48,10 +50,12 @@ export default defineI18nLocale((): LocaleSchema => {
     error: {
       backToHomeButton: "Back to Home",
       pageNotFoundTitle: "Page Not Found",
-      pageNotFoundDetail: "The page you are looking for doesn't exist or has been moved.",
+      pageNotFoundDetail:
+        "The page you are looking for doesn't exist or has been moved.",
       internalServerErrorTitle: "Internal Server Error",
       unexpectedError: "An unexpected error occurred",
       internalServerErrorDetail: "Something went wrong on our end.",
+      required: "This field is required",
     },
 
     library: {
@@ -85,7 +89,8 @@ export default defineI18nLocale((): LocaleSchema => {
       unknownValue: "Unknown",
       deleteBookTitle: "Delete Book",
       deleteButton: "Delete",
-      deleteBookConfirm: "Are you sure you want to completely delete this book? This action cannot be undone.",
+      deleteBookConfirm:
+        "Are you sure you want to completely delete this book? This action cannot be undone.",
       deleteBookSuccess: "Book deleted successfully",
       editBookTitle: "Edit Metadata",
       editButton: "Edit",
@@ -95,7 +100,8 @@ export default defineI18nLocale((): LocaleSchema => {
 
     admin: {
       mainTitle: "Administrator Access",
-      mainDescription: "Log in to enable elevated permissions for managing content across the platform.",
+      mainDescription:
+        "Log in to enable elevated permissions for managing content across the platform.",
       passwordField: "Password",
       loginButton: "Enable Access",
       logoutButton: "Disable Access",

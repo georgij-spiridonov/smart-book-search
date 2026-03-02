@@ -52,6 +52,7 @@ export interface LocaleSchema {
     internalServerErrorTitle: string;
     unexpectedError: string;
     internalServerErrorDetail: string;
+    required: string;
   };
 
   /** Библиотека книг и документов */

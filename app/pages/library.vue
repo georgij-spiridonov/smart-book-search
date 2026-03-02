@@ -4,88 +4,100 @@ import { useMediaQuery } from "@vueuse/core";
 import { formatBytes } from "~/utils/formatBytes";
 import { LazyModalBookDetails, LazyModalBookUpload } from "#components";
 
+/**
+ * Страница библиотеки книг пользователя.
+ * Позволяет просматривать список загруженных книг, их статус обработки и загружать новые.
+ */
+
 const { t } = useI18n();
 const modalOverlay = useOverlay();
 
-const { data: booksData, refresh: refreshBooksList } = await useFetch<{
+// Получение данных о книгах и текущем пользователе
+const { data: libraryData, refresh: refreshLibrary } = await useFetch<{
   books: Book[];
   currentUserId: string;
   isAdmin: boolean;
 }>("/api/books", {
-  key: "books",
+  key: "library-books-data",
 });
 
-const books = computed(() => booksData.value?.books || []);
-const currentUserId = computed(() => booksData.value?.currentUserId);
-const isAdministrator = computed(() => booksData.value?.isAdmin === true);
+const allBooks = computed(() => libraryData.value?.books ?? []);
+const authenticatedUserId = computed(() => libraryData.value?.currentUserId);
+const hasAdminPrivileges = computed(() => libraryData.value?.isAdmin === true);
 
-// Адаптивный опрос для обновлений статуса/прогресса книг
-const isPollingActive = ref(false);
-let booksPollingTimer: ReturnType<typeof setInterval> | null = null;
+// Состояние активного опроса для обновления прогресса векторизации
+const isFastPollingActive = ref(false);
+let libraryUpdateTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Инициализирует интервальный опрос списка книг.
+ * Настраивает интервальный опрос API для получения свежего списка книг.
+ * @param intervalMs Интервал опроса в миллисекундах.
  */
-function initiateBooksPolling(pollingIntervalMs: number) {
+function setupLibraryPolling(intervalMs: number) {
   if (!import.meta.client) return;
 
-  if (booksPollingTimer) {
-    clearInterval(booksPollingTimer);
+  if (libraryUpdateTimer) {
+    clearInterval(libraryUpdateTimer);
   }
 
-  booksPollingTimer = setInterval(() => {
+  libraryUpdateTimer = setInterval(() => {
+    // Опрашиваем только если вкладка активна
     if (document.visibilityState === "visible") {
-      refreshBooksList();
+      refreshLibrary();
     }
-  }, pollingIntervalMs);
+  }, intervalMs);
 }
 
-// Следим за книгами, которым требуется активный мониторинг (обработка или ожидание)
+// Константы интервалов опроса
+const POLLING_INTERVAL_FAST = 5000;   // 5 секунд при активной обработке
+const POLLING_INTERVAL_SLOW = 30000;  // 30 секунд в обычном режиме
+
+// Отслеживание необходимости ускоренного опроса (если есть книги в процессе обработки)
 watch(
-  () => books.value,
-  (currentBooks) => {
-    const hasActiveVectorizationJobs = currentBooks.some(
+  () => allBooks.value,
+  (books) => {
+    const hasActiveJobs = books.some(
       (book) =>
         !book.vectorized &&
         book.job &&
         (book.job.status === "processing" || book.job.status === "pending"),
     );
 
-    if (hasActiveVectorizationJobs) {
-      // Если есть активные задачи, опрашиваем каждые 5 секунд
-      initiateBooksPolling(5000);
-      isPollingActive.value = true;
-    } else if (isPollingActive.value) {
-      // Если активных задач нет, но мы были в "быстром режиме", замедляемся до 30 сек
-      initiateBooksPolling(30000);
-      isPollingActive.value = false;
+    if (hasActiveJobs && !isFastPollingActive.value) {
+      // Переключаемся на быстрый опрос, если появились активные задачи
+      setupLibraryPolling(POLLING_INTERVAL_FAST);
+      isFastPollingActive.value = true;
+    } else if (!hasActiveJobs && isFastPollingActive.value) {
+      // Возвращаемся к медленному опросу, если все задачи завершены
+      setupLibraryPolling(POLLING_INTERVAL_SLOW);
+      isFastPollingActive.value = false;
     }
   },
   { immediate: true, deep: true },
 );
 
 onMounted(() => {
-  // Начальный медленный опрос для фоновых обновлений
-  if (!isPollingActive.value) {
-    initiateBooksPolling(30000);
+  // Инициализация фонового опроса при загрузке страницы
+  if (!isFastPollingActive.value) {
+    setupLibraryPolling(POLLING_INTERVAL_SLOW);
   }
 });
 
 onUnmounted(() => {
-  if (booksPollingTimer) {
-    clearInterval(booksPollingTimer);
+  if (libraryUpdateTimer) {
+    clearInterval(libraryUpdateTimer);
   }
 });
 
 /**
- * Открывает модальное окно загрузки книги.
+ * Открывает модальное окно для загрузки новой книги.
  */
-function handleOpenUploadModal() {
+function showUploadModal() {
   const uploadModal = modalOverlay.create(LazyModalBookUpload, {
     props: {
       onClose: () => {
         uploadModal.close();
-        refreshBooksList(); // Обновляем список после возможной загрузки
+        refreshLibrary();
       },
     },
   });
@@ -93,20 +105,21 @@ function handleOpenUploadModal() {
 }
 
 /**
- * Открывает модальное окно с деталями книги.
+ * Открывает модальное окно с детальной информацией о книге.
+ * @param targetBook Объект книги для отображения.
  */
-function handleOpenBookDetails(targetBook: Book) {
+function showBookDetailsModal(targetBook: Book) {
   const detailsModal = modalOverlay.create(LazyModalBookDetails, {
     props: {
       book: targetBook,
-      isOwner: isAdministrator.value || targetBook.userId === currentUserId.value,
+      isOwner: hasAdminPrivileges.value || targetBook.userId === authenticatedUserId.value,
       onClose: () => detailsModal.close(),
       onDeleted: () => {
         detailsModal.close();
-        refreshBooksList();
+        refreshLibrary();
       },
       onUpdated: () => {
-        refreshBooksList();
+        refreshLibrary();
       },
     },
   });
@@ -131,7 +144,7 @@ function handleOpenBookDetails(targetBook: Book) {
             v-if="!useMediaQuery('(max-width: 1024px)').value"
             :label="t('library.uploadBookButton')"
             icon="i-lucide-upload"
-            @click="handleOpenUploadModal"
+            @click="showUploadModal"
           />
         </template>
       </DashboardNavbar>
@@ -147,12 +160,12 @@ function handleOpenBookDetails(targetBook: Book) {
               :label="t('library.uploadBookButton')"
               icon="i-lucide-upload"
               size="sm"
-              @click="handleOpenUploadModal"
+              @click="showUploadModal"
             />
           </div>
 
           <div
-            v-if="books.length === 0"
+            v-if="allBooks.length === 0"
             class="flex flex-col items-center justify-center py-20 text-center"
           >
             <UIcon
@@ -166,7 +179,7 @@ function handleOpenBookDetails(targetBook: Book) {
             <UButton
               :label="t('library.uploadModalTitle')"
               icon="i-lucide-upload"
-              @click="handleOpenUploadModal"
+              @click="showUploadModal"
             />
           </div>
 
@@ -175,12 +188,12 @@ function handleOpenBookDetails(targetBook: Book) {
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6"
           >
             <UPageCard
-              v-for="book in books"
+              v-for="book in allBooks"
               :key="book.id"
               :title="book.title"
               :description="book.author"
               class="cursor-pointer hover:ring-2 hover:ring-primary transition-all overflow-hidden flex flex-col"
-              @click="handleOpenBookDetails(book)"
+              @click="showBookDetailsModal(book)"
             >
               <template #header>
                 <div
