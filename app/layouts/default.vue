@@ -161,7 +161,7 @@ defineShortcuts({
 
       <template #default="{ collapsed }">
         <div class="flex flex-col gap-6" :class="{ 'items-center': collapsed }">
-          <div class="flex flex-col gap-2 w-full" :class="collapsed ? 'items-center' : 'px-4'">
+          <div class="hidden lg:flex flex-col gap-2 w-full" :class="collapsed ? 'items-center' : 'px-4'">
             <div class="w-full" :class="{ 'flex justify-center': collapsed }">
               <UNavigationMenu
                 :items="navigationItems"
@@ -195,7 +195,7 @@ defineShortcuts({
             </UButton>
           </div>
 
-          <USeparator v-if="!collapsed" class="px-4" />
+          <USeparator v-if="!collapsed" class="hidden lg:block px-4" />
 
           <div v-if="!collapsed" class="w-full flex-1 overflow-y-auto px-2">
             <UNavigationMenu
