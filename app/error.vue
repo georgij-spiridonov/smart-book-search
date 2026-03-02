@@ -1,30 +1,50 @@
 <script setup lang="ts">
 import type { NuxtError } from "#app";
 
-const props = defineProps<{
+/**
+ * Глобальный компонент обработки ошибок.
+ * Обеспечивает отображение страницы ошибки при 404 или системных сбоях.
+ */
+
+interface ErrorProperties {
   error: NuxtError;
-}>();
+}
 
-const { t } = useI18n();
+const properties = defineProps<ErrorProperties>();
+const { t: translate } = useI18n();
 
-const handleError = () => clearError({ redirect: "/" });
+/**
+ * Обработка сброса ошибки и перенаправление на главную страницу.
+ */
+const resetAndRedirectHome = () => clearError({ redirect: "/" });
 
-const statusMessage = computed(() => {
-  if (props.error?.statusCode === 404) return t("error.pageNotFoundTitle");
-  return t("error.internalServerErrorTitle");
+/**
+ * Динамическое определение заголовка сообщения об ошибке на основе статус-кода.
+ */
+const localizedStatusTitle = computed<string>(() => {
+  if (properties.error?.statusCode === 404) {
+    return translate("error.pageNotFoundTitle");
+  }
+  return translate("error.internalServerErrorTitle");
 });
 
-const message = computed(() => {
-  if (props.error?.statusCode === 404) return t("error.pageNotFoundDetail");
-
-  if (
-    props.error?.message &&
-    props.error.message !== props.error.statusMessage
-  ) {
-    return props.error.message;
+/**
+ * Формирование детального описания ошибки для пользователя.
+ */
+const localizedDetailedMessage = computed<string>(() => {
+  if (properties.error?.statusCode === 404) {
+    return translate("error.pageNotFoundDetail");
   }
 
-  return t("error.internalServerErrorDetail");
+  // Если есть специфическое сообщение об ошибке, отличное от стандартного статуса - выводим его
+  if (
+    properties.error?.message &&
+    properties.error.message !== properties.error.statusMessage
+  ) {
+    return properties.error.message;
+  }
+
+  return translate("error.internalServerErrorDetail");
 });
 </script>
 
@@ -33,14 +53,14 @@ const message = computed(() => {
     <UError
       :error="{
         ...error,
-        statusMessage,
-        message,
+        statusMessage: localizedStatusTitle,
+        message: localizedDetailedMessage,
       }"
       :clear="{
-        label: t('error.backToHomeButton'),
+        label: translate('error.backToHomeButton'),
         variant: 'subtle',
       }"
-      @clear="handleError"
+      @clear="resetAndRedirectHome"
     />
   </UApp>
 </template>

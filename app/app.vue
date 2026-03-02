@@ -1,33 +1,46 @@
 <script setup lang="ts">
 import { Analytics } from "@vercel/analytics/nuxt";
 
-const { t, locale } = useI18n();
-const colorMode = useColorMode();
+/**
+ * Основной компонент приложения, отвечающий за инициализацию метаданных,
+ * глобальных стилей и структуры макета.
+ */
 
-const color = computed(() =>
-  colorMode.value === "dark" ? "#1b1718" : "white",
+// Использование i18n для локализации и SEO
+const { t: translate, locale: currentLocale } = useI18n();
+const globalColorMode = useColorMode();
+
+// Константы цветов для темы
+const DARK_THEME_COLOR = "#1b1718";
+const LIGHT_THEME_COLOR = "white";
+
+// Динамическое определение цвета темы в зависимости от режима
+const themeColor = computed<string>(() =>
+  globalColorMode.value === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR,
 );
 
+// Настройка заголовков HTML и мета-тегов
 useHead({
   meta: [
     { charset: "utf-8" },
     { name: "viewport", content: "width=device-width, initial-scale=1" },
-    { key: "theme-color", name: "theme-color", content: color },
+    { key: "theme-color", name: "theme-color", content: themeColor },
   ],
   link: [{ rel: "icon", href: "/favicon.ico" }],
   htmlAttrs: {
-    lang: locale,
+    lang: currentLocale,
   },
 });
 
-const title = computed(() => t("seo.pageTitle"));
-const description = computed(() => t("seo.pageDescription"));
+// Настройка SEO метаданных
+const seoTitle = computed<string>(() => translate("seo.pageTitle"));
+const seoDescription = computed<string>(() => translate("seo.pageDescription"));
 
 useSeoMeta({
-  title,
-  description,
-  ogTitle: title,
-  ogDescription: description,
+  title: seoTitle,
+  description: seoDescription,
+  ogTitle: seoTitle,
+  ogDescription: seoDescription,
 });
 </script>
 
