@@ -126,10 +126,7 @@ function openBookDetails(book: Book) {
         <UContainer
           class="px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:pb-8 lg:pt-(--ui-header-height) w-full max-w-none flex flex-col gap-6"
         >
-          <div class="sm:hidden flex justify-between items-center mb-2">
-            <h1 class="text-2xl font-bold text-highlighted">
-              {{ t("library.title") }}
-            </h1>
+          <div class="sm:hidden flex justify-end items-center mb-2">
             <UButton
               :label="t('library.uploadBook')"
               icon="i-lucide-upload"
@@ -137,10 +134,6 @@ function openBookDetails(book: Book) {
               @click="openUploadModal"
             />
           </div>
-
-          <p class="text-muted mb-4 sm:hidden">
-            {{ t("library.description") }}
-          </p>
 
           <div
             v-if="books.length === 0"
