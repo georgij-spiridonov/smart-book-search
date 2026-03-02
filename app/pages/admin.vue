@@ -6,7 +6,7 @@ const { t } = useI18n()
 
 // Схема валидации для формы входа
 const administratorLoginSchema = z.object({
-  password: z.string().min(1, t('admin.password') + ' обязателен')
+  password: z.string().min(1, t('admin.passwordField') + ' обязателен')
 })
 
 type AdministratorLoginFields = z.output<typeof administratorLoginSchema>
@@ -52,7 +52,7 @@ async function handleLoginSubmit(event: FormSubmitEvent<AdministratorLoginFields
     }, 1500)
   } catch (error: unknown) {
     const fetchError = error as { data?: { message?: string; statusMessage?: string } }
-    submissionError.value = fetchError.data?.message || fetchError.data?.statusMessage || t('admin.loginError')
+    submissionError.value = fetchError.data?.message || fetchError.data?.statusMessage || t('admin.loginErrorMessage')
   } finally {
     isSubmitting.value = false
   }
@@ -72,7 +72,7 @@ async function handleLogout() {
       window.location.reload()
     }
   } catch {
-    submissionError.value = t('error.unexpected')
+    submissionError.value = t('error.unexpectedError')
   } finally {
     isSubmitting.value = false
   }
@@ -88,10 +88,10 @@ async function handleLogout() {
             <div class="flex flex-col gap-1">
               <div class="flex items-center gap-2">
                 <UIcon :name="isUserAdministrator ? 'i-heroicons-shield-exclamation' : 'i-heroicons-shield-check'" class="w-5 h-5 text-primary" />
-                <h1 class="text-xl font-bold">{{ t('admin.title') }}</h1>
+                <h1 class="text-xl font-bold">{{ t('admin.mainTitle') }}</h1>
               </div>
               <p class="text-sm text-neutral-500">
-                {{ t('admin.description') }}
+                {{ t('admin.mainDescription') }}
               </p>
             </div>
           </template>
@@ -100,7 +100,7 @@ async function handleLogout() {
             <div class="p-3 rounded-lg bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-800 flex items-center gap-3">
               <UIcon name="i-heroicons-information-circle" class="w-5 h-5 text-primary" />
               <p class="text-sm text-primary-700 dark:text-primary-300 font-medium">
-                {{ t('admin.accessGranted') }}
+                {{ t('admin.accessGrantedMessage') }}
               </p>
             </div>
 
@@ -112,7 +112,7 @@ async function handleLogout() {
               icon="i-heroicons-lock-open"
               @click="handleLogout"
             >
-              {{ t('admin.logout') }}
+              {{ t('admin.logoutButton') }}
             </UButton>
           </div>
 
@@ -123,7 +123,7 @@ async function handleLogout() {
             class="space-y-4" 
             @submit="handleLoginSubmit"
           >
-            <UFormField :label="t('admin.password')" name="password" :error="submissionError">
+            <UFormField :label="t('admin.passwordField')" name="password" :error="submissionError">
               <UInput
                 v-model="loginState.password"
                 type="password"
@@ -145,11 +145,11 @@ async function handleLogout() {
               :icon="isLoginSuccessful ? 'i-heroicons-check' : undefined"
               :disabled="isLoginSuccessful"
             >
-              {{ isLoginSuccessful ? t('admin.accessGranted') : t('admin.login') }}
+              {{ isLoginSuccessful ? t('admin.accessGrantedMessage') : t('admin.loginButton') }}
             </UButton>
 
             <p v-if="isLoginSuccessful" class="text-sm text-center text-success">
-              {{ t('admin.redirecting') }}
+              {{ t('admin.redirectingMessage') }}
             </p>
           </UForm>
         </UCard>

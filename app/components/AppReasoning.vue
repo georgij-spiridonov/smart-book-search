@@ -39,7 +39,7 @@ function cleanMarkdown(text: string): string {
             ? 'group-data-[state=open]:rotate-180 transition-transform duration-200'
             : 'hidden',
       }"
-      :label="isStreaming ? t('chat.working') : t('chat.pipelineDetails')"
+      :label="isStreaming ? t('chat.processingMessage') : t('chat.viewPipelineDetails')"
     />
 
     <template #content>

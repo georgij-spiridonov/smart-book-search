@@ -23,7 +23,7 @@ const { data: currentChatData } = await useFetch(() => `/api/chats/${currentRout
 });
 
 if (!currentChatData.value) {
-  throw createError({ statusCode: 404, statusMessage: t("chat.notFound") });
+  throw createError({ statusCode: 404, statusMessage: t("chat.chatNotFound") });
 }
 
 definePageMeta({
@@ -82,7 +82,7 @@ async function handleChatSubmit(event: Event) {
   
   if (!selectedBookForChat.value) {
     toastNotification.add({
-      title: t("chat.selectBookError"),
+      title: t("chat.selectBookRequired"),
       icon: "i-lucide-alert-circle",
       color: "error",
     });
@@ -165,7 +165,7 @@ onMounted(() => {
                 ? {
                     actions: [
                       {
-                        label: t('chat.copy'),
+                        label: t('chat.copyCitation'),
                         icon: isMessageCopied ? 'i-lucide-copy-check' : 'i-lucide-copy',
                         onClick: handleMessageCopy,
                       },
@@ -221,7 +221,7 @@ onMounted(() => {
 
           <UChatPrompt
             v-model="chatUserInput"
-            :placeholder="t('chat.placeholder')"
+            :placeholder="t('chat.inputPlaceholder')"
             :error="chatSession.error"
             variant="subtle"
             class="sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10"
@@ -234,8 +234,8 @@ onMounted(() => {
                   v-model="selectedBookForChat"
                   :items="availableBooks"
                   label-key="label"
-                  :placeholder="t('chat.selectBook')"
-                  :search-input="{ placeholder: t('chat.searchBooks') }"
+                  :placeholder="t('chat.selectBookLabel')"
+                  :search-input="{ placeholder: t('chat.searchBooksPlaceholder') }"
                   :disabled="chatSession.messages.length > 0"
                   class="w-full"
                   variant="ghost"
@@ -254,7 +254,7 @@ onMounted(() => {
                     <span v-if="searchTerm">{{
                       t("chat.noMatchingBooks")
                     }}</span>
-                    <span v-else>{{ t("chat.noBooks") }}</span>
+                    <span v-else>{{ t("chat.noBooksFound") }}</span>
                   </template>
                 </USelectMenu>
               </div>

@@ -59,14 +59,14 @@ async function saveMetadata() {
       method: "PATCH",
       body: editForm.value,
     });
-    toast.add({ title: t("library.updateSuccess"), color: "success" });
+    toast.add({ title: t("library.updateSuccessMessage"), color: "success" });
     isEditing.value = false;
     // We notify parent to refresh the list
     emit("updated", { id: props.book.id, ...editForm.value });
   } catch (err: unknown) {
     const error = err as { data?: { message?: string }; message?: string };
     toast.add({
-      title: t("library.error"),
+      title: t("library.statusError"),
       description: error.data?.message || error.message,
       color: "error",
     });
@@ -76,17 +76,17 @@ async function saveMetadata() {
 }
 
 async function deleteBook() {
-  if (!window.confirm(t("library.deleteConfirm"))) return;
+  if (!window.confirm(t("library.deleteBookConfirm"))) return;
 
   isDeleting.value = true;
   try {
     await $fetch(`/api/books/${props.book.id}`, { method: "DELETE" });
-    toast.add({ title: t("library.deleteSuccess"), color: "success" });
+    toast.add({ title: t("library.deleteBookSuccess"), color: "success" });
     emit("deleted", props.book.id);
   } catch (err: unknown) {
     const error = err as { data?: { message?: string }; message?: string };
     toast.add({
-      title: t("library.error"),
+      title: t("library.statusError"),
       description: error.data?.message || error.message,
       color: "error",
     });
@@ -117,7 +117,7 @@ function startChat() {
 
 <template>
   <UModal
-    :title="isEditing ? t('library.editBook') : book.title"
+    :title="isEditing ? t('library.editBookTitle') : book.title"
     :description="isEditing ? '' : book.author"
     :ui="{
       footer: 'flex items-center w-full gap-2 overflow-x-auto no-scrollbar py-3',
@@ -137,13 +137,13 @@ function startChat() {
           >
         </div>
 
-        <UFormField :label="t('library.uploadTitle')">
+        <UFormField :label="t('library.bookTitleLabel')">
           <UInput v-model="editForm.title" class="w-full" autofocus />
         </UFormField>
-        <UFormField :label="t('library.author')">
+        <UFormField :label="t('library.columnAuthor')">
           <UInput v-model="editForm.author" class="w-full" />
         </UFormField>
-        <UFormField :label="t('library.coverUrl')">
+        <UFormField :label="t('library.coverUrlLabel')">
           <UInput v-model="editForm.coverUrl" class="w-full" placeholder="https://..." />
         </UFormField>
       </div>
@@ -161,23 +161,23 @@ function startChat() {
 
         <div class="grid grid-cols-2 gap-4 text-sm mt-2">
           <div>
-            <span class="text-muted block mb-1">{{ t("library.size") }}</span>
+            <span class="text-muted block mb-1">{{ t("library.columnSize") }}</span>
             <span class="font-medium">{{ formatBytes(book.fileSize) }}</span>
           </div>
           <div>
             <span class="text-muted block mb-1">{{
-              t("library.uploaded")
+              t("library.columnUploadedAt")
             }}</span>
             <span class="font-medium">{{ uploadDate }}</span>
           </div>
           <div class="col-span-2">
-            <span class="text-muted block mb-1">{{ t("library.status") }}</span>
+            <span class="text-muted block mb-1">{{ t("library.columnStatus") }}</span>
             <UBadge
               :color="book.vectorized ? 'success' : 'warning'"
               variant="subtle"
             >
               {{
-                book.vectorized ? t("library.processed") : t("library.pending")
+                book.vectorized ? t("library.statusProcessed") : t("library.statusPending")
               }}
             </UBadge>
           </div>
@@ -197,7 +197,7 @@ function startChat() {
         <UButton
           color="primary"
           icon="i-lucide-check"
-          :label="t('library.save')"
+          :label="t('library.saveButton')"
           :loading="isUpdating"
           class="shrink-0 ml-auto"
           @click="saveMetadata"
@@ -205,7 +205,7 @@ function startChat() {
       </template>
       <template v-else>
         <UButton
-          :label="t('library.startChat')"
+          :label="t('library.startChatButton')"
           icon="i-lucide-message-circle"
           class="shrink-0"
           @click="startChat"
@@ -215,7 +215,7 @@ function startChat() {
           color="neutral"
           variant="soft"
           icon="i-lucide-pencil"
-          :label="t('library.edit')"
+          :label="t('library.editButton')"
           class="shrink-0"
           @click="startEditing"
         />
@@ -224,7 +224,7 @@ function startChat() {
           color="error"
           variant="soft"
           icon="i-lucide-trash"
-          :label="t('library.delete')"
+          :label="t('library.deleteButton')"
           :loading="isDeleting"
           class="shrink-0"
           @click="deleteBook"

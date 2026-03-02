@@ -23,8 +23,8 @@ const availableAppLocales = computed(() => {
 
 const chatDeletionConfirmationModal = modalOverlay.create(LazyModalConfirm, {
   props: {
-    title: t("chat.deleteTitle"),
-    description: t("chat.deleteDescription"),
+    title: t("chat.deleteChatTitle"),
+    description: t("chat.deleteChatConfirm"),
   },
 });
 
@@ -33,7 +33,7 @@ const { data: chats, refresh: refreshChatsList } = await useFetch("/api/chats", 
   transform: (chatData: Array<{ id: string; title: string; createdAt: string }>) =>
     chatData.map((chat) => ({
       id: chat.id,
-      label: chat.title || t("chat.untitled"),
+      label: chat.title || t("chat.untitledChat"),
       to: `/chat/${chat.id}`,
       icon: "i-lucide-message-circle",
       createdAt: chat.createdAt,
@@ -68,7 +68,7 @@ watch(
   () => chats.value,
   (updatedChats) => {
     const hasChatWithPlaceholderTitle =
-      updatedChats?.some((chat) => chat.label === t("chat.untitled")) || false;
+      updatedChats?.some((chat) => chat.label === t("chat.untitledChat")) || false;
 
     if (hasChatWithPlaceholderTitle) {
       // Опрашиваем чаще (раз в 5 сек), если ждем заголовок
@@ -101,7 +101,7 @@ useEvents();
 
 const topNavigationItems = computed(() => [
   {
-    label: t("library.title"),
+    label: t("library.mainTitle"),
     to: "/library",
     icon: "i-lucide-library",
   },
@@ -117,7 +117,7 @@ const chatListItems = computed(() =>
       ...group.items.map((item) => ({
         ...item,
         slot: "chat" as const,
-        class: item.label === t("chat.untitled") ? "text-muted" : "",
+        class: item.label === t("chat.untitledChat") ? "text-muted" : "",
       })),
     ];
   }),
@@ -138,8 +138,8 @@ async function performChatDeletion(targetChatId: string) {
     await $fetch(`/api/chats/${targetChatId}`, { method: "DELETE" });
 
     toastNotification.add({
-      title: t("chat.chatDeleted"),
-      description: t("chat.chatDeletedDescription"),
+      title: t("chat.chatDeletedSuccess"),
+      description: t("chat.chatDeletedDetail"),
       icon: "i-lucide-trash",
     });
 
@@ -150,8 +150,8 @@ async function performChatDeletion(targetChatId: string) {
     }
   } catch {
     toastNotification.add({
-      title: "Ошибка",
-      description: "Не удалось удалить чат. Попробуйте еще раз.",
+      title: t("error.unexpectedError"),
+      description: t("chat.deleteChatError"),
       color: "error",
     });
   }
@@ -185,7 +185,7 @@ defineShortcuts({
             :class="collapsed ? 'h-10 w-10' : 'h-8 w-8'"
           />
           <span v-if="!collapsed" class="text-xl font-bold text-highlighted">{{
-            t("chat.title")
+            t("chat.mainTitle")
           }}</span>
         </NuxtLink>
       </template>
@@ -215,7 +215,7 @@ defineShortcuts({
                 collapsed
                   ? { icon: 'i-lucide-square-pen', square: true }
                   : {
-                      label: t('chat.newChat'),
+                      label: t('chat.newChatButton'),
                       icon: 'i-lucide-square-pen',
                       block: true,
                     }
@@ -273,7 +273,7 @@ defineShortcuts({
             icon="i-lucide-github"
             color="neutral"
             variant="ghost"
-            :label="collapsed ? undefined : t('chat.sourceCode')"
+            :label="collapsed ? undefined : t('chat.viewSourceCode')"
             to="https://github.com/georgij-spiridonov/smart-book-search"
             target="_blank"
             :block="!collapsed"

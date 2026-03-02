@@ -27,7 +27,7 @@ const isAdmin = computed(() => user.value?.isAdmin === true);
         icon="i-heroicons-shield-check"
         to="/admin"
       >
-        {{ t('admin.title') }}
+        {{ t('admin.mainTitle') }}
       </UButton>
 
       <UButton

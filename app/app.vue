@@ -20,8 +20,8 @@ useHead({
   },
 });
 
-const title = computed(() => t("seo.title"));
-const description = computed(() => t("seo.description"));
+const title = computed(() => t("seo.pageTitle"));
+const description = computed(() => t("seo.pageDescription"));
 
 useSeoMeta({
   title,

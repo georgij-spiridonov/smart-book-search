@@ -20,7 +20,7 @@ const selectedBook = ref(books.value.find((b) => b.id === route.query.bookId));
 async function createChat(prompt: string) {
   if (!selectedBook.value) {
     toast.add({
-      title: t("chat.selectBookError"),
+      title: t("chat.selectBookRequired"),
       icon: "i-lucide-alert-circle",
       color: "error",
     });
@@ -63,12 +63,12 @@ async function onSubmit() {
           class="flex-1 flex flex-col justify-center gap-4 sm:gap-6 py-8"
         >
           <h1 class="text-3xl sm:text-4xl text-highlighted font-bold">
-            {{ t("chat.welcome") }}
+            {{ t("chat.welcomeMessage") }}
           </h1>
 
           <UChatPrompt
             v-model="input"
-            :placeholder="t('chat.placeholder')"
+            :placeholder="t('chat.inputPlaceholder')"
             :status="loading ? 'streaming' : 'ready'"
             class="[view-transition-name:chat-prompt]"
             variant="subtle"
@@ -81,8 +81,8 @@ async function onSubmit() {
                   v-model="selectedBook"
                   :items="books"
                   label-key="label"
-                  :placeholder="t('chat.selectBook')"
-                  :search-input="{ placeholder: t('chat.searchBooks') }"
+                  :placeholder="t('chat.selectBookLabel')"
+                  :search-input="{ placeholder: t('chat.searchBooksPlaceholder') }"
                   class="w-full"
                   variant="ghost"
                   size="sm"
@@ -100,7 +100,7 @@ async function onSubmit() {
                     <span v-if="searchTerm">{{
                       t("chat.noMatchingBooks")
                     }}</span>
-                    <span v-else>{{ t("chat.noBooks") }}</span>
+                    <span v-else>{{ t("chat.noBooksFound") }}</span>
                   </template>
                 </USelectMenu>
               </div>

@@ -121,7 +121,7 @@ function handleOpenBookDetails(targetBook: Book) {
         <template #left-aligned>
           <div class="flex items-center gap-2">
             <h1 class="text-xl font-bold text-highlighted">
-              {{ t("library.title") }}
+              {{ t("library.mainTitle") }}
             </h1>
           </div>
         </template>
@@ -129,7 +129,7 @@ function handleOpenBookDetails(targetBook: Book) {
         <template #right-aligned>
           <UButton
             v-if="!useMediaQuery('(max-width: 1024px)').value"
-            :label="t('library.uploadBook')"
+            :label="t('library.uploadBookButton')"
             icon="i-lucide-upload"
             @click="handleOpenUploadModal"
           />
@@ -144,7 +144,7 @@ function handleOpenBookDetails(targetBook: Book) {
         >
           <div class="sm:hidden flex justify-end items-center mb-2">
             <UButton
-              :label="t('library.uploadBook')"
+              :label="t('library.uploadBookButton')"
               icon="i-lucide-upload"
               size="sm"
               @click="handleOpenUploadModal"
@@ -160,11 +160,11 @@ function handleOpenBookDetails(targetBook: Book) {
               class="size-16 text-muted mb-4 opacity-50"
             />
             <h3 class="text-lg font-medium text-highlighted mb-1">
-              {{ t("chat.noBooks") }}
+              {{ t("chat.noBooksFound") }}
             </h3>
-            <p class="text-muted mb-4">{{ t("library.description") }}</p>
+            <p class="text-muted mb-4">{{ t("library.mainDescription") }}</p>
             <UButton
-              :label="t('library.uploadNew')"
+              :label="t('library.uploadModalTitle')"
               icon="i-lucide-upload"
               @click="handleOpenUploadModal"
             />
@@ -207,7 +207,7 @@ function handleOpenBookDetails(targetBook: Book) {
                     class="w-full space-y-1"
                   >
                     <div class="flex justify-between text-[10px] text-muted">
-                      <span>{{ t("library.processing") }}</span>
+                      <span>{{ t("library.statusProcessing") }}</span>
                       <span>{{
                         Math.round(
                           (book.job.progress.chunksProcessed /
@@ -245,12 +245,12 @@ function handleOpenBookDetails(targetBook: Book) {
                     >
                       {{
                         book.vectorized
-                          ? t("library.processed")
+                          ? t("library.statusProcessed")
                           : book.job?.status === "processing"
-                            ? t("library.processing")
+                            ? t("library.statusProcessing")
                             : book.job?.status === "pending"
-                              ? t("library.pending")
-                              : t("library.waiting")
+                              ? t("library.statusPending")
+                              : t("library.statusWaiting")
                       }}
                     </UBadge>
                   </div>

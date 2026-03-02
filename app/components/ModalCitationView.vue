@@ -16,14 +16,14 @@ function copyCitation() {
   try {
     navigator.clipboard.writeText(props.text);
     toast.add({
-      title: t("chat.copySuccess"),
+      title: t("chat.copyCitationSuccess"),
       color: "success",
       icon: "i-lucide-check",
     });
   } catch (err) {
     console.error("Failed to copy citation:", err);
     toast.add({
-      title: t("library.error"),
+      title: t("library.statusError"),
       description: String(err),
       color: "error",
       icon: "i-lucide-x",
@@ -34,8 +34,8 @@ function copyCitation() {
 
 <template>
   <UModal
-    :title="chapterTitle || t('chat.chapterUntitled')"
-    :description="pageNumber ? `${t('library.page')} ${pageNumber}` : t('chat.citation')"
+    :title="chapterTitle || t('chat.untitledChapter')"
+    :description="pageNumber ? `${t('library.columnPage')} ${pageNumber}` : t('chat.citationLabel')"
     :ui="{
       content: 'sm:max-w-2xl',
     }"
@@ -55,7 +55,7 @@ function copyCitation() {
         <UButton
           color="primary"
           icon="i-lucide-copy"
-          :label="t('chat.copy')"
+          :label="t('chat.copyCitation')"
           @click="copyCitation"
         />
       </div>

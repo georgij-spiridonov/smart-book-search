@@ -42,7 +42,7 @@ function openCitation(chunk: Chunk) {
           trailingIcon: 'group-data-[state=open]:rotate-180 transition-transform duration-200'
         }"
         trailing-icon="i-lucide-chevron-down"
-        :label="t('chat.citations')"
+        :label="t('chat.citationsLabel')"
       >
         <template #leading>
           <UIcon name="i-lucide-quote" class="size-3.5 text-muted" />
@@ -58,7 +58,7 @@ function openCitation(chunk: Chunk) {
             @click="openCitation(chunk)"
           >
             <div class="text-sm font-semibold text-highlighted line-clamp-1">
-              {{ chunk.chapterTitle || t('chat.chapterUntitled') }}
+              {{ chunk.chapterTitle || t('chat.untitledChapter') }}
             </div>
             <div class="mt-1 text-xs text-muted line-clamp-2 leading-relaxed">
               {{ chunk.text }}

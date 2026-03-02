@@ -60,7 +60,7 @@ export function useChats(chats: Ref<UIChat[] | undefined>) {
     if (today.length) {
       formattedGroups.push({
         id: "today",
-        label: t("chat.today"),
+        label: t("chat.groupToday"),
         items: today,
       });
     }
@@ -68,7 +68,7 @@ export function useChats(chats: Ref<UIChat[] | undefined>) {
     if (yesterday.length) {
       formattedGroups.push({
         id: "yesterday",
-        label: t("chat.yesterday"),
+        label: t("chat.groupYesterday"),
         items: yesterday,
       });
     }
@@ -76,7 +76,7 @@ export function useChats(chats: Ref<UIChat[] | undefined>) {
     if (lastWeek.length) {
       formattedGroups.push({
         id: "last-week",
-        label: t("chat.lastWeek"),
+        label: t("chat.groupLastWeek"),
         items: lastWeek,
       });
     }
@@ -84,7 +84,7 @@ export function useChats(chats: Ref<UIChat[] | undefined>) {
     if (lastMonth.length) {
       formattedGroups.push({
         id: "last-month",
-        label: t("chat.lastMonth"),
+        label: t("chat.groupLastMonth"),
         items: lastMonth,
       });
     }

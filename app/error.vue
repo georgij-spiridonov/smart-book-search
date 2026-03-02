@@ -10,12 +10,12 @@ const { t } = useI18n();
 const handleError = () => clearError({ redirect: "/" });
 
 const statusMessage = computed(() => {
-  if (props.error?.statusCode === 404) return t("error.notFound");
-  return t("error.internalServerError");
+  if (props.error?.statusCode === 404) return t("error.pageNotFoundTitle");
+  return t("error.internalServerErrorTitle");
 });
 
 const message = computed(() => {
-  if (props.error?.statusCode === 404) return t("error.notFoundDetail");
+  if (props.error?.statusCode === 404) return t("error.pageNotFoundDetail");
 
   if (
     props.error?.message &&
@@ -37,7 +37,7 @@ const message = computed(() => {
         message,
       }"
       :clear="{
-        label: t('error.backToHome'),
+        label: t('error.backToHomeButton'),
         variant: 'subtle',
       }"
       @clear="handleError"
