@@ -23,11 +23,6 @@ logs
 .env.*
 !.env.example
 
-# Agents files
-.agent
-.agents
-AGENTS.md
-
 # Tests logs
 coverage
 
