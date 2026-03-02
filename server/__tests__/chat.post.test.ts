@@ -9,7 +9,7 @@ const { mockedGetUserSession, mockedReadBody } = vi.hoisted(() => {
 
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
+    const error = new Error(err.message || "Error");
     (error as any).statusCode = err.statusCode;
     return error;
   });
@@ -136,7 +136,7 @@ describe("POST /api/chat", () => {
     mockedGetUserSession.mockResolvedValueOnce({} as any);
 
     await expect(chatPostHandler({} as any)).rejects.toThrowError(
-      "Unauthorized",
+      "Не авторизован",
     );
   });
 
@@ -151,7 +151,7 @@ describe("POST /api/chat", () => {
     });
 
     await expect(chatPostHandler({} as any)).rejects.toThrowError(
-      "Bad Request",
+      "Missing or empty 'query' field.",
     );
   });
 
@@ -167,7 +167,7 @@ describe("POST /api/chat", () => {
 
     mockGetBook.mockResolvedValueOnce(null); // Book not found
 
-    await expect(chatPostHandler({} as any)).rejects.toThrowError("Not Found");
+    await expect(chatPostHandler({} as any)).rejects.toThrowError("Книга с ID 'non-existent-book' не найдена.");
   });
 
   it("should short-circuit and stream early if all requested books are unvectorized", async () => {
@@ -371,7 +371,7 @@ describe("POST /api/chat", () => {
       userId: "user-2", // Different user
     });
 
-    await expect(chatPostHandler({} as any)).rejects.toThrowError("Forbidden");
+    await expect(chatPostHandler({} as any)).rejects.toThrowError("Отказано в доступе");
   });
 
   it("should throw 404 Not Found if requested chat does not exist", async () => {
@@ -388,7 +388,7 @@ describe("POST /api/chat", () => {
     mockFindFirstChat.mockResolvedValueOnce(undefined);
 
     await expect(chatPostHandler({} as any)).rejects.toThrowError(
-      "Chat not found",
+      "Чат не найден",
     );
   });
 

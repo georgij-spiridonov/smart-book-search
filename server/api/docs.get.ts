@@ -1,8 +1,8 @@
 /**
  * GET /api/docs
  *
- * Serves Scalar API Reference UI — an interactive OpenAPI documentation viewer.
- * Loads the spec dynamically from /api/openapi.
+ * Предоставляет Scalar API Reference UI — интерактивный просмотрщик документации OpenAPI.
+ * Загружает спецификацию динамически из /api/openapi.
  */
 export default defineEventHandler((event) => {
   setResponseHeader(event, "Content-Type", "text/html; charset=utf-8");
@@ -28,7 +28,6 @@ export default defineEventHandler((event) => {
       showSidebar: true,
       hideClientButton: true,
       hideModels: true,
-      theme: "kepler",
       telemetry: false,
       documentDownloadType: "both"
     })

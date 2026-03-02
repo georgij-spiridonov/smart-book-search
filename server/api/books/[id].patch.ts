@@ -6,94 +6,94 @@ import { UpdateBookRequestSchema } from "../../utils/openapi/schemas";
 /**
  * PATCH /api/books/[id]
  *
- * Updates book metadata (title, author).
+ * Обновляет метаданные книги (название, автор).
  */
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
   const userId = session.user?.id || session.id;
 
-  const rawId = getRouterParam(event, "id");
-  const id = rawId ? decodeURIComponent(rawId) : undefined;
+  const rawBookId = getRouterParam(event, "id");
+  const bookId = rawBookId ? decodeURIComponent(rawBookId) : undefined;
 
-  if (!id) {
+  if (!bookId) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Book ID is required",
+      message: "Требуется ID книги",
     });
   }
 
-  const body = await readBody(event);
-  const validation = UpdateBookRequestSchema.safeParse(body);
+  const requestBody = await readBody(event);
+  const validationResult = UpdateBookRequestSchema.safeParse(requestBody);
 
-  if (!validation.success) {
+  if (!validationResult.success) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Invalid request body",
-      data: validation.error.format(),
+      message: "Неверное тело запроса",
+      data: validationResult.error.format(),
     });
   }
 
-  const { title, author, coverUrl } = validation.data;
+  const { title: newTitle, author: newAuthor, coverUrl: newCoverUrl } = validationResult.data;
 
-  const book = await getBook(id);
-  if (!book) {
+  const existingBook = await getBook(bookId);
+  if (!existingBook) {
     throw createError({
       statusCode: 404,
-      statusMessage: "Book not found",
+      message: "Книга не найдена",
     });
   }
 
-  // Ownership check: only the uploader or an admin can edit the book
-  if (!session.user?.isAdmin && book.userId !== userId) {
+  // Проверка прав владения: только загрузчик или администратор может редактировать книгу
+  if (!session.user?.isAdmin && existingBook.userId !== userId) {
     log.warn("update-book-api", "Unauthorized update attempt", {
-      bookId: id,
+      bookId,
       attemptBy: userId,
-      ownedBy: book.userId,
+      ownedBy: existingBook.userId,
     });
     throw createError({
       statusCode: 403,
-      statusMessage: "Forbidden: You can only edit books you uploaded.",
+      message: "Отказано в доступе: Вы можете редактировать только загруженные вами книги.",
     });
   }
 
   try {
-    await updateBook(id, {
-      title,
-      author,
-      coverUrl,
+    await updateBook(bookId, {
+      title: newTitle,
+      author: newAuthor,
+      coverUrl: newCoverUrl,
     });
 
-    // Notify original owner about book update
-    const ownerId = book.userId;
-    if (ownerId) {
-      await publishEvent(ownerId, "book:updated", {
-        bookId: id,
+    // Уведомляем изначального владельца об обновлении книги
+    const originalOwnerId = existingBook.userId;
+    if (originalOwnerId) {
+      await publishEvent(originalOwnerId, "book:updated", {
+        bookId,
         status: "updated",
-        title,
-        author,
-        coverUrl,
+        title: newTitle,
+        author: newAuthor,
+        coverUrl: newCoverUrl,
       });
     }
 
     log.info("update-book-api", "Updated book metadata", {
-      bookId: id,
-      title,
-      author,
-      coverUrl,
+      bookId,
+      title: newTitle,
+      author: newAuthor,
+      coverUrl: newCoverUrl,
     });
 
     return {
       status: "success",
-      message: `Book metadata updated.`,
+      message: `Метаданные книги обновлены.`,
     };
-  } catch (error: unknown) {
+  } catch (updateError: unknown) {
     log.error("update-book-api", "Failed to update book metadata", {
-      error: error instanceof Error ? error.message : String(error),
+      error: updateError instanceof Error ? updateError.message : String(updateError),
     });
     throw createError({
       statusCode: 500,
-      statusMessage: "Failed to update book metadata",
-      data: { error: error instanceof Error ? error.message : String(error) },
+      message: "Не удалось обновить метаданные книги",
+      data: { error: updateError instanceof Error ? updateError.message : String(updateError) },
     });
   }
 });

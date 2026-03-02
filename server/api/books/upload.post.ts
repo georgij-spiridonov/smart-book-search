@@ -11,12 +11,12 @@ import { log } from "../../utils/logger";
 /**
  * POST /api/books/upload
  *
- * Accepts a multipart/form-data request with a file field named "file".
- * Validates file type via magic bytes, uploads to Vercel Blob.
+ * Принимает запрос multipart/form-data с полем файла "file".
+ * Проверяет тип файла через магические байты, загружает в Vercel Blob.
  */
 export default defineEventHandler(async (event) => {
   try {
-    const config = useRuntimeConfig();
+    const applicationConfig = useRuntimeConfig();
 
     const session = await getUserSession(event);
     const userId = session.user?.id || session.id;
@@ -24,93 +24,94 @@ export default defineEventHandler(async (event) => {
     if (!userId) {
       throw createError({
         statusCode: 401,
-        statusMessage: "Unauthorized: Session not found",
+        message: "Не авторизован: Сессия не найдена",
       });
     }
 
-    const formData = await readMultipartFormData(event);
-    if (!formData || formData.length === 0) {
+    const multipartFormData = await readMultipartFormData(event);
+    if (!multipartFormData || multipartFormData.length === 0) {
       log.warn("upload-api", "Upload request rejected: no form data");
       throw createError({
         statusCode: 400,
-        statusMessage:
-          "No file provided. Send a 'file' field in multipart form data.",
+        message: "Файл не предоставлен. Отправьте поле 'file' в формате multipart form data.",
       });
     }
 
-    const fileField = formData.find((field) => field.name === "file");
-    if (!fileField || !fileField.filename || !fileField.data) {
+    const uploadedFileField = multipartFormData.find((field) => field.name === "file");
+    if (!uploadedFileField || !uploadedFileField.filename || !uploadedFileField.data) {
       log.warn("upload-api", "Upload request rejected: missing file field");
       throw createError({
         statusCode: 400,
-        statusMessage: "Missing 'file' field with a valid filename.",
+        message: "Отсутствует поле 'file' с правильным именем файла.",
       });
     }
 
-    // Extract optional metadata fields from multipart form
-    const titleField = formData.find((field) => field.name === "title");
-    const authorField = formData.find((field) => field.name === "author");
-    const coverUrlField = formData.find((field) => field.name === "coverUrl");
+    // Извлекаем опциональные поля метаданных из multipart form
+    const bookTitleField = multipartFormData.find((field) => field.name === "title");
+    const bookAuthorField = multipartFormData.find((field) => field.name === "author");
+    const bookCoverUrlField = multipartFormData.find((field) => field.name === "coverUrl");
 
-    let title = titleField?.data?.toString("utf-8")?.trim();
-    if (!title) {
-      title = fileField.filename.replace(/\.[^/.]+$/, "");
+    let extractedTitle = bookTitleField?.data?.toString("utf-8")?.trim();
+    if (!extractedTitle) {
+      extractedTitle = uploadedFileField.filename.replace(/\.[^/.]+$/, "");
     }
-    const author = authorField?.data?.toString("utf-8")?.trim() || "Unknown";
-    const coverUrl = coverUrlField?.data?.toString("utf-8")?.trim() || "";
+    const extractedAuthor = bookAuthorField?.data?.toString("utf-8")?.trim() || "Unknown";
+    const extractedCoverUrl = bookCoverUrlField?.data?.toString("utf-8")?.trim() || "";
 
-    const allowedExtensions = ["pdf", "txt", "epub"];
-    const ext = fileField.filename.split(".").pop()?.toLowerCase();
+    const allowedFileExtensions = ["pdf", "txt", "epub"];
+    const fileExtension = uploadedFileField.filename.split(".").pop()?.toLowerCase();
 
     log.info("upload-api", "Processing file upload", {
-      filename: fileField.filename,
-      sizeBytes: fileField.data.length,
-      extension: ext,
+      filename: uploadedFileField.filename,
+      sizeBytes: uploadedFileField.data.length,
+      extension: fileExtension,
       userId,
     });
 
-    if (!ext || !allowedExtensions.includes(ext)) {
-      log.warn("upload-api", "Upload rejected: unsupported extension", { ext });
+    if (!fileExtension || !allowedFileExtensions.includes(fileExtension)) {
+      log.warn("upload-api", "Upload rejected: unsupported extension", { fileExtension });
       throw createError({
         statusCode: 400,
-        statusMessage: `Unsupported file type: .${ext}. Allowed: ${allowedExtensions.join(", ")}`,
+        message: `Неподдерживаемый тип файла: .${fileExtension}. Разрешены: ${allowedFileExtensions.join(", ")}`,
       });
     }
 
-    // Validate actual file content via magic bytes
-    const validation = validateFileType(fileField.data, ext);
-    if (!validation.valid) {
+    // Проверяем фактическое содержимое файла через магические байты
+    const fileValidationResult = validateFileType(uploadedFileField.data, fileExtension);
+    if (!fileValidationResult.valid) {
       log.warn("upload-api", "Upload rejected: magic byte validation failed", {
-        reason: validation.message,
+        reason: fileValidationResult.message,
       });
       throw createError({
         statusCode: 400,
-        statusMessage: validation.message,
+        message: fileValidationResult.message, // Валидатор возвращает русские сообщения
       });
     }
 
-    // Check if the exact same file was already uploaded to save Blob usage
-    const hash = getFileHash(fileField.data);
-    const existingUrl = await getExistingBlobUrl(hash);
-    if (existingUrl) {
+    // Проверяем, был ли этот же файл уже загружен, чтобы сэкономить хранилище Blob
+    const fileContentHash = getFileHash(uploadedFileField.data);
+    const existingBlobUrl = await getExistingBlobUrl(fileContentHash);
+    
+    if (existingBlobUrl) {
       log.info("upload-api", "File duplicate detected, skipping blob upload", {
-        hash,
-        existingUrl,
+        hash: fileContentHash,
+        existingUrl: existingBlobUrl,
       });
-      // Still register in book store if not already there
-      const bookTitle = title;
-      const bookId = slugifyBookId(bookTitle);
-      const existingBook = await getBook(bookId);
-      if (!existingBook) {
+      
+      // Все равно регистрируем в хранилище книг, если его там еще нет
+      const generatedBookId = slugifyBookId(extractedTitle);
+      const existingBookRecord = await getBook(generatedBookId);
+      
+      if (!existingBookRecord) {
         await addBook({
-          id: bookId,
+          id: generatedBookId,
           userId,
-          title: bookTitle,
-          author,
-          coverUrl,
-          blobUrl: existingUrl,
-          filename: fileField.filename,
-          fileSize: fileField.data.length,
+          title: extractedTitle,
+          author: extractedAuthor,
+          coverUrl: extractedCoverUrl,
+          blobUrl: existingBlobUrl,
+          filename: uploadedFileField.filename,
+          fileSize: uploadedFileField.data.length,
           uploadedAt: Date.now(),
           vectorized: false,
         });
@@ -118,71 +119,70 @@ export default defineEventHandler(async (event) => {
 
       return {
         status: "success",
-        message: `File "${fileField.filename}" was already uploaded previously.`,
+        message: `Файл "${uploadedFileField.filename}" уже был загружен ранее.`,
         blob: {
-          url: existingUrl,
-          pathname: existingUrl.split("/").pop() || fileField.filename,
-          contentType: fileField.type || "application/octet-stream",
-          size: fileField.data.length,
+          url: existingBlobUrl,
+          pathname: existingBlobUrl.split("/").pop() || uploadedFileField.filename,
+          contentType: uploadedFileField.type || "application/octet-stream",
+          size: uploadedFileField.data.length,
         },
       };
     }
 
-    // Upload to Vercel Blob under the "books/" folder
-    const blob = await put(`books/${fileField.filename}`, fileField.data, {
+    // Загружаем в Vercel Blob в папку "books/"
+    const uploadedBlobInfo = await put(`books/${uploadedFileField.filename}`, uploadedFileField.data, {
       access: "public",
-      token: config.blobToken,
+      token: applicationConfig.blobToken,
       addRandomSuffix: false,
       allowOverwrite: true,
     });
 
     log.info("upload-api", "File uploaded to Vercel Blob successfully", {
-      blobUrl: blob.url,
-      pathname: blob.pathname,
+      blobUrl: uploadedBlobInfo.url,
+      pathname: uploadedBlobInfo.pathname,
     });
 
-    // Save hash for future duplicate upload prevention
-    await markFileAsUploaded(hash, blob.url);
+    // Сохраняем хэш для предотвращения дублирования загрузок в будущем
+    await markFileAsUploaded(fileContentHash, uploadedBlobInfo.url);
 
-    // Register book in the persistent KV store
-    const bookTitle = title;
-    const bookId = slugifyBookId(bookTitle);
+    // Регистрируем книгу в постоянном хранилище KV
+    const finalBookId = slugifyBookId(extractedTitle);
     await addBook({
-      id: bookId,
+      id: finalBookId,
       userId,
-      title: bookTitle,
-      author,
-      coverUrl,
-      blobUrl: blob.url,
-      filename: fileField.filename,
-      fileSize: fileField.data.length,
+      title: extractedTitle,
+      author: extractedAuthor,
+      coverUrl: extractedCoverUrl,
+      blobUrl: uploadedBlobInfo.url,
+      filename: uploadedFileField.filename,
+      fileSize: uploadedFileField.data.length,
       uploadedAt: Date.now(),
       vectorized: false,
     });
 
     return {
       status: "success",
-      message: `File "${fileField.filename}" uploaded successfully.`,
+      message: `Файл "${uploadedFileField.filename}" успешно загружен.`,
       blob: {
-        url: blob.url,
-        pathname: blob.pathname,
-        contentType: blob.contentType,
-        size: fileField.data.length,
+        url: uploadedBlobInfo.url,
+        pathname: uploadedBlobInfo.pathname,
+        contentType: uploadedBlobInfo.contentType,
+        size: uploadedFileField.data.length,
       },
     };
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "statusCode" in error)
-      throw error;
+  } catch (uploadError: unknown) {
+    if (uploadError && typeof uploadError === "object" && "statusCode" in uploadError)
+      throw uploadError;
 
     log.error("upload-api", "Unhandled error during array upload", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      error: uploadError instanceof Error ? uploadError.message : String(uploadError),
+      stack: uploadError instanceof Error ? uploadError.stack : undefined,
     });
 
     throw createError({
       statusCode: 500,
-      statusMessage: "Upload failed",
-      data: { error: error instanceof Error ? error.message : String(error) },
+      message: "Ошибка загрузки",
+      data: { error: uploadError instanceof Error ? uploadError.message : String(uploadError) },
     });
   }
 });

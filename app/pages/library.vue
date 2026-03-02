@@ -5,102 +5,118 @@ import { formatBytes } from "~/utils/formatBytes";
 import { LazyModalBookDetails, LazyModalBookUpload } from "#components";
 
 const { t } = useI18n();
-const overlay = useOverlay();
+const modalOverlay = useOverlay();
 
-const { data: booksData, refresh } = await useFetch<{
+const { data: booksData, refresh: refreshBooksList } = await useFetch<{
   books: Book[];
   currentUserId: string;
   isAdmin: boolean;
 }>("/api/books", {
   key: "books",
 });
+
 const books = computed(() => booksData.value?.books || []);
 const currentUserId = computed(() => booksData.value?.currentUserId);
-const isAdminUser = computed(() => booksData.value?.isAdmin === true);
+const isAdministrator = computed(() => booksData.value?.isAdmin === true);
 
-// Adaptive polling for book status/progress updates
-const pollingActive = ref(false);
-let timer: NodeJS.Timeout | null = null;
+// Адаптивный опрос для обновлений статуса/прогресса книг
+const isPollingActive = ref(false);
+let booksPollingTimer: ReturnType<typeof setInterval> | null = null;
 
-function startPolling(interval: number) {
-  if (timer) clearInterval(timer);
-  timer = setInterval(() => {
+/**
+ * Инициализирует интервальный опрос списка книг.
+ */
+function initiateBooksPolling(pollingIntervalMs: number) {
+  if (!import.meta.client) return;
+
+  if (booksPollingTimer) {
+    clearInterval(booksPollingTimer);
+  }
+
+  booksPollingTimer = setInterval(() => {
     if (document.visibilityState === "visible") {
-      refresh();
+      refreshBooksList();
     }
-  }, interval);
+  }, pollingIntervalMs);
 }
 
-// Watch for books that need active monitoring (processing or pending)
+// Следим за книгами, которым требуется активный мониторинг (обработка или ожидание)
 watch(
   () => books.value,
-  (newBooks) => {
-    const hasActiveJobs = newBooks.some(
-      (b) =>
-        !b.vectorized &&
-        b.job &&
-        (b.job.status === "processing" || b.job.status === "pending"),
+  (currentBooks) => {
+    const hasActiveVectorizationJobs = currentBooks.some(
+      (book) =>
+        !book.vectorized &&
+        book.job &&
+        (book.job.status === "processing" || book.job.status === "pending"),
     );
 
-    if (hasActiveJobs) {
-      // If there are active jobs, poll every 5 seconds
-      startPolling(5000);
-      pollingActive.value = true;
-    } else if (pollingActive.value) {
-      // If no active jobs, but we were in "fast mode", slow down to 30s
-      startPolling(30000);
-      pollingActive.value = false;
+    if (hasActiveVectorizationJobs) {
+      // Если есть активные задачи, опрашиваем каждые 5 секунд
+      initiateBooksPolling(5000);
+      isPollingActive.value = true;
+    } else if (isPollingActive.value) {
+      // Если активных задач нет, но мы были в "быстром режиме", замедляемся до 30 сек
+      initiateBooksPolling(30000);
+      isPollingActive.value = false;
     }
   },
   { immediate: true, deep: true },
 );
 
 onMounted(() => {
-  // Initial slow poll for background updates
-  if (!pollingActive.value) {
-    startPolling(30000);
+  // Начальный медленный опрос для фоновых обновлений
+  if (!isPollingActive.value) {
+    initiateBooksPolling(30000);
   }
 });
 
 onUnmounted(() => {
-  if (timer) clearInterval(timer);
+  if (booksPollingTimer) {
+    clearInterval(booksPollingTimer);
+  }
 });
 
-function openUploadModal() {
-  const modal = overlay.create(LazyModalBookUpload, {
+/**
+ * Открывает модальное окно загрузки книги.
+ */
+function handleOpenUploadModal() {
+  const uploadModal = modalOverlay.create(LazyModalBookUpload, {
     props: {
       onClose: () => {
-        modal.close();
-        refresh(); // refresh list after potential upload
+        uploadModal.close();
+        refreshBooksList(); // Обновляем список после возможной загрузки
       },
     },
   });
-  modal.open();
+  uploadModal.open();
 }
 
-function openBookDetails(book: Book) {
-  const modal = overlay.create(LazyModalBookDetails, {
+/**
+ * Открывает модальное окно с деталями книги.
+ */
+function handleOpenBookDetails(targetBook: Book) {
+  const detailsModal = modalOverlay.create(LazyModalBookDetails, {
     props: {
-      book,
-      isOwner: isAdminUser.value || book.userId === currentUserId.value,
-      onClose: () => modal.close(),
+      book: targetBook,
+      isOwner: isAdministrator.value || targetBook.userId === currentUserId.value,
+      onClose: () => detailsModal.close(),
       onDeleted: () => {
-        modal.close();
-        refresh();
+        detailsModal.close();
+        refreshBooksList();
       },
       onUpdated: () => {
-        refresh();
+        refreshBooksList();
       },
     },
   });
-  modal.open();
+  detailsModal.open();
 }
 </script>
 
 <template>
   <UDashboardPanel id="library" class="min-h-0" :ui="{ body: 'p-0 sm:p-0' }">
     <template #header>
-      <!-- We can use the DashboardNavbar and add a specific title or actions -->
       <DashboardNavbar>
         <template #left-aligned>
           <div class="flex items-center gap-2">
@@ -115,7 +131,7 @@ function openBookDetails(book: Book) {
             v-if="!useMediaQuery('(max-width: 1024px)').value"
             :label="t('library.uploadBook')"
             icon="i-lucide-upload"
-            @click="openUploadModal"
+            @click="handleOpenUploadModal"
           />
         </template>
       </DashboardNavbar>
@@ -131,7 +147,7 @@ function openBookDetails(book: Book) {
               :label="t('library.uploadBook')"
               icon="i-lucide-upload"
               size="sm"
-              @click="openUploadModal"
+              @click="handleOpenUploadModal"
             />
           </div>
 
@@ -150,7 +166,7 @@ function openBookDetails(book: Book) {
             <UButton
               :label="t('library.uploadNew')"
               icon="i-lucide-upload"
-              @click="openUploadModal"
+              @click="handleOpenUploadModal"
             />
           </div>
 
@@ -164,7 +180,7 @@ function openBookDetails(book: Book) {
               :title="book.title"
               :description="book.author"
               class="cursor-pointer hover:ring-2 hover:ring-primary transition-all overflow-hidden flex flex-col"
-              @click="openBookDetails(book)"
+              @click="handleOpenBookDetails(book)"
             >
               <template #header>
                 <div

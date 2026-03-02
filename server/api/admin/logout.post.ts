@@ -1,16 +1,16 @@
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
-  const currentId = session.id;
+  const currentSessionId = session.id;
 
-  // We overwrite the entire session with only the ID.
-  // We explicitly set user to an object with isAdmin: false to revoke elevated access.
+  // Мы перезаписываем всю сессию, оставляя только ID.
+  // Мы явно устанавливаем объект пользователя с isAdmin: false, чтобы отозвать расширенные права.
   await setUserSession(event, {
-    id: currentId,
+    id: currentSessionId,
     user: {
-      id: currentId,
+      id: currentSessionId,
       isAdmin: false
     }
   });
 
-  return { status: "success", message: "Logged out" };
+  return { status: "success", message: "Выход выполнен успешно" };
 });

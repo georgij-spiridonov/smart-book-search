@@ -10,19 +10,19 @@ import type { Book } from "../../../shared/types/book";
 
 const { t } = useI18n();
 
-const components = {
+const customComponents = {
   pre: ProseStreamPre as unknown as DefineComponent,
 };
 
-const route = useRoute();
-const toast = useToast();
-const { copy: clipboardCopy } = useClipboard();
+const currentRoute = useRoute();
+const toastNotification = useToast();
+const { copy: copyToClipboard } = useClipboard();
 
-const { data } = await useFetch(() => `/api/chats/${route.params.id}`, {
-  key: `chat-${route.params.id}`,
+const { data: currentChatData } = await useFetch(() => `/api/chats/${currentRoute.params.id}`, {
+  key: `chat-${currentRoute.params.id}`,
 });
 
-if (!data.value) {
+if (!currentChatData.value) {
   throw createError({ statusCode: 404, statusMessage: t("chat.notFound") });
 }
 
@@ -30,42 +30,43 @@ definePageMeta({
   key: (route) => route.params.id as string,
 });
 
-const { data: booksData } = await useFetch("/api/books");
-const books = computed(() =>
-  (booksData.value?.books || []).map((b: Book) => ({
-    ...b,
-    label: b.author ? `${b.author} / ${b.title}` : b.title,
+const { data: booksResponse } = await useFetch("/api/books");
+const availableBooks = computed(() =>
+  (booksResponse.value?.books || []).map((book: Book) => ({
+    ...book,
+    label: book.author ? `${book.author} / ${book.title}` : book.title,
   })),
 );
-const selectedBook = ref<(Book & { label: string }) | undefined>(undefined);
+const selectedBookForChat = ref<(Book & { label: string }) | undefined>(undefined);
 
-// Sync selectedBook with chat data
+// Синхронизируем выбранную книгу с данными чата
 watch(
-  [books, data],
+  [availableBooks, currentChatData],
   ([newBooks, newData]) => {
     if (newData?.bookIds && newBooks.length) {
-      selectedBook.value =
-        newBooks.find((b) => newData.bookIds?.includes(b.id)) || undefined;
+      selectedBookForChat.value =
+        newBooks.find((book) => newData.bookIds?.includes(book.id)) || undefined;
     }
   },
   { immediate: true },
 );
 
-const input = ref("");
+const chatUserInput = ref("");
 
-const chat = new Chat({
-  id: data.value.id,
-  messages: data.value.messages as UIMessage[],
+const chatSession = new Chat({
+  id: currentChatData.value.id,
+  messages: currentChatData.value.messages as UIMessage[],
   transport: createBookChatTransport(
-    computed(() => (selectedBook.value ? [selectedBook.value.id] : [])),
+    computed(() => (selectedBookForChat.value ? [selectedBookForChat.value.id] : [])),
   ),
-  onError(error) {
-    const { message } =
-      typeof error.message === "string" && error.message[0] === "{"
-        ? JSON.parse(error.message)
-        : error;
-    toast.add({
-      description: message,
+  onError(chatError) {
+    const { message: errorMessage } =
+      typeof chatError.message === "string" && chatError.message[0] === "{"
+        ? JSON.parse(chatError.message)
+        : chatError;
+        
+    toastNotification.add({
+      description: errorMessage,
       icon: "i-lucide-alert-circle",
       color: "error",
       duration: 0,
@@ -73,10 +74,14 @@ const chat = new Chat({
   },
 });
 
-async function handleSubmit(e: Event) {
-  e.preventDefault();
-  if (!selectedBook.value) {
-    toast.add({
+/**
+ * Обрабатывает отправку сообщения в чат.
+ */
+async function handleChatSubmit(event: Event) {
+  event.preventDefault();
+  
+  if (!selectedBookForChat.value) {
+    toastNotification.add({
       title: t("chat.selectBookError"),
       icon: "i-lucide-alert-circle",
       color: "error",
@@ -84,47 +89,56 @@ async function handleSubmit(e: Event) {
     return;
   }
 
-  if (input.value.trim()) {
-    chat.sendMessage({
-      text: input.value,
+  if (chatUserInput.value.trim()) {
+    chatSession.sendMessage({
+      text: chatUserInput.value,
     });
-    input.value = "";
+    chatUserInput.value = "";
   }
 }
 
-const copied = ref(false);
+const isMessageCopied = ref(false);
 
-function copy(_e: MouseEvent, message: UIMessage) {
-  clipboardCopy(getTextFromMessage(message));
+/**
+ * Копирует содержимое сообщения в буфер обмена.
+ */
+function handleMessageCopy(_event: MouseEvent, targetMessage: UIMessage) {
+  copyToClipboard(getTextFromMessage(targetMessage));
 
-  copied.value = true;
+  isMessageCopied.value = true;
 
   setTimeout(() => {
-    copied.value = false;
+    isMessageCopied.value = false;
   }, 2000);
 }
 
-function getStepParts(message: UIMessage) {
-  const steps = message.parts.filter((p) => p.type === "data-step");
-  if (!steps.length) return null;
+/**
+ * Извлекает текстовые фрагменты шагов выполнения из сообщения.
+ */
+function extractStepDetails(targetMessage: UIMessage) {
+  const stepParts = targetMessage.parts.filter((part) => part.type === "data-step");
+  if (!stepParts.length) return null;
 
-  type StepPart = { data: { text: string; state: string } };
-  const lastStep = steps[steps.length - 1] as unknown as StepPart;
+  type StepPayload = { data: { text: string; state: string } };
+  const lastStepPayload = stepParts[stepParts.length - 1] as unknown as StepPayload;
+  
   return {
-    text: steps.map((s) => (s as unknown as StepPart).data.text).join(""),
-    isStreaming: lastStep.data.state === "active",
+    combinedText: stepParts.map((part) => (part as unknown as StepPayload).data.text).join(""),
+    isCurrentlyStreaming: lastStepPayload.data.state === "active",
   };
 }
 
 onMounted(() => {
-  if (!selectedBook.value) return;
+  if (!selectedBookForChat.value) return;
 
-  if (route.query.prompt) {
-    chat.sendMessage({ text: route.query.prompt as string });
-    const router = useRouter();
-    router.replace({ query: {} });
-  } else if (data.value?.messages.length === 1) {
-    chat.regenerate();
+  // Если передан промпт через URL, отправляем его сразу
+  if (currentRoute.query.prompt) {
+    chatSession.sendMessage({ text: currentRoute.query.prompt as string });
+    const appRouter = useRouter();
+    appRouter.replace({ query: {} });
+  } else if (currentChatData.value?.messages.length === 1) {
+    // Регенерируем ответ, если в чате только приветствие/первое сообщение
+    chatSession.regenerate();
   }
 });
 </script>
@@ -144,16 +158,16 @@ onMounted(() => {
         <UContainer class="flex-1 flex flex-col gap-4 sm:gap-6">
           <UChatMessages
             should-auto-scroll
-            :messages="chat.messages"
-            :status="chat.status"
+            :messages="chatSession.messages"
+            :status="chatSession.status"
             :assistant="
-              chat.status !== 'streaming'
+              chatSession.status !== 'streaming'
                 ? {
                     actions: [
                       {
                         label: t('chat.copy'),
-                        icon: copied ? 'i-lucide-copy-check' : 'i-lucide-copy',
-                        onClick: copy,
+                        icon: isMessageCopied ? 'i-lucide-copy-check' : 'i-lucide-copy',
+                        onClick: handleMessageCopy,
                       },
                     ],
                   }
@@ -163,27 +177,27 @@ onMounted(() => {
             class="lg:pt-(--ui-header-height) pb-4 sm:pb-6"
           >
             <template #content="{ message }">
-              <!-- Render all pipeline steps in a single collapsed block -->
+              <!-- Отображаем все шаги конвейера в едином блоке размышлений -->
               <AppReasoning
-                v-if="getStepParts(message)"
-                :text="getStepParts(message)!.text"
-                :is-streaming="getStepParts(message)!.isStreaming"
+                v-if="extractStepDetails(message)"
+                :text="extractStepDetails(message)!.combinedText"
+                :is-streaming="extractStepDetails(message)!.isCurrentlyStreaming"
               />
 
               <template
                 v-for="(part, index) in message.parts"
                 :key="`${message.id}-${part.type}-${index}${'state' in part ? `-${(part as any).state}` : ''}`"
               >
-                <!-- Only render markdown for assistant messages to prevent XSS from user input -->
+                <!-- Рендерим Markdown только для сообщений ассистента -->
                 <MDCCached
                   v-if="part.type === 'text' && message.role === 'assistant'"
                   :value="(part as any).text"
                   :cache-key="`${message.id}-${index}`"
-                  :components="components"
+                  :components="customComponents"
                   :parser-options="{ highlight: false }"
                   class="*:first:mt-0 *:last:mb-0"
                 />
-                <!-- User messages are rendered as plain text (safely escaped by Vue) -->
+                <!-- Сообщения пользователя рендерим как обычный текст -->
                 <p
                   v-else-if="part.type === 'text' && message.role === 'user'"
                   class="whitespace-pre-wrap"
@@ -192,7 +206,7 @@ onMounted(() => {
                 </p>
               </template>
 
-              <!-- Citations rendered after the main content -->
+              <!-- Цитаты из первоисточников -->
               <template
                 v-for="(part, index) in message.parts"
                 :key="`cit-${message.id}-${index}`"
@@ -206,23 +220,23 @@ onMounted(() => {
           </UChatMessages>
 
           <UChatPrompt
-            v-model="input"
+            v-model="chatUserInput"
             :placeholder="t('chat.placeholder')"
-            :error="chat.error"
+            :error="chatSession.error"
             variant="subtle"
             class="sticky bottom-0 [view-transition-name:chat-prompt] rounded-b-none z-10"
             :ui="{ base: 'px-1.5' }"
-            @submit="handleSubmit"
+            @submit="handleChatSubmit"
           >
             <template #footer>
               <div class="flex items-center gap-1 flex-1 min-w-0">
                 <USelectMenu
-                  v-model="selectedBook"
-                  :items="books"
+                  v-model="selectedBookForChat"
+                  :items="availableBooks"
                   label-key="label"
                   :placeholder="t('chat.selectBook')"
                   :search-input="{ placeholder: t('chat.searchBooks') }"
-                  :disabled="chat.messages.length > 0"
+                  :disabled="chatSession.messages.length > 0"
                   class="w-full"
                   variant="ghost"
                   size="sm"
@@ -246,11 +260,11 @@ onMounted(() => {
               </div>
 
               <UChatPromptSubmit
-                :status="chat.status"
+                :status="chatSession.status"
                 color="neutral"
                 size="sm"
-                @stop="chat.stop()"
-                @reload="chat.regenerate()"
+                @stop="chatSession.stop()"
+                @reload="chatSession.regenerate()"
               />
             </template>
           </UChatPrompt>

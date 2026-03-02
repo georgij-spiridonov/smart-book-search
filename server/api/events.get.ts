@@ -6,25 +6,25 @@ export default defineEventHandler(async (event) => {
   const userId = session.user?.id || session.id;
 
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+    throw createError({ statusCode: 401, message: "Не авторизован" });
   }
 
   const eventStream = createEventStream(event);
-  let closed = false;
+  let isConnectionClosed = false;
 
   eventStream.onClosed(async () => {
-    closed = true;
+    isConnectionClosed = true;
     log.info("events-api", "SSE connection closed", { userId });
   });
 
-  // Use the generator to stream events from Redis
-  const subscription = subscribeToEvents(userId);
+  // Используем генератор для потоковой передачи событий из Redis
+  const eventSubscription = subscribeToEvents(userId);
 
-  // Start the streaming loop
+  // Запускаем цикл потоковой передачи
   (async () => {
     try {
-      for await (const { id, event: appEvent } of subscription) {
-        if (closed) break;
+      for await (const { id, event: appEvent } of eventSubscription) {
+        if (isConnectionClosed) break;
 
         if (appEvent) {
           await eventStream.push({
@@ -33,17 +33,17 @@ export default defineEventHandler(async (event) => {
             data: JSON.stringify(appEvent.payload),
           });
         } else {
-          // Heartbeat to keep connection alive
+          // Heartbeat-сообщение для поддержания соединения активным
           await eventStream.push({
             event: "ping",
             data: "heartbeat",
           });
         }
       }
-    } catch (err) {
+    } catch (error) {
       log.error("events-api", "Stream error", {
         userId,
-        error: err instanceof Error ? err.message : String(err),
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   })();

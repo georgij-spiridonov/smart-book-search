@@ -8,49 +8,49 @@ export default defineEventHandler(async (event) => {
   const userId = session.user?.id || session.id;
 
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
+    throw createError({ statusCode: 401, message: "Не авторизован" });
   }
-  const { id } = getRouterParams(event);
+  const { id: chatId } = getRouterParams(event);
 
-  if (!id) {
+  if (!chatId) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Bad Request: Missing id parameter",
+      message: "Неверный запрос: Отсутствует параметр id",
     });
   }
 
-  // Find the chat first to know the owner for notification if admin is deleting
-  const chatToCompare = await db.query.chats.findFirst({
-    where: eq(schema.chats.id, id),
+  // Сначала находим чат, чтобы узнать владельца для уведомления в случае удаления администратором
+  const existingChat = await db.query.chats.findFirst({
+    where: eq(schema.chats.id, chatId),
   });
 
-  if (!chatToCompare) {
+  if (!existingChat) {
     throw createError({
       statusCode: 404,
-      statusMessage: "Chat not found",
+      message: "Чат не найден",
     });
   }
 
-  // Ownership check
-  if (!session.user?.isAdmin && chatToCompare.userId !== userId) {
+  // Проверка прав владения
+  if (!session.user?.isAdmin && existingChat.userId !== userId) {
     throw createError({
       statusCode: 403,
-      statusMessage: "Forbidden: You can only delete your own chats.",
+      message: "Отказано в доступе: Вы можете удалять только свои чаты",
     });
   }
 
-  const [deletedChat] = await db
+  const [deletedChatRecord] = await db
     .delete(schema.chats)
-    .where(eq(schema.chats.id, id))
+    .where(eq(schema.chats.id, chatId))
     .returning();
 
-  // Notify original owner about chat deletion
-  const ownerId = deletedChat?.userId;
-  if (ownerId) {
-    await publishEvent(ownerId, "chat:updated", {
-      deletedChatId: id,
+  // Уведомляем изначального владельца об удалении чата
+  const originalOwnerId = deletedChatRecord?.userId;
+  if (originalOwnerId) {
+    await publishEvent(originalOwnerId, "chat:updated", {
+      deletedChatId: chatId,
     });
   }
 
-  return [deletedChat];
+  return [deletedChatRecord];
 });

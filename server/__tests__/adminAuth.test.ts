@@ -4,9 +4,9 @@ import { describe, it, expect, vi } from "vitest";
 vi.hoisted(() => {
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
+    const error = new Error(err.message || "Error");
     (error as any).statusCode = err.statusCode;
-    (error as any).statusMessage = err.statusMessage;
+    (error as any).message = err.message;
     return error;
   });
   (globalThis as any).getUserSession = vi.fn(async () => ({}));
@@ -30,7 +30,7 @@ describe("Admin Login API", () => {
       expect(true).toBe(false); // Should not reach here
     } catch (error: any) {
       expect(error.statusCode).toBe(401);
-      expect(error.statusMessage).toBe("Invalid password");
+      expect(error.message).toBe("Неверный пароль");
     }
   });
 
@@ -39,7 +39,7 @@ describe("Admin Login API", () => {
     const result = await loginHandler(event);
     
     expect(result.status).toBe("success");
-    expect(result.message).toBe("Admin access granted");
+    expect(result.message).toBe("Доступ администратора предоставлен");
   });
 
   it("should fail if admin password not configured", async () => {
@@ -54,7 +54,7 @@ describe("Admin Login API", () => {
       expect(true).toBe(false);
     } catch (error: any) {
       expect(error.statusCode).toBe(500);
-      expect(error.statusMessage).toBe("Admin password not configured on server");
+      expect(error.message).toBe("Пароль администратора не настроен на сервере");
     }
   });
 });

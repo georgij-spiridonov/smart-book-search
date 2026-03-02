@@ -6,7 +6,7 @@ const { mockedGetUserSession } = vi.hoisted(() => {
 
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
+    const error = new Error(err.message || "Error");
     (error as any).statusCode = err.statusCode;
     return error;
   });
@@ -49,7 +49,7 @@ describe("GET /api/chats", () => {
     mockedGetUserSession.mockResolvedValueOnce({}); // No user, no id
 
     await expect(chatsGetHandler({} as any)).rejects.toThrowError(
-      "Unauthorized",
+      "Не авторизован",
     );
   });
 

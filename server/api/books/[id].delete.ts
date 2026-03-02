@@ -8,105 +8,105 @@ import { publishEvent } from "../../utils/events";
 /**
  * DELETE /api/books/[id]
  *
- * Performs a "nuclear" deletion of a book:
- * 1. Deletes vectorized chunks from Pinecone.
- * 2. Deletes the original file from Vercel Blob.
- * 3. Deletes the book record and indexes from Upstash Redis.
+ * Выполняет "ядерное" удаление книги:
+ * 1. Удаляет векторизованные фрагменты из Pinecone.
+ * 2. Удаляет исходный файл из Vercel Blob.
+ * 3. Удаляет запись о книге и индексы из Upstash Redis.
  */
 export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
   const userId = session.user?.id || session.id;
 
-  const config = useRuntimeConfig();
-  const rawId = getRouterParam(event, "id");
-  const id = rawId ? decodeURIComponent(rawId) : undefined;
+  const applicationConfig = useRuntimeConfig();
+  const rawBookId = getRouterParam(event, "id");
+  const bookId = rawBookId ? decodeURIComponent(rawBookId) : undefined;
 
-  if (!id) {
+  if (!bookId) {
     throw createError({
       statusCode: 400,
-      statusMessage: "Book ID is required",
+      message: "Требуется ID книги",
     });
   }
 
-  const book = await getBook(id);
-  if (!book) {
+  const targetBook = await getBook(bookId);
+  if (!targetBook) {
     throw createError({
       statusCode: 404,
-      statusMessage: "Book not found",
+      message: "Книга не найдена",
     });
   }
 
-  // Ownership check: only the uploader or an admin can delete the book
-  if (!session.user?.isAdmin && book.userId !== userId) {
+  // Проверка прав владения: только загрузчик или администратор может удалить книгу
+  if (!session.user?.isAdmin && targetBook.userId !== userId) {
     log.warn("delete-api", "Unauthorized deletion attempt", {
-      bookId: id,
+      bookId,
       attemptBy: userId,
-      ownedBy: book.userId,
+      ownedBy: targetBook.userId,
     });
     throw createError({
       statusCode: 403,
-      statusMessage: "Forbidden: You can only delete books you uploaded.",
+      message: "Отказано в доступе: Вы можете удалять только загруженные вами книги.",
     });
   }
 
   try {
-    // 1. Delete from Pinecone
-    if (config.pineconeApiKey && config.pineconeIndex) {
+    // 1. Удаление из Pinecone
+    if (applicationConfig.pineconeApiKey && applicationConfig.pineconeIndex) {
       try {
-        const pc = new Pinecone({ apiKey: config.pineconeApiKey });
-        const index = pc.index(config.pineconeIndex);
-        await index.deleteMany({ filter: { bookId: id } });
-        log.info("delete-api", "Deleted vectors from Pinecone", { bookId: id });
-      } catch (err) {
+        const pineconeClient = new Pinecone({ apiKey: applicationConfig.pineconeApiKey });
+        const pineconeIndex = pineconeClient.index(applicationConfig.pineconeIndex);
+        await pineconeIndex.deleteMany({ filter: { bookId } });
+        log.info("delete-api", "Deleted vectors from Pinecone", { bookId });
+      } catch (pineconeError) {
         log.error("delete-api", "Failed to delete vectors from Pinecone", {
-          err: err instanceof Error ? err.message : String(err),
+          error: pineconeError instanceof Error ? pineconeError.message : String(pineconeError),
         });
-        // We log the error but proceed with blob and db deletion
+        // Мы логируем ошибку, но продолжаем удаление из Blob и БД
       }
     }
 
-    // 2. Delete from Vercel Blob and Hashes
-    if (book.blobUrl) {
+    // 2. Удаление из Vercel Blob и хэшей
+    if (targetBook.blobUrl) {
       try {
-        await del(book.blobUrl, { token: config.blobToken });
+        await del(targetBook.blobUrl, { token: applicationConfig.blobToken });
         log.info("delete-api", "Deleted file from Vercel Blob", {
-          blobUrl: book.blobUrl,
+          blobUrl: targetBook.blobUrl,
         });
 
-        // Remove known hashes for this blob url
-        await deleteHashesByBlobUrl(book.blobUrl);
-      } catch (err) {
+        // Удаляем известные хэши для этого URL Blob
+        await deleteHashesByBlobUrl(targetBook.blobUrl);
+      } catch (blobError) {
         log.error("delete-api", "Failed to delete file from Blob", {
-          err: err instanceof Error ? err.message : String(err),
+          error: blobError instanceof Error ? blobError.message : String(blobError),
         });
-        // Proceed with db deletion
+        // Продолжаем удаление из БД
       }
     }
 
-    // 3. Delete from Redis Store
-    await deleteBook(id);
+    // 3. Удаление из Redis Store
+    await deleteBook(bookId);
 
-    // Notify original owner about book deletion
-    const ownerId = book.userId;
-    if (ownerId) {
-      await publishEvent(ownerId, "book:updated", {
-        bookId: id,
+    // Уведомляем изначального владельца об удалении книги
+    const originalOwnerId = targetBook.userId;
+    if (originalOwnerId) {
+      await publishEvent(originalOwnerId, "book:updated", {
+        bookId,
         status: "deleted",
       });
     }
 
     return {
       status: "success",
-      message: `Book "${book.title}" was completely deleted.`,
+      message: `Книга "${targetBook.title}" была полностью удалена.`,
     };
-  } catch (error: unknown) {
+  } catch (unexpectedError: unknown) {
     log.error("delete-api", "Nuclear deletion ran into an unexpected error", {
-      error: error instanceof Error ? error.message : String(error),
+      error: unexpectedError instanceof Error ? unexpectedError.message : String(unexpectedError),
     });
     throw createError({
       statusCode: 500,
-      statusMessage: "Nuclear deletion failed",
-      data: { error: error instanceof Error ? error.message : String(error) },
+      message: "Не удалось полностью удалить книгу",
+      data: { error: unexpectedError instanceof Error ? unexpectedError.message : String(unexpectedError) },
     });
   }
 });

@@ -1,6 +1,7 @@
 {
   "experimental": {
-    "enableAgents": true
+    "enableAgents": true,
+    "plan": true
   },
   "context": {
     "fileName": "AGENTS.md"

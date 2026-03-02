@@ -7,7 +7,7 @@ const { mockedGetUserSession, mockedGetRouterParams } = vi.hoisted(() => {
 
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
+    const error = new Error(err.message || "Error");
     (error as any).statusCode = err.statusCode;
     return error;
   });
@@ -73,7 +73,7 @@ describe("DELETE /api/chats/[id]", () => {
     mockedGetUserSession.mockResolvedValueOnce({});
 
     await expect(chatDeleteHandler({} as any)).rejects.toThrowError(
-      "Unauthorized",
+      "Не авторизован",
     );
   });
 
@@ -82,7 +82,7 @@ describe("DELETE /api/chats/[id]", () => {
     mockedGetRouterParams.mockReturnValue({ id: "chat-unknown" });
 
     await expect(chatDeleteHandler({} as any)).rejects.toThrowError(
-      "Chat not found",
+      "Чат не найден",
     );
   });
 

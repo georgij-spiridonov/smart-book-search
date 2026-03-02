@@ -7,7 +7,7 @@ const { mockedGetUserSession, mockedGetRouterParams } = vi.hoisted(() => {
 
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
+    const error = new Error(err.message || "Error");
     (error as any).statusCode = err.statusCode;
     return error;
   });
@@ -58,7 +58,7 @@ describe("GET /api/chats/[id]", () => {
     mockedGetUserSession.mockResolvedValueOnce({});
 
     await expect(chatGetHandler({} as any)).rejects.toThrowError(
-      "Unauthorized",
+      "Не авторизован",
     );
   });
 
@@ -68,7 +68,7 @@ describe("GET /api/chats/[id]", () => {
     mockFindFirst.mockResolvedValueOnce(null);
 
     await expect(chatGetHandler({} as any)).rejects.toThrowError(
-      "Chat not found",
+      "Чат не найден",
     );
   });
 

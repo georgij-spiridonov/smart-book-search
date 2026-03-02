@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { mockedGetRouterParam, mockedReadBody } = vi.hoisted(() => {
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
+    const error = new Error(err.message || "Error");
     (error as any).statusCode = err.statusCode;
     (error as any).data = err.data;
     return error;
@@ -59,7 +59,7 @@ describe("PATCH /api/books/[id]", () => {
     mockedGetRouterParam.mockReturnValueOnce(undefined);
 
     await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Book ID is required",
+      "Требуется ID книги",
     );
   });
 
@@ -68,7 +68,7 @@ describe("PATCH /api/books/[id]", () => {
     mockedReadBody.mockResolvedValueOnce({ title: "" }); // Title cannot be empty if provided
 
     await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Invalid request body",
+      "Неверное тело запроса",
     );
   });
 
@@ -78,7 +78,7 @@ describe("PATCH /api/books/[id]", () => {
     mockGetBook.mockResolvedValueOnce(null);
 
     await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Book not found",
+      "Книга не найдена",
     );
   });
 
@@ -119,7 +119,7 @@ describe("PATCH /api/books/[id]", () => {
 
     expect(result).toEqual({
       status: "success",
-      message: "Book metadata updated.",
+      message: "Метаданные книги обновлены.",
     });
   });
 
@@ -135,7 +135,7 @@ describe("PATCH /api/books/[id]", () => {
     mockGetBook.mockResolvedValueOnce(mockBook);
 
     await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Forbidden: You can only edit books you uploaded.",
+      "Отказано в доступе: Вы можете редактировать только загруженные вами книги.",
     );
   });
 
@@ -151,7 +151,7 @@ describe("PATCH /api/books/[id]", () => {
     mockUpdateBook.mockRejectedValueOnce(new Error("Redis error"));
 
     await expect(patchBookHandler({} as any)).rejects.toThrowError(
-      "Failed to update book metadata",
+      "Не удалось обновить метаданные книги",
     );
   });
 });

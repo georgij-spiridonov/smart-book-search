@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { mockedGetRouterParam, mockedUseRuntimeConfig } = vi.hoisted(() => {
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((err: any) => {
-    const error = new Error(err.statusMessage || "Error");
+    const error = new Error(err.message || "Error");
     (error as any).statusCode = err.statusCode;
     return error;
   });
@@ -94,7 +94,7 @@ describe("DELETE /api/books/[id]", () => {
     mockedGetRouterParam.mockReturnValueOnce(undefined);
 
     await expect(deleteBookHandler({} as any)).rejects.toThrowError(
-      "Book ID is required",
+      "Требуется ID книги",
     );
   });
 
@@ -103,7 +103,7 @@ describe("DELETE /api/books/[id]", () => {
     mockGetBook.mockResolvedValueOnce(null);
 
     await expect(deleteBookHandler({} as any)).rejects.toThrowError(
-      "Book not found",
+      "Книга не найдена",
     );
   });
 
@@ -137,7 +137,7 @@ describe("DELETE /api/books/[id]", () => {
 
     expect(result).toEqual({
       status: "success",
-      message: 'Book "My Book" was completely deleted.',
+      message: 'Книга "My Book" была полностью удалена.',
     });
   });
 
@@ -222,7 +222,7 @@ describe("DELETE /api/books/[id]", () => {
     mockDeleteBook.mockRejectedValueOnce(new Error("Redis connection failure"));
 
     await expect(deleteBookHandler({} as any)).rejects.toThrowError(
-      "Nuclear deletion failed",
+      "Не удалось полностью удалить книгу",
     );
   });
 
@@ -239,7 +239,7 @@ describe("DELETE /api/books/[id]", () => {
     mockDeleteBook.mockRejectedValueOnce("Unknown primitive failure");
 
     await expect(deleteBookHandler({} as any)).rejects.toThrowError(
-      "Nuclear deletion failed",
+      "Не удалось полностью удалить книгу",
     );
   });
 
@@ -293,7 +293,7 @@ describe("DELETE /api/books/[id]", () => {
     mockGetBook.mockResolvedValueOnce(mockBook);
 
     await expect(deleteBookHandler({} as any)).rejects.toThrowError(
-      "Forbidden: You can only delete books you uploaded.",
+      "Отказано в доступе: Вы можете удалять только загруженные вами книги.",
     );
   });
 

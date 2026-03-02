@@ -4,33 +4,36 @@ import type { FormSubmitEvent } from '#ui/types'
 
 const { t } = useI18n()
 
-const schema = z.object({
-  password: z.string().min(1, t('admin.password') + ' is required')
+// Схема валидации для формы входа
+const administratorLoginSchema = z.object({
+  password: z.string().min(1, t('admin.password') + ' обязателен')
 })
 
-type Schema = z.output<typeof schema>
+type AdministratorLoginFields = z.output<typeof administratorLoginSchema>
 
-const state = reactive({
+const loginState = reactive({
   password: ''
 })
 
-const loading = ref(false)
-const error = ref<string | undefined>(undefined)
-const success = ref(false)
-const revoked = ref(false)
+const isSubmitting = ref(false)
+const submissionError = ref<string | undefined>(undefined)
+const isLoginSuccessful = ref(false)
 
-const { user, fetch: fetchSession } = useUserSession()
+const { user: currentUser, fetch: refreshUserSession } = useUserSession()
 
-const isAdmin = computed(() => user.value?.isAdmin === true)
+const isUserAdministrator = computed(() => currentUser.value?.isAdmin === true)
 
-// Clear error when user starts typing
-watch(() => state.password, () => {
-  if (error.value) error.value = undefined
+// Очищаем ошибку, когда пользователь начинает вводить пароль
+watch(() => loginState.password, () => {
+  if (submissionError.value) submissionError.value = undefined
 })
 
-async function onSubmit(event: FormSubmitEvent<Schema>) {
-  loading.value = true
-  error.value = ''
+/**
+ * Обрабатывает отправку формы входа администратора.
+ */
+async function handleLoginSubmit(event: FormSubmitEvent<AdministratorLoginFields>) {
+  isSubmitting.value = true
+  submissionError.value = ''
   
   try {
     await $fetch('/api/admin/login', {
@@ -38,34 +41,40 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
       body: event.data
     })
     
-    await fetchSession()
+    await refreshUserSession()
     
-    success.value = true
-    state.password = ''
+    isLoginSuccessful.value = true
+    loginState.password = ''
     
+    // Перенаправляем на главную после успешного входа
     setTimeout(() => {
       navigateTo('/')
     }, 1500)
-  } catch (err: unknown) {
-    const fetchError = err as { data?: { statusMessage?: string } }
-    error.value = fetchError.data?.statusMessage || t('admin.loginError')
+  } catch (error: unknown) {
+    const fetchError = error as { data?: { message?: string; statusMessage?: string } }
+    submissionError.value = fetchError.data?.message || fetchError.data?.statusMessage || t('admin.loginError')
   } finally {
-    loading.value = false
+    isSubmitting.value = false
   }
 }
 
-async function onLogout() {
-  loading.value = true
+/**
+ * Обрабатывает выход из системы.
+ */
+async function handleLogout() {
+  isSubmitting.value = true
   
   try {
     await $fetch('/api/admin/logout', { method: 'POST' })
     
-    // Most reliable way to clear client state: full page reload
-    window.location.reload()
+    // Самый надежный способ очистить состояние клиента — полная перезагрузка страницы
+    if (import.meta.client) {
+      window.location.reload()
+    }
   } catch {
-    error.value = t('error.unexpected')
+    submissionError.value = t('error.unexpected')
   } finally {
-    loading.value = false
+    isSubmitting.value = false
   }
 }
 </script>
@@ -78,7 +87,7 @@ async function onLogout() {
           <template #header>
             <div class="flex flex-col gap-1">
               <div class="flex items-center gap-2">
-                <UIcon :name="isAdmin ? 'i-heroicons-shield-exclamation' : 'i-heroicons-shield-check'" class="w-5 h-5 text-primary" />
+                <UIcon :name="isUserAdministrator ? 'i-heroicons-shield-exclamation' : 'i-heroicons-shield-check'" class="w-5 h-5 text-primary" />
                 <h1 class="text-xl font-bold">{{ t('admin.title') }}</h1>
               </div>
               <p class="text-sm text-neutral-500">
@@ -87,7 +96,7 @@ async function onLogout() {
             </div>
           </template>
 
-          <div v-if="isAdmin" class="space-y-4">
+          <div v-if="isUserAdministrator" class="space-y-4">
             <div class="p-3 rounded-lg bg-primary-50 dark:bg-primary-950/30 border border-primary-200 dark:border-primary-800 flex items-center gap-3">
               <UIcon name="i-heroicons-information-circle" class="w-5 h-5 text-primary" />
               <p class="text-sm text-primary-700 dark:text-primary-300 font-medium">
@@ -97,30 +106,26 @@ async function onLogout() {
 
             <UButton
               block
-              :loading="loading"
-              :color="revoked ? 'neutral' : 'error'"
-              :variant="revoked ? 'soft' : 'solid'"
-              :icon="revoked ? 'i-heroicons-arrow-left' : 'i-heroicons-lock-open'"
-              @click="onLogout"
+              :loading="isSubmitting"
+              color="error"
+              variant="solid"
+              icon="i-heroicons-lock-open"
+              @click="handleLogout"
             >
-              {{ revoked ? t('admin.accessRevoked') : t('admin.logout') }}
+              {{ t('admin.logout') }}
             </UButton>
-
-            <p v-if="revoked" class="text-sm text-center text-neutral-500">
-              {{ t('admin.redirectingHome') }}
-            </p>
           </div>
 
           <UForm 
             v-else
-            :schema="schema" 
-            :state="state" 
+            :schema="administratorLoginSchema" 
+            :state="loginState" 
             class="space-y-4" 
-            @submit="onSubmit"
+            @submit="handleLoginSubmit"
           >
-            <UFormField :label="t('admin.password')" name="password" :error="error">
+            <UFormField :label="t('admin.password')" name="password" :error="submissionError">
               <UInput
-                v-model="state.password"
+                v-model="loginState.password"
                 type="password"
                 placeholder="••••••••"
                 icon="i-lucide-lock"
@@ -128,22 +133,22 @@ async function onLogout() {
                 variant="outline"
                 autocomplete="current-password"
                 class="w-full"
-                :disabled="loading || success"
+                :disabled="isSubmitting || isLoginSuccessful"
               />
             </UFormField>
 
             <UButton
               type="submit"
               block
-              :loading="loading"
-              :color="success ? 'success' : 'primary'"
-              :icon="success ? 'i-heroicons-check' : undefined"
-              :disabled="success"
+              :loading="isSubmitting"
+              :color="isLoginSuccessful ? 'success' : 'primary'"
+              :icon="isLoginSuccessful ? 'i-heroicons-check' : undefined"
+              :disabled="isLoginSuccessful"
             >
-              {{ success ? t('admin.accessGranted') : t('admin.login') }}
+              {{ isLoginSuccessful ? t('admin.accessGranted') : t('admin.login') }}
             </UButton>
 
-            <p v-if="success" class="text-sm text-center text-success">
+            <p v-if="isLoginSuccessful" class="text-sm text-center text-success">
               {{ t('admin.redirecting') }}
             </p>
           </UForm>
