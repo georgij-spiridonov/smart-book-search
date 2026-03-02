@@ -6,6 +6,7 @@ import { useClipboard } from "@vueuse/core";
 import { getTextFromMessage } from "@nuxt/ui/utils/ai";
 import { createBookChatTransport } from "~/utils/BookChatTransport";
 import ProseStreamPre from "../../components/prose/PreStream.vue";
+import type { Book } from "../../../shared/types/book";
 
 const { t } = useI18n();
 
@@ -32,14 +33,14 @@ definePageMeta({
   key: (route) => route.params.id as string,
 });
 
-interface Book {
-  id: string;
-  title: string;
-}
-
 const { data: booksData } = await useFetch("/api/books");
-const books = computed(() => (booksData.value?.books || []) as Book[]);
-const selectedBook = ref<Book | undefined>(undefined);
+const books = computed(() =>
+  (booksData.value?.books || []).map((b: Book) => ({
+    ...b,
+    label: b.author ? `${b.author} / ${b.title}` : b.title,
+  })),
+);
+const selectedBook = ref<(Book & { label: string }) | undefined>(undefined);
 
 // Sync selectedBook with chat data
 watch(
@@ -209,7 +210,7 @@ onMounted(() => {
                 <USelectMenu
                   v-model="selectedBook"
                   :items="books"
-                  label-key="title"
+                  label-key="label"
                   :placeholder="t('chat.selectBook')"
                   :search-input="{ placeholder: t('chat.searchBooks') }"
                   class="max-w-64"
@@ -220,6 +221,11 @@ onMounted(() => {
                   <template #leading>
                     <UIcon name="i-lucide-book" class="size-4" />
                   </template>
+
+                  <template #item="{ item }">
+                    <span class="truncate">{{ item.title }}</span>
+                  </template>
+
                   <template #empty="{ searchTerm }">
                     <span v-if="searchTerm">{{
                       t("chat.noMatchingBooks")

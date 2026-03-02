@@ -10,7 +10,10 @@ const loading = ref(false);
 const { data: booksData } = await useFetch<{ books: Book[] }>("/api/books", {
   key: "books",
 });
-const books = computed(() => booksData.value?.books || []);
+const books = computed(() => (booksData.value?.books || []).map((b) => ({
+  ...b,
+  label: b.author ? `${b.author} / ${b.title}` : b.title,
+})));
 const selectedBook = ref(books.value.find((b) => b.id === route.query.bookId));
 
 async function createChat(prompt: string) {
@@ -67,7 +70,7 @@ async function onSubmit() {
                 <USelectMenu
                   v-model="selectedBook"
                   :items="books"
-                  label-key="title"
+                  label-key="label"
                   :placeholder="t('chat.selectBook')"
                   :search-input="{ placeholder: t('chat.searchBooks') }"
                   class="max-w-64"
@@ -78,6 +81,11 @@ async function onSubmit() {
                   <template #leading>
                     <UIcon name="i-lucide-book" class="size-4" />
                   </template>
+
+                  <template #item="{ item }">
+                    <span class="truncate">{{ item.title }}</span>
+                  </template>
+
                   <template #empty="{ searchTerm }">
                     <span v-if="searchTerm">{{
                       t("chat.noMatchingBooks")
