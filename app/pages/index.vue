@@ -3,6 +3,7 @@ import type { Book } from "../../shared/types/book";
 
 const { t } = useI18n();
 const route = useRoute();
+const toast = useToast();
 
 const input = ref("");
 const loading = ref(false);
@@ -17,6 +18,15 @@ const books = computed(() => (booksData.value?.books || []).map((b) => ({
 const selectedBook = ref(books.value.find((b) => b.id === route.query.bookId));
 
 async function createChat(prompt: string) {
+  if (!selectedBook.value) {
+    toast.add({
+      title: t("chat.selectBookError"),
+      icon: "i-lucide-alert-circle",
+      color: "error",
+    });
+    return;
+  }
+
   input.value = prompt;
   loading.value = true;
 

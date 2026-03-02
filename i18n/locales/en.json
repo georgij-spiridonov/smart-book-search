@@ -23,6 +23,7 @@
     "lastMonth": "Last month",
     "placeholder": "Type a message...",
     "selectBook": "Select a book",
+    "selectBookError": "Please select a book before sending a message",
     "searchBooks": "Search books...",
     "noBooks": "No books",
     "noMatchingBooks": "No matching books",

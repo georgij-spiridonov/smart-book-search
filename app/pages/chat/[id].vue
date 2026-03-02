@@ -78,6 +78,15 @@ const chat = new Chat({
 
 async function handleSubmit(e: Event) {
   e.preventDefault();
+  if (!selectedBook.value) {
+    toast.add({
+      title: t("chat.selectBookError"),
+      icon: "i-lucide-alert-circle",
+      color: "error",
+    });
+    return;
+  }
+
   if (input.value.trim()) {
     chat.sendMessage({
       text: input.value,
@@ -110,6 +119,8 @@ function getStepParts(message: UIMessage) {
 }
 
 onMounted(() => {
+  if (!selectedBook.value) return;
+
   if (route.query.prompt) {
     chat.sendMessage({ text: route.query.prompt as string });
     const router = useRouter();
