@@ -5,9 +5,11 @@ Welcome, fellow AI agent! This document provides the essential context, architec
 ---
 
 ## 🚀 Project Overview
+
 Smart Book Search is a RAG (Retrieval-Augmented Generation) application built with **Nuxt 4**. It allows users to upload books (PDF, EPUB, TXT), vectorize their content, and then chat with those books using LLMs.
 
 ### Key Features
+
 - **Book Management**: Upload, delete, and manage a library of books.
 - **Vectorization Pipeline**: Automated text extraction and indexing into Pinecone via Inngest background jobs.
 - **RAG Chat**: Multi-query search, semantic retrieval from Pinecone, and streaming AI responses with citations.
@@ -16,6 +18,7 @@ Smart Book Search is a RAG (Retrieval-Augmented Generation) application built wi
 ---
 
 ## 🛠 Tech Stack
+
 - **Framework**: [Nuxt 4](https://nuxt.com/) (using the new `app/` and `server/` directory structure).
 - **Frontend**: Vue 3, [Nuxt UI v4.5](https://ui.nuxt.com/), Tailwind CSS v4.
 - **Backend**: Nuxt Server (H3), [Nuxt Hub](https://hub.nuxt.com/) (SQLite/Drizzle).
@@ -29,6 +32,7 @@ Smart Book Search is a RAG (Retrieval-Augmented Generation) application built wi
 ---
 
 ## 📁 Directory Structure
+
 ```text
 ├── app/                # Frontend application (Nuxt 4 convention)
 │   ├── components/     # UI Components (Nuxt UI based)
@@ -51,7 +55,9 @@ Smart Book Search is a RAG (Retrieval-Augmented Generation) application built wi
 ## 🔄 Core Workflows
 
 ### 1. Book Vectorization (The "Indexing" Pipeline)
+
 When a book is uploaded:
+
 1. It's stored in **Vercel Blob**.
 2. A database record is created.
 3. An **Inngest** event `book/vectorize` is triggered.
@@ -63,7 +69,9 @@ When a book is uploaded:
    - Updates the book status to "vectorized".
 
 ### 2. Chat & RAG (The "Search" Pipeline)
+
 When a user asks a question in `server/api/chat.post.ts`:
+
 1. **Query Expansion**: LLM generates 3-5 search queries based on the user prompt and history (`server/utils/retrieval.ts`).
 2. **Retrieval**: Parallel semantic search in **Pinecone** for all generated queries.
 3. **Reranking**: Results are merged, deduplicated, and ranked by cosine similarity.
@@ -74,28 +82,34 @@ When a user asks a question in `server/api/chat.post.ts`:
 ## 🎨 Coding Standards & Conventions
 
 ### Styling (Tailwind CSS v4)
+
 - We use **Tailwind CSS v4** with the `@theme` syntax in `app/assets/css/main.css`.
 - Use **Nuxt UI v4.5** components whenever possible for consistency.
 - Prefer semantic colors (e.g., `text-highlighted`, `bg-neutral-50`).
 
 ### Database (Drizzle ORM)
+
 - Schema is defined in `server/db/schema.ts`.
 - Use `hub:db` to access the database instance.
 - Relations are explicitly defined using Drizzle's `relations` API.
 
 ### API Design
+
 - Use **Zod** for request body/query validation.
 - All chat-related streaming should use `createUIMessageStreamResponse` from the AI SDK.
 - Use `event.waitUntil` for non-blocking background tasks during request handling (like title generation).
 
 ### Internationalization
+
 - Use `$t()` or `useI18n()` for all user-facing strings.
 - Translations are located in `i18n/locales/`.
 
 ---
 
 ## 🔑 Environment Variables
+
 The following variables are required for full functionality:
+
 - `BOOKS_BLOB_READ_WRITE_TOKEN`: Vercel Blob access.
 - `AI_GATEWAY_API_KEY`: API key for the AI Gateway.
 - `PINECONE_API_KEY` / `PINECONE_INDEX` / `PINECONE_HOST`: Vector DB config.
@@ -108,6 +122,7 @@ The following variables are required for full functionality:
 ---
 
 ## 🧪 Testing
+
 - We use **Vitest** for unit and integration testing.
 - Tests are located in `server/__tests__/`.
 - Run tests with `npm test`.
@@ -115,6 +130,7 @@ The following variables are required for full functionality:
 ---
 
 ## 🤖 Instructions for Agents
+
 1. **Respect the Pipeline**: If you modify text extraction or splitting, ensure you update the Inngest function in `server/utils/inngest.ts` and verify with existing tests.
 2. **Streaming Protocol**: Do not break the SSE/UI Message Stream protocol in `chat.post.ts`. The frontend expects specific data parts (`data-meta`, `data-chunks`, `data-step`).
 3. **Admin Security**: Always verify the user's session and `isAdmin` flag for any destructive operations or admin-only APIs.
