@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /chat/
+Disallow: /admin/
+Disallow: /api/
+Disallow: /_nuxt/
+Disallow: /_vercel/

@@ -1,0 +1,20 @@
+# Force LF for all text files
+* text=auto eol=lf
+
+# Explicitly mark binary/data files to prevent corruption
+*.sqlite binary
+*.db binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+
+# Nuxt/Build artifacts
+.nuxt/** binary
+.output/** binary
+
+# Config files
+*.sh text eol=lf
