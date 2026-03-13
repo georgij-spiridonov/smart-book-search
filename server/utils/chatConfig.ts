@@ -10,10 +10,10 @@ import "zod-openapi";
 
 export const CHAT_CONFIG = {
   /** Основная модель для генерации итогового ответа */
-  answerModel: "gemini-2.5-flash-lite",
+  answerModel: "gemini-3-flash",
 
   /** Модель для генерации поисковых запросов */
-  queryModel: "gemini-2.5-flash-lite",
+  queryModel: "gemini-3.1-flash-lite-preview",
 
   /** Максимальное количество фрагментов, извлекаемых из векторного хранилища на один запрос */
   retrievalLimit: 10,
