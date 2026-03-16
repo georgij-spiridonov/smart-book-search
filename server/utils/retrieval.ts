@@ -8,6 +8,14 @@ import { logger } from "./logger";
  */
 const MIN_SIMILARITY_SCORE = 0.3;
 
+export interface BookKnowledgeChunk {
+  text: string;
+  pageNumber: number;
+  chapterTitle: string;
+  score: number;
+  bookId: string;
+}
+
 /**
  * Генерирует поисковые запросы на основе вопроса пользователя и контекста беседы.
  * 
@@ -97,7 +105,7 @@ export async function searchBookKnowledge(
   searchQueries: string | string[],
   bookIds: string[],
   resultsLimit = 5,
-) {
+): Promise<BookKnowledgeChunk[]> {
   const runtimeConfig = useRuntimeConfig();
   const queriesArray = Array.isArray(searchQueries) ? searchQueries : [searchQueries];
 
@@ -113,6 +121,35 @@ export async function searchBookKnowledge(
   const vectorIndex = pineconeClient.index(runtimeConfig.pineconeIndex);
 
   // 1. Выполняем поиск по всем запросам параллельно с логикой повторных попыток
+  const allSearchResults = await fetchPineconeResults(
+    vectorIndex,
+    queriesArray,
+    bookIds,
+    resultsLimit,
+  );
+
+  // 2. Слияние результатов, дедупликация, фильтрация и сортировка
+  const sortedChunks = deduplicateAndSortResults(allSearchResults);
+  const finalRelevantChunks = sortedChunks.slice(0, resultsLimit * 2);
+
+  logger.info("retrieval", "Search and reranking completed", {
+    totalUniqueMatches: sortedChunks.length,
+    returnedCount: finalRelevantChunks.length,
+    bestScore: finalRelevantChunks[0]?.score,
+  });
+
+  return finalRelevantChunks;
+}
+
+/**
+ * Выполняет поиск в Pinecone с логикой повторных попыток.
+ */
+async function fetchPineconeResults(
+  vectorIndex: any,
+  queriesArray: string[],
+  bookIds: string[],
+  resultsLimit: number,
+) {
   const searchTasks = queriesArray.map((queryText) => {
     const executeQueryWithRetry = async (
       currentAttempt = 1,
@@ -156,19 +193,20 @@ export async function searchBookKnowledge(
     return executeQueryWithRetry();
   });
 
-  const allSearchResults = await Promise.all(searchTasks);
+  return Promise.all(searchTasks);
+}
 
-  // 2. Слияние результатов, дедупликация и фильтрация по скору
-  const uniqueChunksMap = new Map<
-    string,
-    {
-      text: string;
-      pageNumber: number;
-      chapterTitle: string;
-      score: number;
-      bookId: string;
-    }
-  >();
+/**
+ * Обрабатывает результаты поиска: дедупликация, фильтрация и сортировка.
+ */
+function deduplicateAndSortResults(
+  allSearchResults: Array<{
+    result?: {
+      hits?: Array<{ _score?: number; fields?: Record<string, unknown> }>;
+    };
+  } | null>,
+): BookKnowledgeChunk[] {
+  const uniqueChunksMap = new Map<string, BookKnowledgeChunk>();
 
   for (const searchResponse of allSearchResults) {
     if (!searchResponse?.result?.hits) {
@@ -184,10 +222,6 @@ export async function searchBookKnowledge(
       const hitFields = (matchHit.fields ?? {}) as Record<string, unknown>;
       const contentText = (hitFields.text as string) || "";
 
-      /**
-       * Используем содержимое текста как ключ для дедупликации.
-       * Если один и тот же фрагмент найден несколько раз, сохраняем вариант с наилучшим скором.
-       */
       const alreadyFound = uniqueChunksMap.get(contentText);
       if (!alreadyFound || alreadyFound.score < matchScore) {
         uniqueChunksMap.set(contentText, {
@@ -201,16 +235,5 @@ export async function searchBookKnowledge(
     }
   }
 
-  // 3. Сортировка по релевантности и ограничение итогового списка
-  const finalRelevantChunks = Array.from(uniqueChunksMap.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, resultsLimit * 2); // Позволяем чуть больше фрагментов, если было несколько запросов
-
-  logger.info("retrieval", "Search and reranking completed", {
-    totalUniqueMatches: uniqueChunksMap.size,
-    returnedCount: finalRelevantChunks.length,
-    bestScore: finalRelevantChunks[0]?.score,
-  });
-
-  return finalRelevantChunks;
+  return Array.from(uniqueChunksMap.values()).sort((a, b) => b.score - a.score);
 }
