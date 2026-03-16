@@ -27,7 +27,7 @@ interface ChatGroup {
  * @returns Вычисляемое свойство со сгруппированными чатами.
  */
 export function useChats(chats: Ref<ChatListItem[] | undefined>) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const groups = computed<ChatGroup[]>(() => {
     const list = chats.value;
@@ -42,6 +42,10 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
     const now = new Date();
     const oneWeekAgo = subDays(now, 7);
     const oneMonthAgo = subMonths(now, 1);
+    const monthYearFormatter = new Intl.DateTimeFormat(locale.value, {
+      month: "long",
+      year: "numeric",
+    });
 
     // Распределяем чаты по категориям за один проход
     for (const chat of list) {
@@ -56,15 +60,12 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
       } else if (chatDate >= oneMonthAgo) {
         lastMonth.push(chat);
       } else {
-        const monthYear = chatDate.toLocaleDateString("ru-RU", {
-          month: "long",
-          year: "numeric",
-        });
+        const monthYearKey = `${chatDate.getFullYear()}-${String(chatDate.getMonth() + 1).padStart(2, "0")}`;
 
-        if (!older[monthYear]) {
-          older[monthYear] = [];
+        if (!older[monthYearKey]) {
+          older[monthYearKey] = [];
         }
-        older[monthYear].push(chat);
+        older[monthYearKey].push(chat);
       }
     }
 
@@ -103,16 +104,15 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
     }
 
     // Добавляем более старые группы, отсортированные по дате (от новых к старым)
-    const sortedMonthYears = Object.keys(older).sort((a, b) => {
-      return new Date(b).getTime() - new Date(a).getTime();
-    });
+    const sortedMonthYearKeys = Object.keys(older).sort((a, b) => b.localeCompare(a));
 
-    for (const monthYear of sortedMonthYears) {
-      const items = older[monthYear];
-      if (items) {
+    for (const key of sortedMonthYearKeys) {
+      const items = older[key];
+      const representativeDate = new Date(key);
+      if (!isNaN(representativeDate.getTime())) {
         groupedChats.push({
-          id: monthYear,
-          label: monthYear,
+          id: key,
+          label: monthYearFormatter.format(representativeDate),
           items,
         });
       }
