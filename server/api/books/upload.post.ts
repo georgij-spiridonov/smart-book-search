@@ -1,4 +1,5 @@
 import { put } from "@vercel/blob";
+import { basename } from "pathe";
 import { validateFileType } from "../../utils/fileValidator";
 import {
   getFileHash,
@@ -46,6 +47,9 @@ export default defineEventHandler(async (event) => {
       });
     }
 
+    // Очищаем имя файла от путей (Security: Path Traversal)
+    const sanitizedFilename = basename(uploadedFileField.filename);
+
     // Извлекаем опциональные поля метаданных из multipart form
     const bookTitleField = multipartFormData.find((field) => field.name === "title");
     const bookAuthorField = multipartFormData.find((field) => field.name === "author");
@@ -53,16 +57,16 @@ export default defineEventHandler(async (event) => {
 
     let extractedTitle = bookTitleField?.data?.toString("utf-8")?.trim();
     if (!extractedTitle) {
-      extractedTitle = uploadedFileField.filename.replace(/\.[^/.]+$/, "");
+      extractedTitle = sanitizedFilename.replace(/\.[^/.]+$/, "");
     }
     const extractedAuthor = bookAuthorField?.data?.toString("utf-8")?.trim() || "Unknown";
     const extractedCoverUrl = bookCoverUrlField?.data?.toString("utf-8")?.trim() || "";
 
     const allowedFileExtensions = ["pdf", "txt", "epub"];
-    const fileExtension = uploadedFileField.filename.split(".").pop()?.toLowerCase();
+    const fileExtension = sanitizedFilename.split(".").pop()?.toLowerCase();
 
     logger.info("upload-api", "Processing file upload", {
-      filename: uploadedFileField.filename,
+      filename: sanitizedFilename,
       sizeBytes: uploadedFileField.data.length,
       extension: fileExtension,
       userId,
@@ -110,7 +114,7 @@ export default defineEventHandler(async (event) => {
           author: extractedAuthor,
           coverUrl: extractedCoverUrl,
           blobUrl: existingBlobUrl,
-          filename: uploadedFileField.filename,
+          filename: sanitizedFilename,
           fileSize: uploadedFileField.data.length,
           uploadedAt: Date.now(),
           vectorized: false,
@@ -119,10 +123,10 @@ export default defineEventHandler(async (event) => {
 
       return {
         status: "success",
-        message: `Файл "${uploadedFileField.filename}" уже был загружен ранее.`,
+        message: `Файл "${sanitizedFilename}" уже был загружен ранее.`,
         blob: {
           url: existingBlobUrl,
-          pathname: existingBlobUrl.split("/").pop() || uploadedFileField.filename,
+          pathname: existingBlobUrl.split("/").pop() || sanitizedFilename,
           contentType: uploadedFileField.type || "application/octet-stream",
           size: uploadedFileField.data.length,
         },
@@ -130,7 +134,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Загружаем в Vercel Blob в папку "books/"
-    const uploadedBlobInfo = await put(`books/${uploadedFileField.filename}`, uploadedFileField.data, {
+    const uploadedBlobInfo = await put(`books/${sanitizedFilename}`, uploadedFileField.data, {
       access: "public",
       token: applicationConfig.blobToken,
       addRandomSuffix: false,
@@ -154,7 +158,7 @@ export default defineEventHandler(async (event) => {
       author: extractedAuthor,
       coverUrl: extractedCoverUrl,
       blobUrl: uploadedBlobInfo.url,
-      filename: uploadedFileField.filename,
+      filename: sanitizedFilename,
       fileSize: uploadedFileField.data.length,
       uploadedAt: Date.now(),
       vectorized: false,
@@ -162,7 +166,7 @@ export default defineEventHandler(async (event) => {
 
     return {
       status: "success",
-      message: `Файл "${uploadedFileField.filename}" успешно загружен.`,
+      message: `Файл "${sanitizedFilename}" успешно загружен.`,
       blob: {
         url: uploadedBlobInfo.url,
         pathname: uploadedBlobInfo.pathname,
