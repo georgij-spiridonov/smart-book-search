@@ -60,12 +60,12 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
       } else if (chatDate >= oneMonthAgo) {
         lastMonth.push(chat);
       } else {
-        const monthYear = monthYearFormatter.format(chatDate);
+        const monthYearKey = `${chatDate.getFullYear()}-${String(chatDate.getMonth() + 1).padStart(2, "0")}`;
 
-        if (!older[monthYear]) {
-          older[monthYear] = [];
+        if (!older[monthYearKey]) {
+          older[monthYearKey] = [];
         }
-        older[monthYear].push(chat);
+        older[monthYearKey].push(chat);
       }
     }
 
@@ -104,16 +104,15 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
     }
 
     // Добавляем более старые группы, отсортированные по дате (от новых к старым)
-    const sortedMonthYears = Object.keys(older).sort((a, b) => {
-      return new Date(b).getTime() - new Date(a).getTime();
-    });
+    const sortedMonthYearKeys = Object.keys(older).sort((a, b) => b.localeCompare(a));
 
-    for (const monthYear of sortedMonthYears) {
-      const items = older[monthYear];
-      if (items) {
+    for (const key of sortedMonthYearKeys) {
+      const items = older[key];
+      if (items && items[0]) {
+        const representativeDate = new Date(items[0].createdAt);
         groupedChats.push({
-          id: monthYear,
-          label: monthYear,
+          id: key,
+          label: monthYearFormatter.format(representativeDate),
           items,
         });
       }
