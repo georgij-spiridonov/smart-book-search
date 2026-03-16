@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { H3Event } from "h3";
 
-const { mockedUseRuntimeConfig } = vi.hoisted(() => {
+vi.hoisted(() => {
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((errorData: { statusCode: number; message: string }) => {
     const error = new Error(errorData.message || "Ошибка сервера");
@@ -15,10 +15,6 @@ const { mockedUseRuntimeConfig } = vi.hoisted(() => {
     upstashRedisToken: "dummy-token",
   }));
   (globalThis as any).useRuntimeConfig = useRuntimeConfigMock;
-
-  return {
-    mockedUseRuntimeConfig: useRuntimeConfigMock,
-  };
 });
 
 const {
@@ -29,7 +25,6 @@ const {
   mockGetFileHash,
   mockGetExistingBlobUrl,
   mockAddBook,
-  mockGetBook,
   mockSlugifyBookId,
 } = vi.hoisted(() => ({
   mockGetUserSession: vi.fn(),
@@ -62,7 +57,7 @@ vi.mock("../utils/hashStore", () => ({
 
 vi.mock("../utils/bookStore", () => ({
   addBook: (...args: any[]) => mockAddBook(...args),
-  getBook: (...args: any[]) => mockGetBook(...args),
+  getBook: vi.fn(),
   slugifyBookId: (...args: any[]) => mockSlugifyBookId(...args),
 }));
 
@@ -163,5 +158,32 @@ describe("Безопасность загрузки: POST /api/books/upload", ()
     await uploadHandler(dummyEvent);
 
     expect(mockValidateFileType).toHaveBeenCalledWith(expect.any(Buffer), "pdf");
+  });
+
+  it("должен корректно обрабатывать dotfiles и файлы с несколькими точками", async () => {
+    const edgeCaseFilename = ".config.pdf";
+
+    mockReadMultipartFormData.mockResolvedValueOnce([
+      {
+        name: "file",
+        filename: edgeCaseFilename,
+        data: Buffer.from("%PDF-1.4 content"),
+      },
+    ]);
+
+    mockValidateFileType.mockReturnValue({ valid: true, detectedType: "pdf", message: "OK" });
+    mockGetFileHash.mockReturnValue("hash");
+    mockGetExistingBlobUrl.mockResolvedValue(null);
+    mockVercelBlobPut.mockResolvedValue({ url: "url" });
+
+    await uploadHandler(dummyEvent);
+
+    // Проверяем расширение
+    expect(mockValidateFileType).toHaveBeenCalledWith(expect.any(Buffer), "pdf");
+
+    // Проверяем извлеченный заголовок (без расширения)
+    expect(mockAddBook).toHaveBeenCalledWith(expect.objectContaining({
+      title: ".config",
+    }));
   });
 });

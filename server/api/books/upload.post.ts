@@ -1,5 +1,5 @@
 import { put } from "@vercel/blob";
-import { basename } from "pathe";
+import { basename, extname, parse } from "pathe";
 import { validateFileType } from "../../utils/fileValidator";
 import {
   getFileHash,
@@ -57,13 +57,15 @@ export default defineEventHandler(async (event) => {
 
     let extractedTitle = bookTitleField?.data?.toString("utf-8")?.trim();
     if (!extractedTitle) {
-      extractedTitle = sanitizedFilename.replace(/\.[^/.]+$/, "");
+      // Используем parse() для более надежного извлечения имени файла без расширения
+      extractedTitle = parse(sanitizedFilename).name;
     }
     const extractedAuthor = bookAuthorField?.data?.toString("utf-8")?.trim() || "Unknown";
     const extractedCoverUrl = bookCoverUrlField?.data?.toString("utf-8")?.trim() || "";
 
     const allowedFileExtensions = ["pdf", "txt", "epub"];
-    const fileExtension = sanitizedFilename.split(".").pop()?.toLowerCase();
+    // Используем extname() для корректной обработки точек в именах файлов
+    const fileExtension = extname(sanitizedFilename).slice(1).toLowerCase();
 
     logger.info("upload-api", "Processing file upload", {
       filename: sanitizedFilename,
