@@ -1,4 +1,4 @@
-import { Pinecone } from "@pinecone-database/pinecone";
+import { Pinecone, type Index } from "@pinecone-database/pinecone";
 import { generateText } from "ai";
 import { CHAT_CONFIG, type ChatMessage } from "./chatConfig";
 import { logger } from "./logger";
@@ -145,7 +145,7 @@ export async function searchBookKnowledge(
  * Выполняет поиск в Pinecone с логикой повторных попыток.
  */
 async function fetchPineconeResults(
-  vectorIndex: any,
+  vectorIndex: Index,
   queriesArray: string[],
   bookIds: string[],
   resultsLimit: number,
