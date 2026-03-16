@@ -48,7 +48,7 @@ export default defineEventHandler(async (event) => {
     }
 
     // Очищаем имя файла от путей (Security: Path Traversal)
-    const sanitizedFilename = basename(uploadedFileField.filename);
+    const sanitizedFilename = basename(uploadedFileField.filename).replace(/\0/g, "");
 
     // Извлекаем опциональные поля метаданных из multipart form
     const bookTitleField = multipartFormData.find((field) => field.name === "title");
