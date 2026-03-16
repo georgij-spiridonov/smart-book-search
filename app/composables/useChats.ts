@@ -108,15 +108,13 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
 
     for (const key of sortedMonthYearKeys) {
       const items = older[key];
-      if (items && items[0]) {
-        const representativeDate = new Date(items[0].createdAt);
-        if (!isNaN(representativeDate.getTime())) {
-          groupedChats.push({
-            id: key,
-            label: monthYearFormatter.format(representativeDate),
-            items,
-          });
-        }
+      const representativeDate = new Date(items[0].createdAt);
+      if (!isNaN(representativeDate.getTime())) {
+        groupedChats.push({
+          id: key,
+          label: monthYearFormatter.format(representativeDate),
+          items,
+        });
       }
     }
 
