@@ -27,7 +27,7 @@ interface ChatGroup {
  * @returns Вычисляемое свойство со сгруппированными чатами.
  */
 export function useChats(chats: Ref<ChatListItem[] | undefined>) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const groups = computed<ChatGroup[]>(() => {
     const list = chats.value;
@@ -42,7 +42,7 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
     const now = new Date();
     const oneWeekAgo = subDays(now, 7);
     const oneMonthAgo = subMonths(now, 1);
-    const monthYearFormatter = new Intl.DateTimeFormat("ru-RU", {
+    const monthYearFormatter = new Intl.DateTimeFormat(locale.value, {
       month: "long",
       year: "numeric",
     });
