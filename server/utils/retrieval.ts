@@ -8,6 +8,12 @@ import { logger } from "./logger";
  */
 const MIN_SIMILARITY_SCORE = 0.3;
 
+/**
+ * Коэффициент увеличения количества возвращаемых фрагментов относительно лимита.
+ * Позволяет получить больше релевантных данных при использовании нескольких поисковых запросов.
+ */
+const RETRIEVAL_CHUNK_MULTIPLIER = 2;
+
 export interface BookKnowledgeChunk {
   text: string;
   pageNumber: number;
@@ -136,7 +142,7 @@ export async function searchBookKnowledge(
 
   // 2. Слияние результатов, дедупликация, фильтрация и сортировка
   const sortedChunks = deduplicateAndSortResults(allSearchResults);
-  const finalRelevantChunks = sortedChunks.slice(0, resultsLimit * 2);
+  const finalRelevantChunks = sortedChunks.slice(0, resultsLimit * RETRIEVAL_CHUNK_MULTIPLIER);
 
   logger.info("retrieval", "Search and reranking completed", {
     totalUniqueMatches: sortedChunks.length,
