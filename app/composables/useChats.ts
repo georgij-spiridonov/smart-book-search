@@ -42,6 +42,10 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
     const now = new Date();
     const oneWeekAgo = subDays(now, 7);
     const oneMonthAgo = subMonths(now, 1);
+    const monthYearFormatter = new Intl.DateTimeFormat("ru-RU", {
+      month: "long",
+      year: "numeric",
+    });
 
     // Распределяем чаты по категориям за один проход
     for (const chat of list) {
@@ -56,10 +60,7 @@ export function useChats(chats: Ref<ChatListItem[] | undefined>) {
       } else if (chatDate >= oneMonthAgo) {
         lastMonth.push(chat);
       } else {
-        const monthYear = chatDate.toLocaleDateString("ru-RU", {
-          month: "long",
-          year: "numeric",
-        });
+        const monthYear = monthYearFormatter.format(chatDate);
 
         if (!older[monthYear]) {
           older[monthYear] = [];
