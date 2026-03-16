@@ -16,6 +16,12 @@ export interface BookKnowledgeChunk {
   bookId: string;
 }
 
+type PineconeSearchResponse = Array<{
+  result?: {
+    hits?: Array<{ _score?: number; fields?: Record<string, unknown> }>;
+  };
+} | null>;
+
 /**
  * Генерирует поисковые запросы на основе вопроса пользователя и контекста беседы.
  * 
@@ -149,7 +155,7 @@ async function fetchPineconeResults(
   queriesArray: string[],
   bookIds: string[],
   resultsLimit: number,
-) {
+): Promise<PineconeSearchResponse> {
   const searchTasks = queriesArray.map((queryText) => {
     const executeQueryWithRetry = async (
       currentAttempt = 1,
@@ -200,11 +206,7 @@ async function fetchPineconeResults(
  * Обрабатывает результаты поиска: дедупликация, фильтрация и сортировка.
  */
 function deduplicateAndSortResults(
-  allSearchResults: Array<{
-    result?: {
-      hits?: Array<{ _score?: number; fields?: Record<string, unknown> }>;
-    };
-  } | null>,
+  allSearchResults: PineconeSearchResponse,
 ): BookKnowledgeChunk[] {
   const uniqueChunksMap = new Map<string, BookKnowledgeChunk>();
 
