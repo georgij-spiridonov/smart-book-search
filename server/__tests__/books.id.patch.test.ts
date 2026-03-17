@@ -4,7 +4,7 @@ import type { H3Event } from "h3";
 /**
  * Глобальные имитации (Mocks) для окружения Nuxt/H3.
  */
-const { mockedGetRouterParam, mockedReadBody } = vi.hoisted(() => {
+const { mockedGetRouterParam, mockedReadBody, mockedGetUserSession } = vi.hoisted(() => {
   (globalThis as any).defineEventHandler = vi.fn((handler: any) => handler);
   (globalThis as any).createError = vi.fn((errorData: { statusCode: number; message: string; data?: any }) => {
     const error = new Error(errorData.message || "Ошибка сервера");
@@ -19,13 +19,15 @@ const { mockedGetRouterParam, mockedReadBody } = vi.hoisted(() => {
   const readBodyMock = vi.fn();
   (globalThis as any).readBody = readBodyMock;
 
-  (globalThis as any).getUserSession = vi.fn(async () => ({
+  const getUserSessionMock = vi.fn(async () => ({
     user: { id: "test-user-id" },
   }));
+  (globalThis as any).getUserSession = getUserSessionMock;
 
   return {
     mockedGetRouterParam: getRouterParamMock,
     mockedReadBody: readBodyMock,
+    mockedGetUserSession: getUserSessionMock,
   };
 });
 
@@ -62,6 +64,13 @@ describe("Обновление метаданных книги: PATCH /api/books
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("должен возвращать 401, если пользователь не авторизован", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({} as any);
+    await expect(patchBookHandler(dummyEvent)).rejects.toThrowError(
+      "Не авторизован",
+    );
   });
 
   it("должен возвращать 400, если ID книги отсутствует", async () => {
@@ -147,6 +156,26 @@ describe("Обновление метаданных книги: PATCH /api/books
     await expect(patchBookHandler(dummyEvent)).rejects.toThrowError(
       "Отказано в доступе: Вы можете редактировать только загруженные вами книги.",
     );
+  });
+
+  it("должен разрешать редактирование книги администратору, даже если он не владелец", async () => {
+    const mockBookData = {
+      id: "other-book-id",
+      userId: "other-user-id",
+      title: "Чужая книга",
+    };
+
+    mockedGetRouterParam.mockReturnValueOnce("other-book-id");
+    mockedReadBody.mockResolvedValueOnce({ title: "Админское изменение" });
+    mockGetBookFromStore.mockResolvedValueOnce(mockBookData);
+    
+    mockedGetUserSession.mockResolvedValueOnce({ 
+      user: { id: "admin-id", isAdmin: true } 
+    } as any);
+
+    const result = await patchBookHandler(dummyEvent);
+    expect(result.status).toBe("success");
+    expect(mockUpdateBookInStore).toHaveBeenCalled();
   });
 
   it("должен возвращать 500, если обновление в хранилище завершилось ошибкой", async () => {

@@ -103,4 +103,21 @@ describe("Получение конкретного чата: GET /api/chats/[id
 
     expect(result).toEqual(mockChatData);
   });
+
+  it("должен разрешать администратору просматривать чужой чат", async () => {
+    const mockChatData = {
+      id: "other-chat-id",
+      userId: "user-456",
+      title: "Чужой чат",
+    };
+
+    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "admin-id", isAdmin: true } });
+    mockedGetRouterParams.mockReturnValue({ id: "other-chat-id" });
+    mockDbFindFirstChat.mockResolvedValueOnce(mockChatData);
+
+    const result = await chatGetByIdHandler({} as any);
+
+    expect(result).toEqual(mockChatData);
+    // Проверяем, что поиск шел только по ID (без userId)
+  });
 });

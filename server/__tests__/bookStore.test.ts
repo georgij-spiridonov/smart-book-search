@@ -250,6 +250,7 @@ describe("Сервис хранилища книг (bookStore)", () => {
       const result = await getBook(bookId);
       expect(result).not.toBeNull();
       expect(result!.author).toBe("Unknown");
+      expect(result!.userId).toBe("legacy");
       expect(result!.fileSize).toBe(0);
       expect(result!.vectorized).toBe(false);
     });

@@ -296,6 +296,16 @@ describe("Извлечение текста (textParser)", () => {
       expect(mockFsUnlinkSync).toHaveBeenCalled();
     });
 
+    it("должен корректно обрабатывать ситуацию, когда временный файл уже удален", async () => {
+      mockEpubCreateAsync.mockResolvedValue({ flow: [] });
+      mockFsExistsSync.mockReturnValueOnce(false); // Файл не существует
+
+      const epubBuffer = Buffer.from("fake-epub");
+      await extractText(epubBuffer, "test.epub");
+
+      expect(mockFsUnlinkSync).not.toHaveBeenCalled();
+    });
+
     it("должен корректно обрабатывать EPUB с пустым списком flow", async () => {
       mockEpubCreateAsync.mockResolvedValue({
         flow: [],

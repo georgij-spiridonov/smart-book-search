@@ -77,13 +77,39 @@ describe("Поиск по базе знаний (retrieval)", () => {
       expect(queries).toEqual(["single", "quotes"]);
     });
 
-    it("должна возвращать исходный запрос при ошибке парсинга", async () => {
-      mockGenerateText.mockResolvedValueOnce({
-        text: "Это не JSON массив вовсе",
-      });
+    it("должна обрабатывать пустой массив после парсинга", async () => {
+      mockGenerateText.mockResolvedValueOnce({ text: "[]" });
+      const queries = await generateSearchQueries("q", "b");
+      expect(queries).toEqual(["q"]);
+    });
 
-      const queries = await generateSearchQueries("original query", "info");
-      expect(queries).toEqual(["original query"]);
+    it("должна логировать ошибку при полном сбое парсинга JSON", async () => {
+      mockGenerateText.mockResolvedValueOnce({ text: "[это не джейсон]" });
+      const { logger } = await import("../utils/logger");
+      
+      const queries = await generateSearchQueries("original", "info");
+      expect(queries).toEqual(["original"]);
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it("должна возвращать исходный запрос, если JSON после фиксации всё ещё не валиден", async () => {
+      mockGenerateText.mockResolvedValueOnce({
+        text: "['really broken { } ]", // Совсем не валидно
+      });
+      const queries = await generateSearchQueries("q", "b");
+      expect(queries).toEqual(["q"]);
+    });
+
+    it("должна возвращать исходный запрос при ошибке в AI модели", async () => {
+      mockGenerateText.mockRejectedValueOnce(new Error("AI Model Error"));
+      const queries = await generateSearchQueries("q", "b");
+      expect(queries).toEqual(["q"]);
+    });
+
+    it("должна корректно обрабатывать ситуацию без bookMetadata", async () => {
+      mockGenerateText.mockResolvedValueOnce({ text: '["query"]' });
+      await generateSearchQueries("q", "");
+      expect(mockGenerateText).toHaveBeenCalled();
     });
 
     it("должна включать историю в промпт", async () => {
@@ -119,10 +145,27 @@ describe("Поиск по базе знаний (retrieval)", () => {
       expect(results[0]).toMatchObject({ text: "AI content", score: 0.9 });
     });
 
+    it("должна корректно обрабатывать пустые bookIds", async () => {
+      mockPineconeSearchRecords.mockResolvedValueOnce({ result: { hits: [] } });
+      const results = await searchBookKnowledge("q", []);
+      expect(results).toEqual([]);
+    });
+
+    it("должна обрабатывать ситуацию, когда поля (fields) или скор отсутствуют", async () => {
+      mockPineconeSearchRecords.mockResolvedValueOnce({
+        result: {
+          hits: [
+            { _id: "empty", _score: undefined, fields: undefined }
+          ]
+        }
+      });
+      const results = await searchBookKnowledge("q", ["b"]);
+      expect(results).toHaveLength(0); // Скор 0 < 0.3
+    });
+
     it("должна выполнять повторные попытки (retry) при сбое Pinecone", async () => {
       vi.useFakeTimers();
       
-      // Два сбоя, затем успех
       mockPineconeSearchRecords
         .mockRejectedValueOnce(new Error("Pinecone Timeout"))
         .mockRejectedValueOnce(new Error("Pinecone Overload"))
@@ -132,7 +175,6 @@ describe("Поиск по базе знаний (retrieval)", () => {
 
       const searchPromise = searchBookKnowledge("query", ["b1"]);
       
-      // Проматываем таймеры для ретраев
       await vi.runAllTimersAsync();
       await vi.runAllTimersAsync();
 
@@ -158,20 +200,45 @@ describe("Поиск по базе знаний (retrieval)", () => {
       vi.useRealTimers();
     });
 
-    it("должна дедуплицировать фрагменты и выбирать лучший скор", async () => {
-      // Имитируем два запроса, вернувших один и тот же текст с разными скорами
+    it("должна корректно дедуплицировать результаты из разных запросов", async () => {
       mockPineconeSearchRecords
         .mockResolvedValueOnce({
-          result: { hits: [{ _id: "a", _score: 0.5, fields: { text: "duplicate" } }] },
+          result: { hits: [{ _id: "1", _score: 0.8, fields: { text: "shared" } }] }
         })
         .mockResolvedValueOnce({
-          result: { hits: [{ _id: "b", _score: 0.8, fields: { text: "duplicate" } }] },
+          result: { hits: [{ _id: "1", _score: 0.8, fields: { text: "shared" } }] }
         });
 
-      const results = await searchBookKnowledge(["q1", "q2"], ["b1"]);
-      
+      const results = await searchBookKnowledge(["q1", "q2"], ["b"]);
       expect(results).toHaveLength(1);
-      expect(results[0]!.score).toBe(0.8);
+    });
+
+    it("должна корректно дедуплицировать, выбирая лучший скор", async () => {
+      mockPineconeSearchRecords
+        .mockResolvedValueOnce({
+          result: { hits: [{ _id: "1", _score: 0.5, fields: { text: "duplicate" } }] }
+        })
+        .mockResolvedValueOnce({
+          result: { hits: [{ _id: "2", _score: 0.9, fields: { text: "duplicate" } }] }
+        });
+
+      const results = await searchBookKnowledge(["q1", "q2"], ["b"]);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.score).toBe(0.9);
+    });
+
+    it("должна игнорировать дубликаты с НИЗКИМ скором", async () => {
+      mockPineconeSearchRecords
+        .mockResolvedValueOnce({
+          result: { hits: [{ _id: "1", _score: 0.9, fields: { text: "duplicate" } }] }
+        })
+        .mockResolvedValueOnce({
+          result: { hits: [{ _id: "2", _score: 0.5, fields: { text: "duplicate" } }] }
+        });
+
+      const results = await searchBookKnowledge(["q1", "q2"], ["b"]);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.score).toBe(0.9);
     });
 
     it("должна фильтровать результаты с низким скором (ниже MIN_SCORE=0.3)", async () => {

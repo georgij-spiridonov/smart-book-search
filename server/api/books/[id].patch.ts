@@ -12,6 +12,10 @@ export default defineEventHandler(async (event) => {
   const session = await getUserSession(event);
   const userId = session.user?.id || session.id;
 
+  if (!userId) {
+    throw createError({ statusCode: 401, message: "Не авторизован" });
+  }
+
   const rawBookId = getRouterParam(event, "id");
   const bookId = rawBookId ? decodeURIComponent(rawBookId) : undefined;
 

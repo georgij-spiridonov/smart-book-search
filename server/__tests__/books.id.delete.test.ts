@@ -288,6 +288,27 @@ describe("Удаление книги: DELETE /api/books/[id]", () => {
     );
   });
 
+  it("должен разрешать удаление книги администратору, даже если он не владелец", async () => {
+    const mockBookData = {
+      id: "other-book-id",
+      userId: "other-user-id",
+      title: "Чужая книга",
+      blobUrl: "",
+    };
+
+    mockedGetRouterParam.mockReturnValueOnce("other-book-id");
+    mockGetBookFromStore.mockResolvedValueOnce(mockBookData);
+    
+    // Имитируем сессию администратора
+    mockGetUserSession.mockResolvedValueOnce({ 
+      user: { id: "admin-id", isAdmin: true } 
+    } as any);
+
+    const result = await deleteBookHandler(dummyEvent);
+    expect(result.status).toBe("success");
+    expect(mockDeleteBookFromStore).toHaveBeenCalledWith("other-book-id");
+  });
+
   it("должен корректно работать для анонимных пользователей (использовать session.id)", async () => {
     const mockBookData = {
       id: "anon-book-id",

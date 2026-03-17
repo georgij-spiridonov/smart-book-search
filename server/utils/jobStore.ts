@@ -224,14 +224,21 @@ export async function updateJob(
 
   fieldsToSet.updatedAt = Date.now();
 
-  await redisClient.hset(jobKey, fieldsToSet);
-  // Обновляем время жизни ключа при каждом изменении
-  await redisClient.expire(jobKey, JOB_RETENTION_SECONDS);
+  try {
+    await redisClient.hset(jobKey, fieldsToSet);
+    // Обновляем время жизни ключа при каждом изменении
+    await redisClient.expire(jobKey, JOB_RETENTION_SECONDS);
 
-  if (updateData.status) {
-    logger.info("job-store", "Updated vectorization job status", {
+    if (updateData.status) {
+      logger.info("job-store", "Updated vectorization job status", {
+        jobId: id,
+        status: updateData.status,
+      });
+    }
+  } catch (err) {
+    logger.error("job-store", "Error updating job progress", {
       jobId: id,
-      status: updateData.status,
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 }

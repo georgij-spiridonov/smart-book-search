@@ -110,10 +110,31 @@ describe("Хранилище задач (jobStore)", () => {
     expect(redisClientInstance.srem).toHaveBeenCalledWith("smart-book-search:user-jobs:user-1", "job-2");
   });
 
-  it("getUserJobs должен возвращать пустой список, если у пользователя нет задач", async () => {
-    redisClientInstance.smembers.mockResolvedValueOnce([]);
-    const jobs = await getUserJobs("user-none");
+  it("getUserJobs должен возвращать пустой список, если smembers возвращает null", async () => {
+    redisClientInstance.smembers.mockResolvedValueOnce(null);
+    const jobs = await getUserJobs("user-null");
     expect(jobs).toEqual([]);
+  });
+
+  it("getJob должен обрабатывать ситуацию, когда progress/result уже объекты", async () => {
+    const jobId = "job-obj";
+    redisClientInstance.hgetall.mockResolvedValueOnce({
+      id: jobId,
+      progress: { currentPage: 1 }, // Не строка!
+      createdAt: 1000,
+      updatedAt: 1000,
+    });
+    const job = await getJob(jobId);
+    expect(job?.progress.currentPage).toBe(1);
+  });
+
+  it("updateJob должен пропускать undefined поля", async () => {
+    const jobId = "job-123";
+    await updateJob(jobId, { status: "processing", bookId: undefined });
+    expect(redisClientInstance.hset).toHaveBeenCalledWith(
+      "smart-book-search:jobs:job-123",
+      expect.not.objectContaining({ bookId: expect.anything() })
+    );
   });
 
   it("updateJob должен сериализовать progress и result, обновлять updatedAt", async () => {
@@ -135,6 +156,14 @@ describe("Хранилище задач (jobStore)", () => {
         updatedAt: expect.any(Number),
       })
     );
+  });
+
+  it("updateJob должен логировать ошибку, если hset выбросил исключение", async () => {
+    redisClientInstance.hset.mockRejectedValueOnce(new Error("Redis disconnect"));
+    const { logger } = await import("../utils/logger");
+    
+    await updateJob("job-error", { status: "failed" });
+    expect(logger.error).toHaveBeenCalledWith("job-store", "Error updating job progress", expect.anything());
   });
 
   it("generateJobId должен возвращать строку с префиксом job-", () => {

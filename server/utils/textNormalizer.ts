@@ -70,7 +70,7 @@ export function normalizePageText(rawText: string): string {
  * @param {string} text Текст для проверки.
  * @returns {boolean} true, если предложение, скорее всего, не закончено.
  */
-function checkIfEndsMidSentence(text: string): boolean {
+export function checkIfEndsMidSentence(text: string): boolean {
   const trimmedText = text.trimEnd();
   if (!trimmedText) {
     return false;

@@ -468,7 +468,41 @@ describe("Обработка сообщений чата: POST /api/chat", () =>
     const mockEvent = { waitUntil: vi.fn() };
     await chatPostHandler(mockEvent as any);
 
+    // Ожидаем завершения фоновой задачи генерации заголовка
+    if (mockEvent.waitUntil.mock.calls.length > 0) {
+      await (mockEvent.waitUntil.mock.calls[0] as any)[0];
+    }
+
     const { logger } = await import("../utils/logger");
     expect(logger.error).toHaveBeenCalledWith("chat-api", expect.stringContaining("failed"), expect.anything());
+  });
+
+  it("должен корректно обрабатывать сообщения без текстовых частей", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({ user: { id: "user-1" } } as any);
+    mockedReadBody.mockResolvedValueOnce({ query: "Вопрос", bookIds: ["b1"], chatId: "c1" });
+    
+    mockDbFindFirstChat.mockResolvedValueOnce({ id: "c1", userId: "user-1" });
+    mockDbFindManyMessages.mockResolvedValueOnce([
+      { role: "user", parts: [{ other: "data" }, null, 123] as any },
+    ]);
+
+    mockGetBookFromStore.mockResolvedValueOnce({ id: "b1", vectorized: true });
+    mockSearchBookKnowledge.mockResolvedValueOnce([]);
+    mockStreamAnswer.mockReturnValueOnce({ toUIMessageStream: vi.fn() });
+    
+    mockCreateUIMessageStream.mockImplementationOnce(async (config: any) => {
+      const writer = { write: vi.fn(), merge: vi.fn() };
+      await config.execute({ writer });
+      return "stream";
+    });
+
+    await chatPostHandler({} as any);
+    
+    // Проверяем, что в промпт попало пустое сообщение (так как текстовых частей нет)
+    const callArgs = mockGenerateSearchQueries.mock.calls[0];
+    // generateSearchQueries is called with (userQuestion, contextInfo, history)
+    // we should check the history passed to it
+    const history = callArgs![2];
+    expect(history[0].content).toBe("");
   });
 });

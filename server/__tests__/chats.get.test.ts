@@ -99,4 +99,22 @@ describe("Получение списка чатов: GET /api/chats", () => {
     expect(mockDbFindManyChats).toHaveBeenCalledOnce();
     expect(result).toEqual(mockChatsWithSessionId);
   });
+
+  it("должен возвращать все чаты, если пользователь является администратором", async () => {
+    mockedGetUserSession.mockResolvedValueOnce({
+      user: { id: "admin-id", isAdmin: true },
+    });
+
+    mockDbFindManyChats.mockResolvedValueOnce([
+      { id: "c1", userId: "u1" },
+      { id: "c2", userId: "u2" },
+    ]);
+
+    const result = await chatsGetHandler({} as any);
+
+    expect(result).toHaveLength(2);
+    // Проверяем, что условие where для findMany пустое (undefined)
+    const callArgs = mockDbFindManyChats.mock.calls[0]![0];
+    expect(callArgs.where).toBeUndefined();
+  });
 });

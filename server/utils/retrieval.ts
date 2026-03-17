@@ -61,13 +61,13 @@ export async function generateSearchQueries(
 
   const fullPrompt = promptParts.filter(Boolean).join("\n\n");
 
-  const { text: aiResponseText } = await generateText({
-    model: CHAT_CONFIG.queryModel,
-    system: CHAT_CONFIG.querySystemPrompt,
-    prompt: fullPrompt,
-  });
-
   try {
+    const { text: aiResponseText } = await generateText({
+      model: CHAT_CONFIG.queryModel,
+      system: CHAT_CONFIG.querySystemPrompt,
+      prompt: fullPrompt,
+    });
+
     // Пытаемся извлечь массив JSON из ответа модели
     const jsonMatch = aiResponseText.match(/\[.*\]/s);
     if (jsonMatch) {
@@ -94,9 +94,8 @@ export async function generateSearchQueries(
       }
     }
   } catch (error) {
-    logger.error("retrieval", "Failed to parse generated queries", {
+    logger.error("retrieval", "Failed to generate search queries", {
       error: error instanceof Error ? error.message : String(error),
-      rawResponse: aiResponseText,
     });
   }
 

@@ -54,6 +54,18 @@ describe("API Входа Администратора (Admin Login API)", () => 
     }));
   });
 
+  it("должен использовать существующий ID сессии, если он есть", async () => {
+    (globalThis as any).getUserSession.mockResolvedValueOnce({ id: "existing-session-id" });
+    vi.stubGlobal("useRuntimeConfig", () => ({ adminPassword: "test-password" }));
+    
+    const mockEvent = { _body: { password: "test-password" } } as unknown as H3Event;
+    await adminLoginHandler(mockEvent);
+    
+    expect((globalThis as any).setUserSession).toHaveBeenCalledWith(mockEvent, expect.objectContaining({
+      id: "existing-session-id",
+    }));
+  });
+
   it("должен вернуть ошибку 500, если пароль администратора не настроен", async () => {
     // Переопределяем конфигурацию для этого конкретного теста
     vi.stubGlobal("useRuntimeConfig", () => ({
